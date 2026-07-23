@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Env
+.env
+
+# Dados e artefatos gerados (reprodutíveis via ingest, não versionados)
+data/source_pdfs/*
+!data/source_pdfs/.gitkeep
+data/vector_store/*
+!data/vector_store/.gitkeep
+logs/*.jsonl
+!logs/.gitkeep
+
+# Testes
+tests/ragas/results/*
+!tests/ragas/results/.gitkeep
+tests/human_review/annotations/*
+!tests/human_review/annotations/.gitkeep
+node_modules/
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+
+# Editor/OS
+.vscode/
+.DS_Store
