@@ -65,7 +65,14 @@ Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e 
    python scripts\ingest_documents.py
    ```
 
-6. Abra `frontend/index.html` diretamente no navegador (ou sirva com qualquer servidor estático) e converse com o assistente.
+6. Sirva a pasta `frontend/` com um servidor estático (necessário para o WebSocket do monitor e para evitar problemas de CORS com `file://`), por exemplo:
+
+   ```powershell
+   cd frontend
+   python -m http.server 5500
+   ```
+
+   Abra `http://localhost:5500/index.html` — a homepage leva ao chat (`chat.html`), que tem um trilho lateral com as views **Chat** e **Monitor do LLM**.
 
 ### Endpoints da API
 
@@ -74,6 +81,9 @@ Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e 
 | `POST` | `/chat` | Envia uma pergunta, retorna resposta + fontes + metadados |
 | `POST` | `/ingest` | Reprocessa os PDFs de `data/source_pdfs/` |
 | `GET` | `/health` | Status da API, do Ollama e do vector store |
+| `GET` | `/metrics` | Snapshot pontual de CPU/RAM/GPU + última geração (polling) |
+| `WS` | `/ws/metrics` | Mesmo snapshot, em push a cada ~1s (usado pelo painel de Monitor) |
+| `GET` | `/stats` | Números agregados de `logs/interactions.jsonl`, usados na homepage |
 
 Todas as interações são logadas em `logs/interactions.jsonl` (JSON Lines), uma linha por interação, com pergunta, contexto recuperado, resposta, métricas e metadados — isso alimenta a Fase 2 (RAGAS) e a escrita do artigo.
 

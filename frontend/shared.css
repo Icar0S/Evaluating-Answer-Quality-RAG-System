@@ -1,0 +1,120 @@
+/* Tokens de design compartilhados entre a homepage e o chat.
+   Paleta escura/técnica com um gradiente de destaque (indigo -> violeta). */
+
+:root {
+  color-scheme: dark;
+
+  /* Camadas de fundo */
+  --bg-0: #0b0c10;
+  --bg-1: #121319;
+  --bg-2: #1a1c25;
+  --bg-3: #22242f;
+
+  /* Bordas e sombras */
+  --border: #272a36;
+  --border-soft: #1f212b;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-glow: 0 0 0 1px rgba(124, 131, 253, 0.15), 0 8px 32px rgba(99, 102, 241, 0.12);
+
+  /* Texto */
+  --text-primary: #eef0f6;
+  --text-secondary: #a6acc2;
+  --text-muted: #6b7086;
+
+  /* Acento (gradiente indigo -> violeta) */
+  --accent-1: #6366f1;
+  --accent-2: #8b5cf6;
+  --accent-gradient: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+  --accent-solid: #7c83fd;
+
+  /* Semânticas */
+  --ok: #34d399;
+  --warn: #f5b942;
+  --error: #f87171;
+
+  /* Bolhas de chat */
+  --bubble-user: linear-gradient(135deg, #4f46e5, #7c3aed);
+  --bubble-user-text: #f5f4ff;
+  --bubble-assistant: #1b1d27;
+  --bubble-assistant-border: #2a2d3a;
+  --bubble-ungrounded-border: #6b5219;
+
+  /* Escala */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg-0);
+  color: var(--text-primary);
+}
+
+a {
+  color: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.gradient-text {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.badge-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.badge-dot.ok {
+  background: var(--ok);
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
+}
+
+.badge-dot.down {
+  background: var(--error);
+  box-shadow: 0 0 8px rgba(248, 113, 113, 0.6);
+}
+
+.badge-dot.processing {
+  background: var(--warn);
+  box-shadow: 0 0 8px rgba(245, 185, 66, 0.6);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

@@ -4,32 +4,135 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RAG Test Specialist</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="shared.css" />
+  <link rel="stylesheet" href="home.css" />
 </head>
 <body>
-  <div class="app">
-    <header class="app-header">
-      <h1>RAG Test Specialist</h1>
-      <p class="subtitle">Assistente especialista em teste de sistemas LLM/RAG</p>
-      <span id="status-indicator" class="status-indicator" title="Status da API">●</span>
-    </header>
-
-    <main id="chat-log" class="chat-log" aria-live="polite"></main>
-
-    <div id="error-banner" class="error-banner" hidden></div>
-
-    <form id="chat-form" class="chat-form">
-      <textarea
-        id="question-input"
-        placeholder="Pergunte algo sobre teste de sistemas LLM/RAG..."
-        rows="2"
-        maxlength="4000"
-        required
-      ></textarea>
-      <button type="submit" id="send-button">Enviar</button>
-    </form>
+  <div class="hud" id="hud">
+    <span class="badge-dot" id="hud-dot"></span>
+    <span id="hud-text">conectando ao backend...</span>
   </div>
 
-  <script src="app.js"></script>
+  <nav class="home-nav">
+    <span class="home-logo">RAG<span class="gradient-text">Test</span>Specialist</span>
+    <a class="nav-cta" href="chat.html">Abrir o chat →</a>
+  </nav>
+
+  <header class="hero">
+    <div class="hero-glow"></div>
+    <p class="hero-eyebrow reveal">Pesquisa aplicada · RAG local · LLM-as-a-Judge</p>
+    <h1 class="hero-title reveal">
+      <span class="gradient-text">RAG Test Specialist</span>
+    </h1>
+    <p class="hero-tagline reveal">
+      Um assistente local, especializado em teste de sistemas baseados em LLM e RAG —
+      construído para responder somente com base no que pode citar, e servir de base
+      experimental para um artigo sobre avaliação de qualidade de resposta com
+      LLM-as-a-Judge e Human-in-the-Loop.
+    </p>
+    <div class="hero-actions reveal">
+      <a class="btn-primary" href="chat.html">Abrir o chat</a>
+      <a class="btn-secondary" href="#sistema">Ver a arquitetura ↓</a>
+    </div>
+  </header>
+
+  <section class="stats-section reveal" id="stats">
+    <h2 class="section-title">Números do sistema em produção</h2>
+    <p class="section-subtitle">Não são projeções — são lidos ao vivo do backend local a cada carregamento desta página.</p>
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card">
+        <span class="stat-value" id="stat-documents">—</span>
+        <span class="stat-label">chunks indexados</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="stat-interactions">—</span>
+        <span class="stat-label">interações registradas</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="stat-latency">—</span>
+        <span class="stat-label">latência média de resposta</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="stat-grounded">—</span>
+        <span class="stat-label">respostas fundamentadas no contexto</span>
+      </div>
+      <div class="stat-card stat-card-pending">
+        <span class="stat-value" id="stat-ragas">—</span>
+        <span class="stat-label">fidelidade média (RAGAS)</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="narrative-section reveal" id="sistema">
+    <h2 class="section-title">Problema → Abordagem → Sistema → Resultado</h2>
+    <div class="narrative-grid">
+      <div class="narrative-step">
+        <span class="narrative-index">01</span>
+        <h3>Problema</h3>
+        <p>Sistemas RAG podem soar confiantes mesmo quando alucinam. Avaliar a qualidade
+        de resposta de forma consistente, reprodutível e sem depender só de julgamento
+        humano manual é um problema aberto — especialmente com modelos 100% locais.</p>
+      </div>
+      <div class="narrative-step">
+        <span class="narrative-index">02</span>
+        <h3>Abordagem</h3>
+        <p>Construir o assistente RAG e sua bateria de testes lado a lado: pipeline manual
+        e instrumentado (sem caixas-pretas de orquestração), logging estruturado de toda
+        interação, e avaliação semântica via LLM-as-a-Judge com revisão humana como
+        contraponto.</p>
+      </div>
+      <div class="narrative-step">
+        <span class="narrative-index">03</span>
+        <h3>Sistema</h3>
+        <p>Ollama (geração + embeddings 100% locais) → ChromaDB (índice vetorial) → FastAPI
+        (API instrumentada, métricas de recursos em tempo real) → frontend próprio para
+        testes de API e E2E isolados.</p>
+      </div>
+      <div class="narrative-step">
+        <span class="narrative-index">04</span>
+        <h3>Resultado</h3>
+        <p>Um assistente que recusa graciosamente perguntas fora do contexto em vez de
+        alucinar, com métricas de fidelidade/relevância via RAGAS e cobertura E2E via
+        Playwright — base experimental para o artigo. <em>(Fase 2 em andamento.)</em></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="stack-section reveal">
+    <h2 class="section-title">Stack técnica</h2>
+    <div class="stack-grid">
+      <div class="stack-badge">
+        <span class="stack-dot" style="background:#5b8cff"></span>
+        <div><strong>Ollama</strong><small>Geração + embeddings locais</small></div>
+      </div>
+      <div class="stack-badge">
+        <span class="stack-dot" style="background:#ff6b6b"></span>
+        <div><strong>ChromaDB</strong><small>Índice vetorial persistente</small></div>
+      </div>
+      <div class="stack-badge">
+        <span class="stack-dot" style="background:#34d399"></span>
+        <div><strong>FastAPI</strong><small>API + métricas em tempo real</small></div>
+      </div>
+      <div class="stack-badge stack-badge-pending">
+        <span class="stack-dot" style="background:#f5b942"></span>
+        <div><strong>RAGAS</strong><small>Avaliação semântica — Fase 2</small></div>
+      </div>
+      <div class="stack-badge stack-badge-pending">
+        <span class="stack-dot" style="background:#8b5cf6"></span>
+        <div><strong>Playwright</strong><small>Testes E2E — Fase 2</small></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-section reveal">
+    <h2>Pronto para conversar com o assistente?</h2>
+    <a class="btn-primary" href="chat.html">Abrir o chat →</a>
+  </section>
+
+  <footer class="home-footer">
+    <span>RAG Test Specialist — projeto de pesquisa aplicada, 100% local.</span>
+  </footer>
+
+  <script src="home.js"></script>
 </body>
 </html>
