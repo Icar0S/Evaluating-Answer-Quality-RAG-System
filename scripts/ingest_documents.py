@@ -4,6 +4,7 @@ Uso:
     python scripts/ingest_documents.py
     python scripts/ingest_documents.py --source data/source_pdfs --no-reset
 """
+
 from __future__ import annotations
 
 import argparse
@@ -17,9 +18,18 @@ from app.rag.ingestion import ingest_documents  # noqa: E402
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Ingesta PDFs no vector store do RAG.")
-    parser.add_argument("--source", type=str, default=None, help="Pasta com PDFs (padrão: data/source_pdfs)")
-    parser.add_argument("--no-reset", action="store_true", help="Não apagar a coleção existente antes de ingerir")
+    parser = argparse.ArgumentParser(description="add PDFs vectors do RAG.")
+    parser.add_argument(
+        "--source",
+        type=str,
+        default=None,
+        help="Pasta com PDFs (padrão: data/source_pdfs)",
+    )
+    parser.add_argument(
+        "--no-reset",
+        action="store_true",
+        help="Não apagar a coleção existente antes de ingerir",
+    )
     args = parser.parse_args()
 
     source_dir = Path(args.source) if args.source else None
