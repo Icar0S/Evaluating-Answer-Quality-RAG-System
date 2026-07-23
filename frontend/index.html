@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAG Test Specialist</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1>RAG Test Specialist</h1>
+      <p class="subtitle">Assistente especialista em teste de sistemas LLM/RAG</p>
+      <span id="status-indicator" class="status-indicator" title="Status da API">●</span>
+    </header>
+
+    <main id="chat-log" class="chat-log" aria-live="polite"></main>
+
+    <div id="error-banner" class="error-banner" hidden></div>
+
+    <form id="chat-form" class="chat-form">
+      <textarea
+        id="question-input"
+        placeholder="Pergunte algo sobre teste de sistemas LLM/RAG..."
+        rows="2"
+        maxlength="4000"
+        required
+      ></textarea>
+      <button type="submit" id="send-button">Enviar</button>
+    </form>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
