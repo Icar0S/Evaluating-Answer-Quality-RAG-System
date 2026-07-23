@@ -68,4 +68,8 @@ def generate_answer(question: str, context_chunks: list[dict]) -> dict:
         "latency_ms": latency_ms,
         "prompt_tokens": data.get("prompt_eval_count"),
         "completion_tokens": data.get("eval_count"),
+        # Durações em nanossegundos, como retornadas pelo Ollama; usadas para tokens/s no monitor.
+        "prompt_eval_duration_ns": data.get("prompt_eval_duration"),
+        "eval_duration_ns": data.get("eval_duration"),
+        "total_duration_ns": data.get("total_duration"),
     }

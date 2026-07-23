@@ -4,11 +4,12 @@ from __future__ import annotations
 import asyncio
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import metrics
 from app.config import get_settings
-from app.logging_utils import log_interaction, logger, new_interaction_id
+from app.logging_utils import log_interaction, logger, new_interaction_id, read_interactions
 from app.rag import generation, retrieval, vector_store
 from app.rag.ingestion import ingest_documents
 from app.schemas import (
@@ -17,7 +18,9 @@ from app.schemas import (
     ChatResponse,
     HealthResponse,
     IngestResponse,
+    MetricsSnapshot,
     SourceChunk,
+    StatsResponse,
 )
 
 settings = get_settings()
@@ -82,6 +85,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Erro ao gerar embeddings: {exc}") from exc
 
+    metrics.mark_generation_start()
     try:
         result = await asyncio.to_thread(generation.generate_answer, request.question, chunks)
     except httpx.ConnectError as exc:
@@ -93,6 +97,16 @@ async def chat(request: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=504, detail="Tempo limite excedido ao gerar a resposta.") from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Erro ao gerar resposta: {exc}") from exc
+    finally:
+        metrics.mark_generation_end()
+
+    metrics.record_generation_stats(
+        prompt_tokens=result["prompt_tokens"],
+        completion_tokens=result["completion_tokens"],
+        prompt_eval_duration_ns=result.get("prompt_eval_duration_ns"),
+        eval_duration_ns=result.get("eval_duration_ns"),
+        total_duration_ns=result.get("total_duration_ns"),
+    )
 
     total_latency_ms = retrieval_latency_ms + result["latency_ms"]
 
@@ -127,3 +141,45 @@ async def chat(request: ChatRequest) -> ChatResponse:
     )
 
     return response
+
+
+@app.get("/metrics", response_model=MetricsSnapshot)
+async def get_metrics() -> MetricsSnapshot:
+    snapshot = await asyncio.to_thread(metrics.get_snapshot)
+    return MetricsSnapshot(**snapshot)
+
+
+@app.websocket("/ws/metrics")
+async def ws_metrics(websocket: WebSocket) -> None:
+    await websocket.accept()
+    try:
+        while True:
+            snapshot = await asyncio.to_thread(metrics.get_snapshot)
+            await websocket.send_json(snapshot)
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        pass
+
+
+@app.get("/stats", response_model=StatsResponse)
+async def get_stats() -> StatsResponse:
+    records = await asyncio.to_thread(read_interactions)
+    doc_count = await asyncio.to_thread(vector_store.collection_count)
+
+    total = len(records)
+    avg_latency = None
+    grounded_rate = None
+    if total > 0:
+        latencies = [r["metadata"]["latency_ms"] for r in records if r.get("metadata", {}).get("latency_ms") is not None]
+        if latencies:
+            avg_latency = round(sum(latencies) / len(latencies), 2)
+        grounded_flags = [r["grounded"] for r in records if "grounded" in r]
+        if grounded_flags:
+            grounded_rate = round(sum(1 for g in grounded_flags if g) / len(grounded_flags), 4)
+
+    return StatsResponse(
+        total_interactions=total,
+        vector_store_documents=doc_count,
+        average_latency_ms=avg_latency,
+        grounded_rate=grounded_rate,
+    )

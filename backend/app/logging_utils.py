@@ -45,3 +45,21 @@ def log_interaction(record: dict[str, Any]) -> None:
     with _write_lock:
         with _interactions_file().open("a", encoding="utf-8") as f:
             f.write(line + "\n")
+
+
+def read_interactions() -> list[dict[str, Any]]:
+    """Lê todas as interações logadas, usado para agregações (ex.: /stats)."""
+    path = _interactions_file()
+    if not path.exists():
+        return []
+    records = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return records
