@@ -85,6 +85,18 @@ Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e 
 | `WS` | `/ws/metrics` | Mesmo snapshot, em push a cada ~1s (usado pelo painel de Monitor) |
 | `GET` | `/stats` | Números agregados de `logs/interactions.jsonl`, usados na homepage |
 
+### Testes E2E do frontend
+
+`frontend/tests/` tem uma suíte Playwright que cobre chat, monitor e homepage —
+ver [frontend/tests/README.md](frontend/tests/README.md). Roda em ~1-2min e serve
+para pegar regressões de UI rapidamente a cada mudança, sem validação manual:
+
+```powershell
+cd frontend/tests
+npm install && npx playwright install chromium   # uma vez
+npm test
+```
+
 Todas as interações são logadas em `logs/interactions.jsonl` (JSON Lines), uma linha por interação, com pergunta, contexto recuperado, resposta, métricas e metadados — isso alimenta a Fase 2 (RAGAS) e a escrita do artigo.
 
 ## Fase 2 — Arquitetura de testes
