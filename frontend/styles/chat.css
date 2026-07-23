@@ -7,15 +7,6 @@ html, body {
   display: grid;
   grid-template-columns: 72px 300px 1fr;
   height: 100vh;
-  transition: grid-template-columns 0.15s;
-}
-
-.app-shell.view-monitor {
-  grid-template-columns: 72px 0 1fr;
-}
-
-.app-shell.view-monitor .sidebar {
-  display: none;
 }
 
 /* ---------- Icon rail ---------- */
@@ -91,8 +82,34 @@ html, body {
   background: linear-gradient(160deg, var(--bg-1) 0%, var(--bg-0) 100%);
   border-right: 1px solid var(--border-soft);
   padding: 16px 14px;
-  gap: 14px;
   overflow: hidden;
+}
+
+.sidebar-panel-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sidebar-panel-content[hidden] {
+  display: none;
+}
+
+.sidebar-monitor-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-monitor-header h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.sidebar-monitor .monitor-status-pill {
+  align-self: flex-start;
 }
 
 .sidebar-header {
@@ -273,17 +290,6 @@ html, body {
   min-width: 0;
   min-height: 0;
   background: var(--bg-0);
-}
-
-.view {
-  display: none;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-
-.view.active {
-  display: flex;
 }
 
 .panel-header {
@@ -529,16 +535,25 @@ html, body {
 
 /* ---------- Input bar ---------- */
 
+.chat-input-wrap {
+  margin: 0 24px 16px;
+}
+
 .chat-input-bar {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  margin: 0 24px 20px;
   padding: 8px 10px;
   background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   position: relative;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.chat-input-bar:focus-within {
+  border-color: var(--accent-solid);
+  box-shadow: 0 0 0 3px rgba(124, 131, 253, 0.15);
 }
 
 .icon-btn {
@@ -596,38 +611,47 @@ html, body {
 }
 
 .send-btn:disabled {
-  opacity: 0.5;
+  background: var(--bg-3);
+  color: var(--text-muted);
+  opacity: 1;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
-.emoji-picker-wrap {
-  position: relative;
+/* ---------- Dica abaixo do input (inspirado no rodapé do Claude Code) ---------- */
+
+.chat-input-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
 }
 
-.emoji-popover {
-  position: absolute;
-  bottom: 44px;
-  left: 0;
+.hint-model {
+  opacity: 0.85;
+}
+
+.hint-keys {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hint-char-count {
+  color: var(--warn);
+}
+
+kbd {
+  font-family: var(--font-mono);
   background: var(--bg-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 8px;
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 4px;
-  box-shadow: var(--shadow-md);
-  z-index: 10;
-}
-
-.emoji-popover button {
-  background: none;
-  border: none;
-  font-size: 1.1rem;
-  padding: 4px;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-}
-
-.emoji-popover button:hover {
-  background: var(--bg-2);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.68rem;
+  color: var(--text-secondary);
 }

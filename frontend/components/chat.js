@@ -5,7 +5,8 @@ const API_BASE_URL = window.__RAG_API_BASE_URL__ || "http://localhost:8000";
 const SESSIONS_KEY = "rag_sessions_v1";
 const ACTIVE_SESSION_KEY = "rag_active_session_v1";
 const REACTION_EMOJIS = ["👍", "👎", "💡", "❓"];
-const EMOJI_PALETTE = ["😀", "😂", "🤔", "👍", "👎", "🙏", "🔥", "🎯", "🧪", "📄", "⚠️", "✅"];
+const MAX_QUESTION_LENGTH = 4000;
+const CHAR_COUNT_WARNING_THRESHOLD = 3500;
 
 // ---------- Persistência de sessões ----------
 
@@ -81,10 +82,11 @@ const sendButtonEl = document.getElementById("send-button");
 const errorBannerEl = document.getElementById("error-banner");
 const railStatusDot = document.getElementById("rail-status-dot");
 const msgFilterTabs = document.querySelectorAll("#msg-filter-tabs .header-tab");
-const emojiBtn = document.getElementById("emoji-btn");
-const emojiPopover = document.getElementById("emoji-popover");
-const appShell = document.querySelector(".app-shell");
-const railButtons = document.querySelectorAll(".rail-btn[data-view]");
+const railButtons = document.querySelectorAll(".rail-btn[data-sidebar]");
+const sidebarSessionsEl = document.getElementById("sidebar-sessions");
+const sidebarMonitorEl = document.getElementById("sidebar-monitor");
+const hintModelEl = document.getElementById("hint-model");
+const hintCharCountEl = document.getElementById("hint-char-count");
 
 let sidebarFilter = "all"; // all | starred
 
@@ -336,8 +338,13 @@ function clearError() {
 }
 
 function setSending(isSending) {
-  sendButtonEl.disabled = isSending;
   questionInputEl.disabled = isSending;
+  if (isSending) {
+    sendButtonEl.disabled = true;
+  } else {
+    updateComposerState();
+    questionInputEl.focus();
+  }
 }
 
 // ---------- Envio de pergunta ----------
@@ -410,10 +417,12 @@ async function checkHealth() {
     railStatusDot.classList.toggle("ok", data.ollama_reachable);
     railStatusDot.classList.toggle("down", !data.ollama_reachable);
     railStatusDot.title = data.ollama_reachable ? "API e Ollama disponíveis" : "Ollama indisponível";
+    hintModelEl.textContent = data.generation_model;
   } catch {
     railStatusDot.classList.remove("ok");
     railStatusDot.classList.add("down");
     railStatusDot.title = "API indisponível";
+    hintModelEl.textContent = "backend indisponível";
   }
 }
 
@@ -425,6 +434,7 @@ chatFormEl.addEventListener("submit", (event) => {
   if (!question) return;
   questionInputEl.value = "";
   questionInputEl.style.height = "auto";
+  updateComposerState();
   sendQuestion(question);
 });
 
@@ -435,10 +445,22 @@ questionInputEl.addEventListener("keydown", (event) => {
   }
 });
 
-questionInputEl.addEventListener("input", () => {
+function updateComposerState() {
   questionInputEl.style.height = "auto";
   questionInputEl.style.height = `${Math.min(questionInputEl.scrollHeight, 140)}px`;
-});
+
+  const length = questionInputEl.value.length;
+  sendButtonEl.disabled = questionInputEl.value.trim().length === 0;
+
+  if (length >= CHAR_COUNT_WARNING_THRESHOLD) {
+    hintCharCountEl.hidden = false;
+    hintCharCountEl.textContent = `${length}/${MAX_QUESTION_LENGTH}`;
+  } else {
+    hintCharCountEl.hidden = true;
+  }
+}
+
+questionInputEl.addEventListener("input", updateComposerState);
 
 newSessionBtn.addEventListener("click", () => {
   const session = createSession();
@@ -467,39 +489,13 @@ msgFilterTabs.forEach((tab) => {
   });
 });
 
-emojiBtn.addEventListener("click", () => {
-  if (emojiPopover.hidden) {
-    emojiPopover.innerHTML = "";
-    EMOJI_PALETTE.forEach((emoji) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = emoji;
-      btn.addEventListener("click", () => {
-        questionInputEl.value += emoji;
-        questionInputEl.focus();
-      });
-      emojiPopover.appendChild(btn);
-    });
-    emojiPopover.hidden = false;
-  } else {
-    emojiPopover.hidden = true;
-  }
-});
-
-document.addEventListener("click", (event) => {
-  if (!emojiPopover.hidden && !emojiPopover.contains(event.target) && event.target !== emojiBtn) {
-    emojiPopover.hidden = true;
-  }
-});
-
 railButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
     railButtons.forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
-    const view = btn.dataset.view;
-    document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
-    document.getElementById(`${view}-view`).classList.add("active");
-    appShell.classList.toggle("view-monitor", view === "monitor");
+    const target = btn.dataset.sidebar;
+    sidebarSessionsEl.hidden = target !== "sessions";
+    sidebarMonitorEl.hidden = target !== "monitor";
   });
 });
 

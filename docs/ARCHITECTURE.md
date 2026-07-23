@@ -154,6 +154,31 @@ troca para o painel de Monitor com sparklines populadas em tempo real, criação
 nova sessão, e navegação da homepage para o chat pelo CTA. Screenshots conferidos
 visualmente a cada etapa.
 
+### Ajustes de UX pós-redesign
+
+Duas rodadas de correção a pedido do usuário, após uso real da interface:
+
+- **Scroll do chat travando após múltiplas mensagens**: bug clássico de flexbox —
+  `.chat-log` tinha `flex: 1` mas não `min-height: 0`, então em vez de encolher e
+  ativar seu próprio `overflow-y: auto`, o elemento crescia para caber todo o
+  conteúdo e empurrava a barra de input para fora da área visível. Corrigido
+  adicionando `min-height: 0` em `.chat-log` e `.main-panel` (mesma classe de bug
+  se propagaria para `.monitor-grid`, corrigido preventivamente).
+- **Monitor ocupando a tela inteira**: redesenhado para caber na sidebar (troca de
+  painel, não de rota) — clicar no ícone de Monitor substitui a lista de sessões
+  pelos cards compactos de métricas, mas o chat permanece visível e utilizável ao
+  lado, permitindo monitorar consumo enquanto conversa. Isso eliminou de quebra o
+  hack de `grid-template-columns` dinâmico que tinha causado o bug de CSS Grid
+  documentado acima — o layout do `main-panel` agora é sempre o mesmo.
+- **Emoji picker removido** do compositor de mensagens (desnecessário para um chat
+  com um assistente LLM). As reações em emoji nas respostas do assistente (👍 👎 💡
+  ❓, feedback rápido) foram mantidas — é uma funcionalidade diferente.
+- **Input redesenhado com inspiração no Claude Code**: borda com glow sutil ao
+  focar (`:focus-within`), rodapé com o nome do modelo ativo e atalhos de teclado
+  em estilo `<kbd>` ("Enter enviar · Shift+Enter nova linha"), contador de
+  caracteres que só aparece perto do limite de 4000, e botão de enviar
+  desabilitado (visualmente neutro, não só opaco) enquanto o campo está vazio.
+
 ## Fase 2 — Arquitetura de testes (a documentar conforme implementado)
 
 ## Fase 3 — Human-in-the-loop (a documentar caso confirmado)
