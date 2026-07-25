@@ -11,7 +11,9 @@ Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e 
 - Node.js 18+ (para os testes E2E com Playwright, Fase 2)
 - GPU com pelo menos 8GB de VRAM recomendada (testado em RTX 4060 Laptop 8GB)
 
-## Fase 0 — Setup do Ollama
+## Instalação
+
+### Fase 0 — Setup do Ollama
 
 1. Defina onde os modelos serão salvos (por padrão, fora do disco C: para não lotar o SO):
 
@@ -29,7 +31,7 @@ Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e 
 
    O script detecta o Ollama, baixa `qwen3:8b` (geração) e `nomic-embed-text` (embeddings), e testa os dois com um prompt simples. Ajuste os modelos via parâmetros `-GenerationModel` / `-EmbeddingModel` se seu hardware pedir outra faixa (veja a tabela em `docs/ARCHITECTURE.md`).
 
-## Fase 1 — Rodando o RAG local
+### Fase 1 — Rodando o RAG local
 
 1. Instale as dependências do backend:
 
@@ -118,4 +120,5 @@ scripts/                Setup do Ollama e ingestão via CLI
 tests/                  API, RAGAS, E2E, revisão humana (Fase 2/3)
 logs/                   interactions.jsonl (log estruturado, não versionado)
 docs/ARCHITECTURE.md    Decisões técnicas e racional
+```
 ```
