@@ -14,6 +14,12 @@ descartável) a cada mudança. Cobre os bugs que já apareceram uma vez:
   real do LLM local.
 - `homepage.spec.ts` — HUD não bloqueia o clique no CTA (regressão do bug de
   `pointer-events`), números da homepage carregam do backend.
+- `providers.spec.ts` — seletor Local/Servidor do monitor: abas renderizam com o
+  status de cada provider, clicar troca o provider ativo no backend, e as métricas
+  de CPU/RAM/GPU viram "indisponível" no modo remoto em vez de mostrar os números
+  da máquina local. **Mocka o backend inteiro** (HTTP + WebSocket via
+  `page.route`/`page.routeWebSocket`), então roda sem API no ar — é a suíte que dá
+  cobertura real no CI, onde todo o resto se auto-pula.
 
 ## Setup (uma vez)
 
