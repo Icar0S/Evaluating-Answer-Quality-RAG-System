@@ -11,6 +11,16 @@
   flex-shrink: 0;
 }
 
+#provider-tabs.header-tabs {
+  align-self: flex-start;
+}
+
+#provider-tabs .header-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .monitor-compact-list {
   flex: 1;
   min-height: 0;

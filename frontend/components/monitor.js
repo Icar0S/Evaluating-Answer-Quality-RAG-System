@@ -16,8 +16,54 @@ const metricLatencyPromptEl = document.getElementById("metric-latency-prompt");
 const metricLatencyGenEl = document.getElementById("metric-latency-gen");
 const sparklineCpuEl = document.getElementById("sparkline-cpu");
 const sparklineGpuEl = document.getElementById("sparkline-gpu");
+const providerTabsEl = document.getElementById("provider-tabs");
 
 const MONITOR_POLL_INTERVAL_MS = 1500;
+const PROVIDERS_POLL_INTERVAL_MS = 15000;
+
+// ---------- Seletor de provider (Local / Servidor) ----------
+
+function renderProviderTabs(data) {
+  providerTabsEl.innerHTML = "";
+  data.providers.forEach((provider) => {
+    const btn = document.createElement("button");
+    btn.className = "header-tab" + (provider.name === data.active ? " active" : "");
+    btn.dataset.provider = provider.name;
+    btn.title = `${provider.base_url} · ${provider.reachable ? "conectado" : "inacessível"}`;
+
+    const dot = document.createElement("span");
+    dot.className = "badge-dot" + (provider.reachable ? " ok" : " down");
+    btn.appendChild(dot);
+    btn.append(provider.label);
+
+    btn.addEventListener("click", () => switchProvider(provider.name));
+    providerTabsEl.appendChild(btn);
+  });
+}
+
+async function loadProviders() {
+  try {
+    const resp = await fetch(`${API_BASE_URL}/providers`);
+    if (!resp.ok) throw new Error("providers indisponível");
+    renderProviderTabs(await resp.json());
+  } catch {
+    // painel de status já sinaliza desconexão; sem providers pra listar por ora
+  }
+}
+
+async function switchProvider(name) {
+  try {
+    await fetch(`${API_BASE_URL}/providers/active`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  } catch {
+    // loadProviders() abaixo reflete o estado real independente do resultado
+  } finally {
+    loadProviders();
+  }
+}
 
 function drawSparkline(canvas, values) {
   const ctx = canvas.getContext("2d");
@@ -64,11 +110,18 @@ function updateMonitorUI(data) {
   }
 
   metricModelEl.textContent = data.generation_model;
-  metricCpuEl.textContent = `${data.cpu_percent.toFixed(0)}%`;
-  drawSparkline(sparklineCpuEl, data.cpu_history);
 
-  metricRamEl.textContent = `${data.ram.used_gb} / ${data.ram.total_gb} GB`;
-  metricRamBarEl.style.width = `${data.ram.percent}%`;
+  if (data.host_metrics_available) {
+    metricCpuEl.textContent = `${data.cpu_percent.toFixed(0)}%`;
+    drawSparkline(sparklineCpuEl, data.cpu_history);
+    metricRamEl.textContent = `${data.ram.used_gb} / ${data.ram.total_gb} GB`;
+    metricRamBarEl.style.width = `${data.ram.percent}%`;
+  } else {
+    metricCpuEl.textContent = "Indisponível no servidor remoto";
+    sparklineCpuEl.getContext("2d").clearRect(0, 0, sparklineCpuEl.width, sparklineCpuEl.height);
+    metricRamEl.textContent = "Indisponível no servidor remoto";
+    metricRamBarEl.style.width = "0%";
+  }
 
   if (data.gpu.available) {
     metricGpuEl.textContent = `${data.gpu.utilization_percent.toFixed(0)}%`;
@@ -76,7 +129,9 @@ function updateMonitorUI(data) {
     metricVramBarEl.style.width = `${(data.gpu.vram_used_gb / data.gpu.vram_total_gb) * 100}%`;
     drawSparkline(sparklineGpuEl, data.gpu_history);
   } else {
-    metricGpuEl.textContent = "Sem GPU NVIDIA detectada";
+    metricGpuEl.textContent = data.host_metrics_available
+      ? "Sem GPU NVIDIA detectada"
+      : "Indisponível no servidor remoto";
     metricVramEl.textContent = "—";
     metricVramBarEl.style.width = "0%";
     sparklineGpuEl.getContext("2d").clearRect(0, 0, sparklineGpuEl.width, sparklineGpuEl.height);
@@ -140,3 +195,5 @@ function connectMetricsSocket() {
 }
 
 connectMetricsSocket();
+loadProviders();
+setInterval(loadProviders, PROVIDERS_POLL_INTERVAL_MS);
