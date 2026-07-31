@@ -38,7 +38,7 @@ def _build_providers() -> dict[str, Provider]:
     if settings.remote_ollama_base_url:
         providers["remote"] = Provider(
             name="remote",
-            label=settings.remote_label,
+            label=settings.remote_ollama_label,
             base_url=settings.remote_ollama_base_url,
             generation_model=settings.remote_generation_model or settings.generation_model,
             embedding_model=settings.remote_embedding_model or settings.embedding_model,

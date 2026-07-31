@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     remote_ollama_base_url: str | None = None
     remote_generation_model: str | None = None
     remote_embedding_model: str | None = None
-    remote_label: str = "Servidor (Mac mini)"
+    remote_ollama_label: str = "Servidor (Mac mini)"
 
     # Provider ativo ao iniciar o backend (local | remote); trocável em runtime via /providers/active
     active_provider: str = "local"
