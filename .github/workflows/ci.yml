@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Nenhum job depende de Ollama, GPU ou do servidor Mac mini: os testes que
+# precisam de geracao real (frontend/tests/e2e/chat-flow.spec.ts e afins) se
+# auto-pulam quando a API nao esta no ar, e os demais mockam o backend.
+jobs:
+  api:
+    name: Testes de API (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Instalar dependencias
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Rodar pytest
+        run: pytest
+
+  e2e:
+    name: Testes E2E (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/tests/package-lock.json
+
+      # O playwright.config.ts sobe o servidor estatico com `python -m http.server`.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        working-directory: frontend/tests
+        run: npm ci
+
+      - name: Instalar o Chromium
+        working-directory: frontend/tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Rodar Playwright
+        working-directory: frontend/tests
+        run: npx playwright test
+
+      - name: Publicar o relatorio quando falhar
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/tests/playwright-report/
+          retention-days: 7
