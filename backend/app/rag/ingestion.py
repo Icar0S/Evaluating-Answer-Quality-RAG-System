@@ -14,6 +14,7 @@ import fitz  # PyMuPDF
 import httpx
 import tiktoken
 
+from app import providers
 from app.config import get_settings
 from app.logging_utils import logger
 from app.rag import vector_store
@@ -69,14 +70,15 @@ def build_chunk_records(pdf_path: Path, chunk_size_tokens: int, overlap_tokens: 
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Gera embeddings via Ollama, em lote quando /api/embed está disponível."""
+    """Gera embeddings via Ollama do provider ativo (local ou remoto), em lote quando /api/embed está disponível."""
     if not texts:
         return []
     settings = get_settings()
-    url = f"{settings.ollama_base_url}/api/embed"
+    provider = providers.get_active_provider()
+    url = f"{provider.base_url}/api/embed"
     with httpx.Client(timeout=settings.generation_timeout_seconds) as client:
         try:
-            resp = client.post(url, json={"model": settings.embedding_model, "input": texts})
+            resp = client.post(url, json={"model": provider.embedding_model, "input": texts})
             resp.raise_for_status()
             data = resp.json()
             embeddings = data.get("embeddings")
@@ -87,9 +89,9 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 
         # Fallback: endpoint legado, um texto por chamada.
         results: list[list[float]] = []
-        legacy_url = f"{settings.ollama_base_url}/api/embeddings"
+        legacy_url = f"{provider.base_url}/api/embeddings"
         for text in texts:
-            resp = client.post(legacy_url, json={"model": settings.embedding_model, "prompt": text})
+            resp = client.post(legacy_url, json={"model": provider.embedding_model, "prompt": text})
             resp.raise_for_status()
             results.append(resp.json()["embedding"])
         return results

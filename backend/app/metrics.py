@@ -12,7 +12,7 @@ from typing import Any
 
 import psutil
 
-from app.config import get_settings
+from app import providers
 
 # psutil.cpu_percent(interval=None) só é significativo a partir da 2a chamada
 # (a 1a fica sem baseline). Chamamos uma vez aqui para "aquecer" o medidor.
@@ -103,32 +103,46 @@ def _gpu_snapshot() -> dict[str, Any]:
 
 
 def get_snapshot() -> dict[str, Any]:
-    settings = get_settings()
-    cpu_percent = psutil.cpu_percent(interval=None)
-    vm = psutil.virtual_memory()
-    gpu = _gpu_snapshot()
+    provider = providers.get_active_provider()
+    is_local = provider.name == "local"
+
+    if is_local:
+        cpu_percent = psutil.cpu_percent(interval=None)
+        vm = psutil.virtual_memory()
+        gpu = _gpu_snapshot()
+        ram = {
+            "used_gb": round(vm.used / (1024**3), 2),
+            "total_gb": round(vm.total / (1024**3), 2),
+            "percent": vm.percent,
+        }
+    else:
+        # psutil/pynvml só enxergam esta máquina — não há como ler CPU/RAM/GPU de um
+        # Ollama remoto sem um agente rodando do lado de lá (decisão: não construir por
+        # ora). Placeholders neutros, sinalizados por host_metrics_available=False.
+        cpu_percent = 0.0
+        ram = {"used_gb": 0.0, "total_gb": 0.0, "percent": 0.0}
+        gpu = {"available": False}
 
     with _state_lock:
         status = "processing" if _active_generations > 0 else "idle"
         last_generation = _last_generation
 
-    _cpu_history.append(cpu_percent)
-    if len(_cpu_history) > _HISTORY_MAX_LEN:
-        _cpu_history.pop(0)
-    gpu_util = gpu["utilization_percent"] if gpu.get("available") else 0.0
-    _gpu_history.append(gpu_util)
-    if len(_gpu_history) > _HISTORY_MAX_LEN:
-        _gpu_history.pop(0)
+    if is_local:
+        _cpu_history.append(cpu_percent)
+        if len(_cpu_history) > _HISTORY_MAX_LEN:
+            _cpu_history.pop(0)
+        gpu_util = gpu["utilization_percent"] if gpu.get("available") else 0.0
+        _gpu_history.append(gpu_util)
+        if len(_gpu_history) > _HISTORY_MAX_LEN:
+            _gpu_history.pop(0)
 
     return {
-        "generation_model": settings.generation_model,
+        "generation_model": provider.generation_model,
+        "provider": provider.name,
+        "host_metrics_available": is_local,
         "status": status,
         "cpu_percent": cpu_percent,
-        "ram": {
-            "used_gb": round(vm.used / (1024**3), 2),
-            "total_gb": round(vm.total / (1024**3), 2),
-            "percent": vm.percent,
-        },
+        "ram": ram,
         "gpu": gpu,
         "last_generation": last_generation,
         "cpu_history": list(_cpu_history),

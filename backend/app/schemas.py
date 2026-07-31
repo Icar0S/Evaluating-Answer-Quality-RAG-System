@@ -22,6 +22,7 @@ class SourceChunk(BaseModel):
 class ChatMetadata(BaseModel):
     model: str
     embedding_model: str
+    provider: str
     prompt_version: str
     latency_ms: float
     retrieval_latency_ms: float
@@ -84,6 +85,8 @@ class LastGenerationStats(BaseModel):
 
 class MetricsSnapshot(BaseModel):
     generation_model: str
+    provider: str
+    host_metrics_available: bool
     status: Literal["idle", "processing"]
     cpu_percent: float
     ram: RamMetrics
@@ -91,6 +94,24 @@ class MetricsSnapshot(BaseModel):
     last_generation: LastGenerationStats | None = None
     cpu_history: list[float]
     gpu_history: list[float]
+
+
+class ProviderInfo(BaseModel):
+    name: str
+    label: str
+    base_url: str
+    generation_model: str
+    embedding_model: str
+    reachable: bool
+
+
+class ProvidersResponse(BaseModel):
+    providers: list[ProviderInfo]
+    active: str
+
+
+class SetActiveProviderRequest(BaseModel):
+    name: str
 
 
 class StatsResponse(BaseModel):
