@@ -76,13 +76,42 @@ Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e 
 
    Abra `http://localhost:5500/index.html` — a homepage leva ao chat (`chat.html`), que tem um trilho lateral com as views **Chat** e **Monitor do LLM**.
 
+### Fase 1.5 — Ollama remoto (opcional)
+
+Além do Ollama local, o backend pode apontar `/chat` e `/ingest` para um segundo
+Ollama rodando em outra máquina (ex. um servidor 24/7 na rede/Tailscale) — útil para
+não precisar subir o modelo local só para testar a aplicação. Ver
+[SETUP-LLM-LOCAL.md](SETUP-LLM-LOCAL.md) para o setup do lado do servidor.
+
+Preencha no `.env` (deixe em branco para manter 100% do comportamento local de hoje):
+
+```
+REMOTE_OLLAMA_BASE_URL=http://<ip-ou-host>:11434
+REMOTE_GENERATION_MODEL=<tag-do-modelo>
+REMOTE_EMBEDDING_MODEL=<tag-do-modelo-de-embeddings>
+REMOTE_OLLAMA_LABEL=Servidor (Mac mini)
+ACTIVE_PROVIDER=local   # ou remote — só define o padrão ao iniciar o backend
+```
+
+A troca entre "Local" e "Servidor" acontece em runtime (sem reiniciar o backend) pelas
+abas no topo do painel de Monitor, ou via `POST /providers/active {"name": "local|remote"}`.
+CPU/RAM/GPU no monitor só existem para o provider local — não há como o backend ler o
+hardware de uma máquina remota sem um agente rodando lá, então essas métricas aparecem
+como "indisponível" quando o Servidor está ativo (tokens/s, latência e status continuam
+reais nos dois casos, vêm da própria resposta do Ollama).
+
+Trocar o modelo **local** continua igual a antes: editar `GENERATION_MODEL`/
+`EMBEDDING_MODEL` no `.env` e reiniciar o backend.
+
 ### Endpoints da API
 
 | Método | Rota | Descrição |
 |---|---|---|
 | `POST` | `/chat` | Envia uma pergunta, retorna resposta + fontes + metadados |
 | `POST` | `/ingest` | Reprocessa os PDFs de `data/source_pdfs/` |
-| `GET` | `/health` | Status da API, do Ollama e do vector store |
+| `GET` | `/health` | Status da API e do provider ativo (Ollama + vector store) |
+| `GET` | `/providers` | Lista os providers configurados (local/remoto) e reachability de cada um |
+| `POST` | `/providers/active` | Troca o provider ativo em runtime (`{"name": "local"\|"remote"}`) |
 | `GET` | `/metrics` | Snapshot pontual de CPU/RAM/GPU + última geração (polling) |
 | `WS` | `/ws/metrics` | Mesmo snapshot, em push a cada ~1s (usado pelo painel de Monitor) |
 | `GET` | `/stats` | Números agregados de `logs/interactions.jsonl`, usados na homepage |

@@ -179,6 +179,53 @@ Duas rodadas de correção a pedido do usuário, após uso real da interface:
   caracteres que só aparece perto do limite de 4000, e botão de enviar
   desabilitado (visualmente neutro, não só opaco) enquanto o campo está vazio.
 
+## Provider Ollama local/remoto
+
+Motivação: manter o Ollama local rodando (`qwen3:8b`, GPU de 8GB) só para poder testar
+a aplicação passou a ser o principal atrito no dia a dia de desenvolvimento. Já existia
+um segundo Ollama rodando 24/7 num Mac mini M4 da rede doméstica (setup documentado em
+`SETUP-LLM-LOCAL.md`, originalmente feito para uso como backend de agente de código via
+Aider), acessível via Tailscale. Objetivo: permitir que `/chat`/`/ingest` apontem para
+esse servidor sem tocar no fluxo local existente.
+
+### Desenho
+
+Um "provider" é um alvo Ollama completo (`base_url` + modelo de geração + modelo de
+embeddings) — `local` (as variáveis `OLLAMA_*`/`GENERATION_MODEL`/`EMBEDDING_MODEL` de
+sempre, inalteradas) e `remote` (novo, opcional — só existe se `REMOTE_OLLAMA_BASE_URL`
+estiver preenchido no `.env`). `backend/app/providers.py` mantém qual está ativo como
+estado em memória (protegido por lock, mesmo padrão de `app/metrics.py`), inicializado
+a partir de `ACTIVE_PROVIDER` do `.env` e trocável em runtime via
+`POST /providers/active` — decisão deliberada de não exigir restart do backend nem
+edição de `.env` para alternar durante os testes manuais do dia a dia. `generation.py`,
+`ingestion.py` (embeddings) e `metrics.py` resolvem o provider ativo a cada chamada em
+vez de ler `Settings` diretamente.
+
+### Métricas de hardware são só do provider local
+
+`psutil`/`pynvml` (ver seção "Monitor de LLM em tempo real" acima) só enxergam a
+máquina onde o backend roda — não há como ler CPU/RAM/GPU do Mac mini pela rede sem um
+agente de métricas rodando lá. Avaliadas duas opções: (a) construir esse agente
+(script Python + LaunchAgent no Mac mini, no mesmo estilo do `backup-db.sh` que já
+existe lá, exposto por HTTP), ou (b) aceitar que hardware remoto fica fora do alcance e
+mostrar isso explicitamente na UI. Optado por (b) — decisão do usuário, para não
+adicionar mais um serviço 24/7 a manter no Mac mini por ora. `MetricsSnapshot` ganhou
+`host_metrics_available: bool`; quando `false` (provider remoto ativo), CPU/RAM/GPU
+aparecem como "indisponível" no painel de Monitor em vez de números da máquina local
+(que estariam tecnicamente corretos, mas seriam enganosos — não refletem a máquina que
+está de fato gerando a resposta). Tokens/s, latência e status idle/processando
+continuam reais nos dois modos, porque vêm da própria resposta do Ollama
+(`eval_count`/`eval_duration`/etc.), não de instrumentação local — o mesmo mecanismo já
+descrito na seção de monitor acima, só que agora provider-aware.
+
+### UI
+
+O painel de Monitor ganhou um seletor Local/Servidor (`#provider-tabs`, reaproveitando
+o componente visual de pill-tabs já usado nos filtros de sessão/mensagens) no topo,
+abaixo do indicador de status. Trocar de aba chama `POST /providers/active` de verdade
+— não é só uma troca de visualização, redireciona `/chat`/`/ingest` para o provider
+escolhido.
+
 ## Fase 2 — Arquitetura de testes (a documentar conforme implementado)
 
 ## Fase 3 — Human-in-the-loop (a documentar caso confirmado)
