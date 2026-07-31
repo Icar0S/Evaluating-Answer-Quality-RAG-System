@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Testes de API (tests/api/) — rodam sem Ollama, sem GPU e sem rede.
+pytest==8.3.4
