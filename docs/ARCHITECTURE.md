@@ -228,4 +228,46 @@ escolhido.
 
 ## Fase 2 — Arquitetura de testes (a documentar conforme implementado)
 
+### Testes determinísticos vs. testes que exercitam o modelo
+
+O sistema tem duas classes de teste com propósitos diferentes, e misturá-las
+degradaria as duas:
+
+- **Determinísticos** (`tests/api/`, `frontend/tests/e2e/providers.spec.ts`) —
+  verificam a *mecânica* do sistema: roteamento por provider, formato dos
+  metadados, o que é gravado no log, o que a UI mostra em cada estado. Não
+  envolvem o LLM: o Ollama é substituído por `httpx.MockTransport` no backend e
+  por `page.route`/`page.routeWebSocket` no frontend. Rodam em segundos, não
+  flutuam e não exigem hardware.
+- **Não-determinísticos** (`frontend/tests/e2e/chat-flow.spec.ts` e, na Fase 2, a
+  avaliação RAGAS) — exercitam a geração real. São lentos (dezenas de segundos por
+  pergunta), dependem de GPU e do modelo carregado, e sua saída varia entre
+  execuções. Só fazem sentido rodando localmente contra a stack de verdade.
+
+O CI do GitHub roda os dois grupos, mas só o primeiro produz asserções lá: os
+testes que precisam do LLM se auto-pulam via `test.skip(!isBackendUp(...))` em vez
+de falhar. Isso mantém o pipeline honesto — falha vermelha significa regressão de
+verdade, não ausência de GPU no runner.
+
+Consequência prática para o artigo: métricas de *qualidade de resposta* (fidelidade,
+alucinação) nunca vêm do CI — vêm da execução local do RAGAS registrada em
+`logs/interactions.jsonl`. O CI cobre a infraestrutura que produz esses números,
+não os números.
+
+### Isolamento dos testes de API
+
+Três estados globais precisaram ser neutralizados por fixture, todos documentados
+em `tests/api/README.md`: o `@lru_cache` de `get_settings()`, o provider ativo
+(estado de módulo em `providers.py`) e o `.env` da máquina — que, sem
+sobrescrita por variável de ambiente, faria o resultado do teste depender de quem
+está rodando. Os endereços de Ollama usados nos testes apontam para hosts
+inexistentes de propósito: se um mock falhar, o teste quebra com erro de conexão
+em vez de acertar silenciosamente o Ollama local e passar por acidente.
+
+Esse desenho já se pagou na primeira execução: o teste de listagem de providers
+pegou uma variável de ambiente documentada como `REMOTE_OLLAMA_LABEL` mas lida
+pelo backend como `REMOTE_LABEL` (o campo em `Settings` tinha nome divergente).
+O `.env` era silenciosamente ignorado e o bug era invisível na UI, porque o valor
+default coincidia com o texto configurado.
+
 ## Fase 3 — Human-in-the-loop (a documentar caso confirmado)

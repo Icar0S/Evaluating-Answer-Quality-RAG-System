@@ -116,17 +116,35 @@ Trocar o modelo **local** continua igual a antes: editar `GENERATION_MODEL`/
 | `WS` | `/ws/metrics` | Mesmo snapshot, em push a cada ~1s (usado pelo painel de Monitor) |
 | `GET` | `/stats` | Números agregados de `logs/interactions.jsonl`, usados na homepage |
 
-### Testes E2E do frontend
+### Testes
 
-`frontend/tests/` tem uma suíte Playwright que cobre chat, monitor e homepage —
-ver [frontend/tests/README.md](frontend/tests/README.md). Roda em ~1-2min e serve
-para pegar regressões de UI rapidamente a cada mudança, sem validação manual:
+Duas suítes, rodadas em paralelo pelo CI ([.github/workflows/ci.yml](.github/workflows/ci.yml))
+a cada push na `main` e em todo pull request.
+
+**API (pytest)** — roteamento por provider, métricas do monitor e log estruturado.
+Herméticos: sem Ollama, sem GPU, sem rede. Rodam em ~1s. Ver
+[tests/api/README.md](tests/api/README.md):
+
+```powershell
+cd backend
+.venv\Scripts\pip install -r requirements-dev.txt   # uma vez
+cd ..
+.\backend\.venv\Scripts\python -m pytest
+```
+
+**E2E (Playwright)** — chat, monitor, homepage e seletor de provider. Ver
+[frontend/tests/README.md](frontend/tests/README.md):
 
 ```powershell
 cd frontend/tests
 npm install && npx playwright install chromium   # uma vez
 npm test
 ```
+
+Os testes E2E que dependem de geração real do LLM se auto-pulam quando a API não
+está no ar (é o caso do CI); os demais mockam o backend e rodam em qualquer lugar.
+Para rodar tudo de uma vez localmente — subindo backend, checando os providers e
+executando as duas suítes — use `scripts\start_dev.bat`.
 
 Todas as interações são logadas em `logs/interactions.jsonl` (JSON Lines), uma linha por interação, com pergunta, contexto recuperado, resposta, métricas e metadados — isso alimenta a Fase 2 (RAGAS) e a escrita do artigo.
 
