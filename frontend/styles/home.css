@@ -1,3 +1,7 @@
+/* Homepage. Conceito: folha de resultados do experimento, não pitch de produto.
+   O único momento de ousadia da página é o painel split-flap dos números —
+   tudo aqui é calibrado para não competir com ele. */
+
 body {
   overflow-x: hidden;
 }
@@ -12,14 +16,15 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(18, 19, 25, 0.75);
+  background: rgba(18, 21, 26, 0.78);
   backdrop-filter: blur(8px);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   padding: 7px 14px;
-  font-size: 0.76rem;
+  font-size: var(--step--1);
   color: var(--text-secondary);
   font-family: var(--font-mono);
+  /* Regressão conhecida: sem isto o HUD cobre e bloqueia o CTA da nav. */
   pointer-events: none;
 }
 
@@ -35,9 +40,14 @@ body {
 }
 
 .home-logo {
-  font-weight: 700;
-  font-size: 0.95rem;
-  letter-spacing: 0.01em;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.9rem;
+  letter-spacing: -0.01em;
+}
+
+.home-logo-mark {
+  color: var(--text-muted);
 }
 
 .nav-cta {
@@ -47,130 +57,117 @@ body {
   border: 1px solid var(--border);
   padding: 8px 16px;
   border-radius: var(--radius-pill);
-  transition: border-color 0.15s, color 0.15s;
+  transition: border-color var(--motion-fast), color var(--motion-fast);
 }
 
 .nav-cta:hover {
-  border-color: var(--accent-solid);
+  border-color: var(--text-muted);
   color: var(--text-primary);
 }
 
-/* ---------- Hero ---------- */
+/* ---------- Hero ----------
+   Sem animação e sem glow: a personalidade vem da mono em caixa alta. */
 
 .hero {
   position: relative;
-  max-width: 880px;
+  max-width: 900px;
   margin: 0 auto;
-  padding: 90px 32px 110px;
-  text-align: center;
-  overflow: hidden;
-}
-
-.hero-glow {
-  position: absolute;
-  top: -220px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 780px;
-  height: 480px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.35), transparent 70%);
-  filter: blur(40px);
-  z-index: -1;
-  pointer-events: none;
+  padding: 72px 32px 64px;
 }
 
 .hero-eyebrow {
   color: var(--text-muted);
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
+  font-family: var(--font-mono);
+  font-size: var(--step--1);
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  margin-bottom: 18px;
+  margin: 0 0 20px;
 }
 
 .hero-title {
-  font-size: clamp(2.6rem, 6vw, 4.4rem);
-  font-weight: 800;
-  line-height: 1.05;
-  margin: 0 0 22px;
-  letter-spacing: -0.02em;
+  font-family: var(--font-mono);
+  font-size: clamp(2.2rem, 5.4vw, 3.6rem);
+  font-weight: 500;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  margin: 0 0 24px;
 }
 
 .hero-tagline {
-  font-size: 1.08rem;
-  line-height: 1.6;
+  font-size: 1.05rem;
+  line-height: 1.62;
   color: var(--text-secondary);
-  max-width: 640px;
-  margin: 0 auto 34px;
+  max-width: 620px;
+  margin: 0 0 32px;
 }
 
 .hero-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 14px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .btn-primary {
-  background: var(--accent-gradient);
-  color: white;
+  background: var(--text-primary);
+  color: var(--bg-0);
   text-decoration: none;
-  padding: 13px 26px;
+  padding: 12px 24px;
   border-radius: var(--radius-pill);
   font-weight: 600;
   font-size: 0.92rem;
-  box-shadow: var(--shadow-glow);
-  transition: transform 0.15s;
   display: inline-block;
+  transition: transform var(--motion-fast) var(--ease-out), background var(--motion-fast);
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
+  background: #ffffff;
 }
 
 .btn-secondary {
   color: var(--text-secondary);
   text-decoration: none;
-  padding: 13px 22px;
+  padding: 12px 20px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--border);
   font-size: 0.92rem;
-  transition: border-color 0.15s, color 0.15s;
+  transition: border-color var(--motion-fast), color var(--motion-fast);
 }
 
 .btn-secondary:hover {
-  border-color: var(--accent-solid);
+  border-color: var(--text-muted);
   color: var(--text-primary);
 }
 
-/* ---------- Reveal on scroll ---------- */
-
-.reveal {
-  opacity: 0;
-  transform: translateY(18px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-
-.reveal.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-/* ---------- Sections ---------- */
+/* ---------- Seções ---------- */
 
 .section-title {
-  font-size: 1.6rem;
-  font-weight: 700;
-  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--step-1);
+  font-weight: 500;
+  letter-spacing: -0.01em;
   margin: 0 0 8px;
 }
 
 .section-subtitle {
-  text-align: center;
   color: var(--text-muted);
   font-size: 0.88rem;
-  max-width: 520px;
-  margin: 0 auto 40px;
+  line-height: 1.55;
+  max-width: 620px;
+  margin: 0 0 36px;
+}
+
+.section-subtitle code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--text-secondary);
+}
+
+.section-subtitle strong {
+  color: var(--cite-500);
+  font-weight: 500;
 }
 
 .stats-section,
@@ -178,104 +175,137 @@ body {
 .stack-section {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 70px 32px;
+  padding: 56px 32px;
 }
+
+/* ---------- Painel de leitura (assinatura) ---------- */
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
 }
 
 .stat-card {
   background: var(--bg-1);
   border: 1px solid var(--border-soft);
-  border-radius: var(--radius-lg);
-  padding: 24px 18px;
+  border-radius: var(--radius-md);
+  padding: 22px 16px 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 6px;
+  gap: 12px;
+  /* Altura uniforme para que as linhas da grade sejam previsíveis — é o que
+     torna a reserva de espaço abaixo confiável. */
+  min-height: 104px;
+}
+
+/* O painel é uma ilha React: monta depois do primeiro paint. Sem reserva, a
+   seção de narrativa é empurrada para baixo quando ele aparece, e sob CPU
+   4x isso rendia CLS de 0,0096 (medido). Só importa nas larguras em que a
+   narrativa cabe na dobra — abaixo disso ela já está fora da viewport e o
+   deslocamento não conta. Os valores vêm da altura real da grade medida em
+   cada faixa de colunas. */
+@media (min-width: 620px) {
+  #stats-root {
+    min-height: 239px;
+  }
+}
+
+@media (min-width: 1164px) {
+  #stats-root {
+    min-height: 222px;
+  }
 }
 
 .stat-card-pending {
   border-style: dashed;
-  opacity: 0.75;
+  justify-content: center;
 }
 
-.stat-value {
-  font-size: 1.8rem;
-  font-weight: 800;
-}
-
-.stat-label {
-  font-size: 0.78rem;
+.stat-value-pending {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
   color: var(--text-muted);
 }
 
+.stat-label {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* O board precisa caber em telas estreitas sem estourar a coluna. */
+.stat-card .split-flap-text {
+  max-width: 100%;
+}
+
+@media (max-width: 420px) {
+  .stat-card .split-flap-text {
+    --split-flap-font-size: 1.5rem;
+  }
+}
+
+/* ---------- Narrativa ---------- */
+
 .narrative-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 16px;
 }
 
 .narrative-step {
   background: var(--bg-1);
   border: 1px solid var(--border-soft);
-  border-radius: var(--radius-lg);
-  padding: 24px 20px;
+  border-radius: var(--radius-md);
+  padding: 22px 20px;
 }
 
 .narrative-index {
   font-family: var(--font-mono);
   font-size: 0.78rem;
-  color: var(--accent-solid);
+  color: var(--text-muted);
 }
 
 .narrative-step h3 {
-  margin: 8px 0 8px;
-  font-size: 1.05rem;
+  margin: 8px 0;
+  font-size: 1rem;
+  font-weight: 600;
 }
 
 .narrative-step p {
   margin: 0;
   font-size: 0.86rem;
   color: var(--text-secondary);
-  line-height: 1.55;
+  line-height: 1.58;
 }
+
+/* ---------- Stack ---------- */
 
 .stack-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 .stack-badge {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   background: var(--bg-1);
   border: 1px solid var(--border-soft);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   padding: 14px 16px;
 }
 
 .stack-badge-pending {
+  /* O tracejado já diz "ainda não existe"; opacity derrubava o contraste. */
   border-style: dashed;
-  opacity: 0.75;
-}
-
-.stack-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
 }
 
 .stack-badge strong {
   display: block;
-  font-size: 0.88rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 500;
 }
 
 .stack-badge small {
@@ -283,19 +313,34 @@ body {
   font-size: 0.74rem;
 }
 
+/* ---------- CTA e rodapé ---------- */
+
 .cta-section {
   text-align: center;
-  padding: 90px 32px;
+  padding: 80px 32px;
 }
 
 .cta-section h2 {
-  font-size: 1.7rem;
+  font-size: var(--step-2);
+  font-weight: 600;
   margin: 0 0 22px;
 }
 
 .home-footer {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  max-width: 1100px;
+  margin: 0 auto;
   padding: 24px 32px 40px;
+  border-top: 1px solid var(--border-soft);
   color: var(--text-muted);
   font-size: 0.78rem;
+}
+
+.home-footer-api {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
 }

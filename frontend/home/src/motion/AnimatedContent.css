@@ -1,0 +1,32 @@
+/* Entrada de 480ms com 24px de deslocamento — dentro da faixa de 300-600ms.
+   O estado final é o padrão: [data-revealed="false"] é que esconde. Assim, se o
+   JS não rodar por qualquer motivo, o conteúdo aparece em vez de sumir. */
+.animated-content {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--motion-enter) var(--ease-out) var(--animated-content-delay, 0s),
+    transform var(--motion-enter) var(--ease-out) var(--animated-content-delay, 0s);
+}
+
+.animated-content[data-revealed="false"] {
+  opacity: 0;
+  transform: translateY(var(--animated-content-distance, 24px));
+}
+
+/* Com movimento desligado o componente nem cria o observer, então data-revealed
+   já nasce "true". Estas regras existem para o caso de a preferência mudar com a
+   página aberta: o conteúdo não pode ficar preso no estado oculto. */
+@media (prefers-reduced-motion: reduce) {
+  .animated-content,
+  .animated-content[data-revealed="false"] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+html[data-motion="off"] .animated-content,
+html[data-motion="off"] .animated-content[data-revealed="false"] {
+  opacity: 1 !important;
+  transform: none !important;
+}

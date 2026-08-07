@@ -1,0 +1,20 @@
+{
+  "name": "rag-home",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Ilha React da homepage. O chat (chat.html) continua HTML/CSS/JS puro.",
+  "scripts": {
+    "dev": "vite",
+    "build": "node clean-assets.mjs && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "vite": "^6.4.3"
+  }
+}

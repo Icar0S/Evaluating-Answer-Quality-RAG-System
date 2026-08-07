@@ -1,0 +1,9 @@
+# A saida de build da homepage e versionada e reconferida pelo CI (job
+# homepage-build). Se o fim de linha variar entre Windows e Linux, o rebuild no
+# CI diverge do que esta commitado e o job falha por um motivo que nao e o real.
+# O Vite sempre escreve LF; fixamos LF nos dois lados.
+frontend/index.html text eol=lf
+frontend/home-assets/** text eol=lf
+
+# Fontes sao binarias — nenhuma normalizacao.
+*.woff2 binary
