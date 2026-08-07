@@ -1,4 +1,11 @@
-"""Geração da resposta final com o modelo local, restrita ao contexto recuperado."""
+"""Geração da resposta final com o modelo do provider ativo, restrita ao contexto recuperado.
+
+Local e remoto falam protocolos diferentes (ver app/providers.py): local é Ollama
+de verdade (/api/chat), remoto é a API própria do Mac mini em
+https://llm.smartdatatest.com (/v1/chat, Bearer auth, ver llm-api-referencia.md).
+As duas são normalizadas para o mesmo dict de retorno aqui, então o resto do
+backend (main.py, metrics.py) não precisa saber qual provider respondeu.
+"""
 from __future__ import annotations
 
 import time
@@ -38,35 +45,25 @@ def build_user_message(question: str, context_chunks: list[dict]) -> str:
     return f"CONTEXTO:\n{context_text}\n\nPERGUNTA: {question}"
 
 
-def generate_answer(question: str, context_chunks: list[dict]) -> dict:
-    """Chama o Ollama do provider ativo (local ou remoto) e retorna answer + métricas + grounded."""
-    settings = get_settings()
-    provider = providers.get_active_provider()
-    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(not_found_marker=NOT_FOUND_MARKER)
-    user_message = build_user_message(question, context_chunks)
+def _build_messages(question: str, context_chunks: list[dict]) -> list[dict]:
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT_TEMPLATE.format(not_found_marker=NOT_FOUND_MARKER)},
+        {"role": "user", "content": build_user_message(question, context_chunks)},
+    ]
 
-    payload = {
-        "model": provider.generation_model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        "stream": False,
-    }
+
+def _generate_ollama(provider: providers.Provider, messages: list[dict], timeout: int) -> dict:
+    payload = {"model": provider.generation_model, "messages": messages, "stream": False}
 
     start = time.perf_counter()
-    with httpx.Client(timeout=settings.generation_timeout_seconds) as client:
+    with httpx.Client(timeout=timeout) as client:
         resp = client.post(f"{provider.base_url}/api/chat", json=payload)
         resp.raise_for_status()
         data = resp.json()
     latency_ms = (time.perf_counter() - start) * 1000
 
-    answer = data.get("message", {}).get("content", "").strip()
-    grounded = bool(context_chunks) and NOT_FOUND_MARKER.lower() not in answer.lower()
-
     return {
-        "answer": answer,
-        "grounded": grounded,
+        "answer": data.get("message", {}).get("content", "").strip(),
         "latency_ms": latency_ms,
         "prompt_tokens": data.get("prompt_eval_count"),
         "completion_tokens": data.get("eval_count"),
@@ -75,3 +72,57 @@ def generate_answer(question: str, context_chunks: list[dict]) -> dict:
         "eval_duration_ns": data.get("eval_duration"),
         "total_duration_ns": data.get("total_duration"),
     }
+
+
+def _generate_smartdatatest(provider: providers.Provider, messages: list[dict], timeout: int) -> dict:
+    """Gera via a API do Mac mini (ver llm-api-referencia.md — POST /v1/chat).
+
+    Sem `corpus_id`: o RAG é o nosso (retrieval.py + ChromaDB local), não o deles —
+    o contexto já vai embutido em `messages`. `max_tokens` fica de fora de
+    propósito: modelos qwen3 daqui raciocinam antes de responder (~1000 tokens de
+    "thinking") e um teto baixo devolveria resposta vazia; o doc recomenda deixar
+    o servidor escolher.
+    """
+    payload = {"messages": messages, "allow_fallback": True}
+    if provider.generation_model:
+        payload["model"] = provider.generation_model
+
+    headers = {"Authorization": f"Bearer {provider.api_key}"} if provider.api_key else {}
+
+    start = time.perf_counter()
+    with httpx.Client(timeout=timeout) as client:
+        resp = client.post(f"{provider.base_url}/v1/chat", json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+    latency_ms = (time.perf_counter() - start) * 1000
+
+    # A API não separa prompt-eval de geração como o Ollama — só devolve
+    # duration_s (geração) e queue_wait_s (espera na fila) em segundos.
+    duration_s = data.get("duration_s")
+    queue_wait_s = data.get("queue_wait_s") or 0.0
+    total_duration_ns = int((duration_s + queue_wait_s) * 1e9) if duration_s is not None else None
+
+    return {
+        "answer": (data.get("content") or "").strip(),
+        "latency_ms": latency_ms,
+        "prompt_tokens": data.get("tokens_in"),
+        "completion_tokens": data.get("tokens_out"),
+        "prompt_eval_duration_ns": None,
+        "eval_duration_ns": int(duration_s * 1e9) if duration_s is not None else None,
+        "total_duration_ns": total_duration_ns,
+    }
+
+
+def generate_answer(question: str, context_chunks: list[dict]) -> dict:
+    """Chama o provider ativo (local ou remoto) e retorna answer + métricas + grounded."""
+    settings = get_settings()
+    provider = providers.get_active_provider()
+    messages = _build_messages(question, context_chunks)
+
+    if provider.kind == "smartdatatest":
+        result = _generate_smartdatatest(provider, messages, settings.generation_timeout_seconds)
+    else:
+        result = _generate_ollama(provider, messages, settings.generation_timeout_seconds)
+
+    result["grounded"] = bool(context_chunks) and NOT_FOUND_MARKER.lower() not in result["answer"].lower()
+    return result

@@ -113,7 +113,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     top_k = request.top_k or settings.top_k
     active_provider = providers.get_active_provider()
     connect_error_detail = (
-        f"Não foi possível conectar ao Ollama do provider '{active_provider.label}' "
+        f"Não foi possível conectar ao provider '{active_provider.label}' "
         f"({active_provider.base_url}). Verifique se o serviço está no ar e acessível."
     )
 
@@ -131,6 +131,24 @@ async def chat(request: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=503, detail=connect_error_detail) from exc
     except httpx.TimeoutException as exc:
         raise HTTPException(status_code=504, detail="Tempo limite excedido ao gerar a resposta.") from exc
+    except httpx.HTTPStatusError as exc:
+        # Fila cheia / servidor sob pressão são condições esperadas e documentadas
+        # da API remota (ver llm-api-referencia.md), não falhas genéricas — vale
+        # repassar o Retry-After e uma mensagem que diga o que fazer.
+        status = exc.response.status_code
+        if status == 429:
+            retry_after = exc.response.headers.get("Retry-After")
+            detail = (
+                f"O provider '{active_provider.label}' está com a fila cheia. "
+                + (f"Tente novamente em {retry_after}s." if retry_after else "Tente novamente em instantes.")
+            )
+            raise HTTPException(status_code=429, detail=detail) from exc
+        if status == 503:
+            raise HTTPException(
+                status_code=503,
+                detail=f"O provider '{active_provider.label}' está sob pressão no momento. Tente novamente em instantes.",
+            ) from exc
+        raise HTTPException(status_code=502, detail=f"Erro ao gerar resposta: {exc}") from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Erro ao gerar resposta: {exc}") from exc
     finally:

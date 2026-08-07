@@ -1,12 +1,27 @@
-"""Registro dos alvos Ollama (local / remoto) e qual está ativo no momento.
+"""Registro dos alvos de geração (local / remoto) e qual está ativo no momento.
 
-Local e remoto são endpoints Ollama completos e independentes (base_url + modelo de
-geração + modelo de embeddings) — trocar o ativo redireciona tanto /chat quanto
-/ingest, sem precisar reiniciar o backend nem editar o .env. O provider "ativo" é
-estado em memória (thread-safe via lock, mesmo padrão de app/metrics.py); reinicia
-a partir de ACTIVE_PROVIDER do .env a cada boot do processo.
+Local e remoto NÃO falam o mesmo protocolo:
+
+- "local": Ollama de verdade (base_url + /api/chat + /api/tags), roda na máquina
+  do backend.
+- "remote": API própria do Mac mini em https://llm.smartdatatest.com (ver
+  llm-api-referencia.md) — /v1/chat com auth Bearer, /v1/ready para liveness, sem
+  endpoint de embeddings. `kind` em Provider é o que diferencia os dois em
+  generation.py e em check_reachable().
+
+Importante: **embeddings sempre usam o Ollama local**, nunca o provider ativo — a
+API remota não expõe rota de embeddings (só usa nomic-embed-text internamente
+para o RAG dela própria, via /v1/corpora), e misturar espaços de embedding entre
+providers corromperia silenciosamente a busca por similaridade. Trocar de
+provider troca só a geração. Ver app/rag/ingestion.py.
+
+O provider "ativo" é estado em memória (thread-safe via lock, mesmo padrão de
+app/metrics.py); reinicia a partir de ACTIVE_PROVIDER do .env a cada boot do
+processo.
 """
 from __future__ import annotations
+
+from typing import Literal
 
 import threading
 
@@ -15,6 +30,10 @@ from pydantic import BaseModel
 
 from app.config import get_settings
 
+# Default documentado da API remota quando nenhum modelo é pedido explicitamente
+# (ver GET /v1/models em llm-api-referencia.md).
+REMOTE_DEFAULT_MODEL = "qwen3:4b"
+
 
 class Provider(BaseModel):
     name: str
@@ -22,6 +41,8 @@ class Provider(BaseModel):
     base_url: str
     generation_model: str
     embedding_model: str
+    kind: Literal["ollama", "smartdatatest"] = "ollama"
+    api_key: str | None = None
 
 
 def _build_providers() -> dict[str, Provider]:
@@ -33,15 +54,20 @@ def _build_providers() -> dict[str, Provider]:
             base_url=settings.ollama_base_url,
             generation_model=settings.generation_model,
             embedding_model=settings.embedding_model,
+            kind="ollama",
         )
     }
-    if settings.remote_ollama_base_url:
+    if settings.remote_api_base_url:
         providers["remote"] = Provider(
             name="remote",
-            label=settings.remote_ollama_label,
-            base_url=settings.remote_ollama_base_url,
-            generation_model=settings.remote_generation_model or settings.generation_model,
-            embedding_model=settings.remote_embedding_model or settings.embedding_model,
+            label=settings.remote_label,
+            base_url=settings.remote_api_base_url,
+            generation_model=settings.remote_generation_model or REMOTE_DEFAULT_MODEL,
+            # Embeddings sempre vêm do Ollama local — a API remota não expõe essa rota.
+            # Mantido aqui só para exibição/log ("com que embedding o contexto foi montado").
+            embedding_model=settings.embedding_model,
+            kind="smartdatatest",
+            api_key=settings.remote_api_key,
         )
     return providers
 
@@ -82,7 +108,12 @@ def set_active_provider(name: str) -> Provider:
 async def check_reachable(provider: Provider) -> bool:
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get(f"{provider.base_url}/api/tags")
+            if provider.kind == "smartdatatest":
+                # /v1/ready é deliberadamente público (doc: "é o alvo do monitor
+                # externo") — sem Bearer, ao contrário do resto da API.
+                resp = await client.get(f"{provider.base_url}/v1/ready")
+            else:
+                resp = await client.get(f"{provider.base_url}/api/tags")
             resp.raise_for_status()
         return True
     except httpx.HTTPError:

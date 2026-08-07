@@ -23,11 +23,13 @@ class Settings(BaseSettings):
     embedding_model: str = "nomic-embed-text"
     generation_timeout_seconds: int = 120
 
-    # Ollama remoto (opcional — segundo alvo, ex. servidor 24/7 na rede/Tailscale)
-    remote_ollama_base_url: str | None = None
+    # Provider remoto (opcional — API própria do Mac mini, ver llm-api-referencia.md).
+    # NÃO é Ollama-compatível: /v1/chat com Bearer, sem rota de embeddings (por
+    # isso não há remote_embedding_model — embeddings são sempre locais).
+    remote_api_base_url: str | None = None
+    remote_api_key: str | None = None
     remote_generation_model: str | None = None
-    remote_embedding_model: str | None = None
-    remote_ollama_label: str = "Servidor (Mac mini)"
+    remote_label: str = "Servidor (Mac mini)"
 
     # Provider ativo ao iniciar o backend (local | remote); trocável em runtime via /providers/active
     active_provider: str = "local"
