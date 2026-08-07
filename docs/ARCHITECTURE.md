@@ -226,6 +226,61 @@ abaixo do indicador de status. Trocar de aba chama `POST /providers/active` de v
 — não é só uma troca de visualização, redireciona `/chat`/`/ingest` para o provider
 escolhido.
 
+### Migração: de Ollama remoto (Tailscale) para a API smartdatatest
+
+O desenho acima assumia que "remoto" seria sempre um segundo Ollama completo,
+espelhando o local (mesma rota `/api/chat`, mesmo endpoint de embeddings). Isso
+mudou quando o Mac mini passou a expor uma API própria e autenticada em
+`https://llm.smartdatatest.com` (ver [llm-api-referencia.md](../llm-api-referencia.md),
+gerado automaticamente do OpenAPI dela) em vez do Ollama cru na porta 11434 via
+Tailscale — o motivo é segurança: `SETUP-LLM-LOCAL.md` já registrava que "Ollama
+não tem autenticação — quem alcançar a porta 11434 usa seus modelos", e o gateway
+resolve isso com Bearer auth, fila com 429/`Retry-After` e 503 documentados, e
+governor de recursos (a máquina divide 16GB com uma aplicação em produção).
+
+Essa API **não é Ollama-compatível**, o que forçou duas mudanças de design, não
+só de endereço:
+
+1. **`Provider` ganhou `kind: "ollama" | "smartdatatest"` e `api_key`.**
+   `generation.py` ramifica entre `_generate_ollama()` (inalterado) e
+   `_generate_smartdatatest()` (`POST /v1/chat`, `Authorization: Bearer`, sem
+   `corpus_id` — o RAG usado continua sendo o nosso, retrieval local + ChromaDB,
+   não o deles). A API remota não separa prompt-eval de geração como o Ollama
+   (só `duration_s` + `queue_wait_s`), então `prompt_eval_latency_ms` fica `null`
+   nesse modo — mostrado como "—" no monitor em vez de um número inventado.
+   `check_reachable()` também ramifica: `smartdatatest` usa `GET /v1/ready`
+   (documentado como propositalmente sem autenticação, "é o alvo do monitor
+   externo") em vez de `/api/tags`.
+
+2. **Embeddings deixaram de seguir o provider ativo — agora são sempre locais.**
+   Era uma premissa do design anterior (fazia sentido só porque um Ollama remoto
+   *poderia* ter `nomic-embed-text` instalado também); a API smartdatatest **não
+   expõe rota de embeddings** (só usa `nomic-embed-text` internamente para o
+   RAG dela, via `/v1/corpora` — que este projeto não usa, para não delegar a
+   avaliação a um retrieval de terceiros). `ingestion.py::embed_texts()` agora
+   ignora `providers.get_active_provider()` de propósito e sempre usa
+   `settings.ollama_base_url`. Isso também corrige um risco que já existia no
+   design anterior mesmo se o remoto fosse Ollama de verdade: misturar espaços
+   de embedding entre chamadas — cosine similarity entre vetores de modelos
+   diferentes não tem significado — teria corrompido a busca silenciosamente,
+   sem erro, só respostas piores.
+
+Variáveis renomeadas no `.env`/`Settings` para não sugerir Ollama onde não há mais
+um (`REMOTE_OLLAMA_BASE_URL` → `REMOTE_API_BASE_URL`, `REMOTE_OLLAMA_LABEL` →
+`REMOTE_LABEL`, `+REMOTE_API_KEY`, `-REMOTE_EMBEDDING_MODEL`). O modelo padrão do
+provider remoto (`qwen3:8b`) foi escolhido igual ao local deliberadamente — mesmo
+modelo, hardware/hospedagem diferentes, para permitir comparação metodológica
+local-vs-remoto mais adiante no artigo, em vez do default da API (`qwen3:4b`,
+mais leve).
+
+`tests/api/conftest.py::LlmBackendMock` mocka os dois protocolos (renomeado de
+`OllamaMock`); `test_chat.py` tem um teste dedicado confirmando que trocar para o
+remoto redireciona *só* a geração — embeddings continuam batendo no host local —
+e outro para o 429 com `Retry-After`. Validado também contra a API real (não
+mockada) antes de fechar a mudança: `/v1/ready`, `/v1/models` (catálogo real,
+confirmou `qwen3:8b` disponível) e um `/chat` completo da nossa API com o
+provider remoto ativo, ponta a ponta.
+
 ## Fase 2 — Arquitetura de testes (a documentar conforme implementado)
 
 ### Testes determinísticos vs. testes que exercitam o modelo
