@@ -60,16 +60,16 @@ export default function StatsBoard() {
         <StatCard id="stat-interactions" label="interações registradas" {...interactions} />
         <StatCard id="stat-latency" label="latência média de resposta" {...latency} />
         <StatCard id="stat-grounded" label="respostas fundamentadas no contexto" {...grounded} />
-
-        {/* Sem painel: não existe leitura a exibir. Uma métrica que ainda não é
-            medida não deve ganhar a mesma cerimônia de uma que é. */}
-        <div className="stat-card stat-card-pending">
-          <span className="stat-value-pending" id="stat-ragas">
-            {stats?.ragas_faithfulness_avg ?? "em breve"}
-          </span>
-          <span className="stat-label">fidelidade média (RAGAS)</span>
-        </div>
       </div>
+
+      {/* Fora da grade de propósito: não existe leitura a exibir. Uma métrica que
+          ainda não é medida não deve ganhar a mesma cerimônia de uma que é. */}
+      <p className="stats-pending-note">
+        <span className="stat-value-pending" id="stat-ragas">
+          {stats?.ragas_faithfulness_avg ?? "em breve"}
+        </span>
+        <span>fidelidade média (RAGAS) — chega com a Fase 2</span>
+      </p>
     </AnimatedContent>
   );
 }
