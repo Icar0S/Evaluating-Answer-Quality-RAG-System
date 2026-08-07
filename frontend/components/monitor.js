@@ -21,6 +21,18 @@ const providerTabsEl = document.getElementById("provider-tabs");
 const MONITOR_POLL_INTERVAL_MS = 1500;
 const PROVIDERS_POLL_INTERVAL_MS = 15000;
 
+// A sparkline é telemetria, então usa o ciano de instrumento dos tokens.
+// Lido do CSS para que a paleta continue tendo uma fonte única de verdade.
+const probeColor = getComputedStyle(document.documentElement).getPropertyValue("--probe-500").trim() || "#3aafc9";
+const probeFill = getComputedStyle(document.documentElement).getPropertyValue("--probe-dim").trim() || "rgba(58, 175, 201, 0.16)";
+
+/** Escreve uma métrica marcando se é leitura real ou ausência de leitura. */
+function setMetric(el, text, available) {
+  el.textContent = text;
+  if (available) delete el.dataset.unavailable;
+  else el.dataset.unavailable = "true";
+}
+
 // ---------- Seletor de provider (Local / Servidor) ----------
 
 function renderProviderTabs(data) {
@@ -82,7 +94,7 @@ function drawSparkline(canvas, values) {
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
-  ctx.strokeStyle = "#7c83fd";
+  ctx.strokeStyle = probeColor;
   ctx.lineWidth = 2;
   ctx.lineJoin = "round";
   ctx.stroke();
@@ -90,7 +102,7 @@ function drawSparkline(canvas, values) {
   ctx.lineTo(w, h);
   ctx.lineTo(0, h);
   ctx.closePath();
-  ctx.fillStyle = "rgba(124, 131, 253, 0.14)";
+  ctx.fillStyle = probeFill;
   ctx.fill();
 }
 
@@ -109,44 +121,46 @@ function updateMonitorUI(data) {
     monitorStatusText.textContent = "ocioso";
   }
 
-  metricModelEl.textContent = data.generation_model;
+  setMetric(metricModelEl, data.generation_model, true);
 
   if (data.host_metrics_available) {
-    metricCpuEl.textContent = `${data.cpu_percent.toFixed(0)}%`;
+    setMetric(metricCpuEl, `${data.cpu_percent.toFixed(0)}%`, true);
     drawSparkline(sparklineCpuEl, data.cpu_history);
-    metricRamEl.textContent = `${data.ram.used_gb} / ${data.ram.total_gb} GB`;
+    setMetric(metricRamEl, `${data.ram.used_gb} / ${data.ram.total_gb} GB`, true);
     metricRamBarEl.style.width = `${data.ram.percent}%`;
   } else {
-    metricCpuEl.textContent = "Indisponível no servidor remoto";
+    setMetric(metricCpuEl, "Indisponível no servidor remoto", false);
     sparklineCpuEl.getContext("2d").clearRect(0, 0, sparklineCpuEl.width, sparklineCpuEl.height);
-    metricRamEl.textContent = "Indisponível no servidor remoto";
+    setMetric(metricRamEl, "Indisponível no servidor remoto", false);
     metricRamBarEl.style.width = "0%";
   }
 
   if (data.gpu.available) {
-    metricGpuEl.textContent = `${data.gpu.utilization_percent.toFixed(0)}%`;
-    metricVramEl.textContent = `${data.gpu.vram_used_gb} / ${data.gpu.vram_total_gb} GB`;
+    setMetric(metricGpuEl, `${data.gpu.utilization_percent.toFixed(0)}%`, true);
+    setMetric(metricVramEl, `${data.gpu.vram_used_gb} / ${data.gpu.vram_total_gb} GB`, true);
     metricVramBarEl.style.width = `${(data.gpu.vram_used_gb / data.gpu.vram_total_gb) * 100}%`;
     drawSparkline(sparklineGpuEl, data.gpu_history);
   } else {
-    metricGpuEl.textContent = data.host_metrics_available
-      ? "Sem GPU NVIDIA detectada"
-      : "Indisponível no servidor remoto";
-    metricVramEl.textContent = "—";
+    setMetric(
+      metricGpuEl,
+      data.host_metrics_available ? "Sem GPU NVIDIA detectada" : "Indisponível no servidor remoto",
+      false
+    );
+    setMetric(metricVramEl, "—", false);
     metricVramBarEl.style.width = "0%";
     sparklineGpuEl.getContext("2d").clearRect(0, 0, sparklineGpuEl.width, sparklineGpuEl.height);
   }
 
   if (data.last_generation && data.last_generation.tokens_per_second != null) {
-    metricTpsEl.textContent = `${data.last_generation.tokens_per_second} tok/s`;
-    metricLatencyTotalEl.textContent = formatMs(data.last_generation.total_latency_ms);
-    metricLatencyPromptEl.textContent = formatMs(data.last_generation.prompt_eval_latency_ms);
-    metricLatencyGenEl.textContent = formatMs(data.last_generation.generation_latency_ms);
+    setMetric(metricTpsEl, `${data.last_generation.tokens_per_second} tok/s`, true);
+    setMetric(metricLatencyTotalEl, formatMs(data.last_generation.total_latency_ms), true);
+    setMetric(metricLatencyPromptEl, formatMs(data.last_generation.prompt_eval_latency_ms), true);
+    setMetric(metricLatencyGenEl, formatMs(data.last_generation.generation_latency_ms), true);
   } else {
-    metricTpsEl.textContent = "Aguardando geração...";
-    metricLatencyTotalEl.textContent = "—";
-    metricLatencyPromptEl.textContent = "—";
-    metricLatencyGenEl.textContent = "—";
+    setMetric(metricTpsEl, "Aguardando geração...", false);
+    setMetric(metricLatencyTotalEl, "—", false);
+    setMetric(metricLatencyPromptEl, "—", false);
+    setMetric(metricLatencyGenEl, "—", false);
   }
 }
 

@@ -46,11 +46,23 @@
   margin-bottom: 5px;
 }
 
+/* Telemetria é sempre mono e sempre ciano: é leitura de instrumento. */
 .monitor-card-value {
+  font-family: var(--font-mono);
   font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--text-primary);
+  font-weight: 500;
+  color: var(--probe-500);
   overflow-wrap: break-word;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Valor ausente (provider remoto não expõe hardware) volta ao neutro:
+   "indisponível" não é uma leitura de instrumento. */
+.monitor-card-value[data-unavailable="true"],
+.latency-value[data-unavailable="true"] {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 400;
 }
 
 .sparkline {
@@ -71,8 +83,8 @@
 .monitor-bar-fill {
   height: 100%;
   width: 0%;
-  background: var(--accent-gradient);
-  transition: width 0.4s ease;
+  background: var(--probe-500);
+  transition: width var(--motion-enter) var(--ease-out);
 }
 
 .monitor-latency-col {
@@ -95,6 +107,9 @@
 }
 
 .latency-value {
+  font-family: var(--font-mono);
   font-size: 0.92rem;
-  font-weight: 600;
+  font-weight: 500;
+  color: var(--probe-500);
+  font-variant-numeric: tabular-nums;
 }

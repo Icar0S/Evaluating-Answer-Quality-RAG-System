@@ -26,15 +26,16 @@ html, body {
   width: 38px;
   height: 38px;
   border-radius: var(--radius-md);
-  background: var(--accent-gradient);
-  color: white;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-weight: 500;
   font-size: 0.8rem;
   text-decoration: none;
-  box-shadow: var(--shadow-glow);
 }
 
 .rail-nav {
@@ -65,7 +66,7 @@ html, body {
 
 .rail-btn.active {
   background: var(--bg-3);
-  color: var(--accent-solid);
+  color: var(--text-primary);
   border-color: var(--border);
 }
 
@@ -135,9 +136,9 @@ html, body {
   font-size: 0.85rem;
 }
 
-.sidebar-header input:focus {
+.sidebar-header input:focus-visible {
   outline: none;
-  border-color: var(--accent-solid);
+  border-color: var(--text-muted);
 }
 
 .sidebar-tabs {
@@ -170,9 +171,9 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: var(--accent-gradient);
-  color: white;
-  border: none;
+  background: var(--bg-3);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 10px;
   font-size: 0.85rem;
@@ -216,14 +217,16 @@ html, body {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--accent-gradient);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: white;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 .session-info {
@@ -271,7 +274,7 @@ html, body {
 }
 
 .star-btn.starred {
-  color: var(--warn);
+  color: var(--text-primary);
 }
 
 .empty-sessions {
@@ -415,8 +418,10 @@ html, body {
   border-bottom-left-radius: 6px;
 }
 
+/* Sem contexto: argila. E a recusa honesta do modelo, nao um erro do usuario. */
 .message-row.assistant.ungrounded .bubble {
-  border-color: var(--bubble-ungrounded-border);
+  border-color: var(--clay-500);
+  background: linear-gradient(90deg, var(--clay-dim), transparent 42%), var(--bubble-assistant);
 }
 
 .timestamp {
@@ -453,6 +458,7 @@ html, body {
   margin-top: 6px;
   font-size: 0.68rem;
   color: var(--text-muted);
+  font-family: var(--font-mono);
 }
 
 .reaction-bar {
@@ -482,8 +488,8 @@ html, body {
 }
 
 .reaction-btn.active {
-  border-color: var(--accent-solid);
-  background: rgba(124, 131, 253, 0.15);
+  border-color: var(--text-muted);
+  background: var(--bg-3);
 }
 
 .reactions-display {
@@ -500,34 +506,13 @@ html, body {
   padding: 1px 7px;
 }
 
-.loading-row {
-  align-self: flex-start;
-  display: flex;
-  gap: 4px;
-  padding: 12px 16px;
-}
-
-.loading-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  animation: bounce 1.2s infinite ease-in-out;
-}
-
-.loading-dot:nth-child(2) { animation-delay: 0.15s; }
-.loading-dot:nth-child(3) { animation-delay: 0.3s; }
-
-@keyframes bounce {
-  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-  40% { transform: translateY(-4px); opacity: 1; }
-}
+/* .loading-row vive agora em styles/motion.css, junto do efeito que o anima. */
 
 .error-banner {
   margin: 0 24px 12px;
-  background: rgba(248, 113, 113, 0.1);
-  border: 1px solid var(--error);
-  color: var(--error);
+  background: var(--clay-dim);
+  border: 1px solid var(--clay-500);
+  color: var(--clay-500);
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   font-size: 0.82rem;
@@ -552,8 +537,8 @@ html, body {
 }
 
 .chat-input-bar:focus-within {
-  border-color: var(--accent-solid);
-  box-shadow: 0 0 0 3px rgba(124, 131, 253, 0.15);
+  border-color: var(--text-muted);
+  box-shadow: 0 0 0 3px rgba(236, 238, 242, 0.06);
 }
 
 .icon-btn {
@@ -602,8 +587,8 @@ html, body {
   flex-shrink: 0;
   border-radius: 50%;
   border: none;
-  background: var(--accent-gradient);
-  color: white;
+  background: var(--text-primary);
+  color: var(--bg-0);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -632,7 +617,8 @@ html, body {
 }
 
 .hint-model {
-  opacity: 0.85;
+  /* Sem opacity: a cor já é a muted, e multiplicar derruba o contraste. */
+  color: var(--text-muted);
 }
 
 .hint-keys {
@@ -642,7 +628,7 @@ html, body {
 }
 
 .hint-char-count {
-  color: var(--warn);
+  color: var(--clay-500);
 }
 
 kbd {

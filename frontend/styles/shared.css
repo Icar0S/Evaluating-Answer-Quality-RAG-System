@@ -1,53 +1,102 @@
 /* Tokens de design compartilhados entre a homepage e o chat.
-   Paleta escura/técnica com um gradiente de destaque (indigo -> violeta). */
+   A cor aqui é semântica, não decorativa:
+     --cite-*  âmbar   só onde existe evidência recuperada (fonte, página, resposta fundamentada)
+     --probe-* ciano   só telemetria do instrumento (CPU/GPU/VRAM/tok-s/latência)
+     --clay-*  argila  só ausência: contexto não encontrado, recusa, erro
+   Nenhuma dessas três cores deve aparecer fora do seu papel. Todo o resto da
+   interface é monocromático — afordância de interação se resolve com contraste
+   (--bg-3 / --border / --text-primary), nunca com um quarto acento decorativo. */
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/assets/fonts/IBMPlexSans-latin-var.woff2") format("woff2");
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/assets/fonts/IBMPlexMono-Medium-latin.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   color-scheme: dark;
 
   /* Camadas de fundo */
-  --bg-0: #0b0c10;
-  --bg-1: #121319;
-  --bg-2: #1a1c25;
-  --bg-3: #22242f;
+  --bg-0: #0a0c0f;
+  --bg-1: #12151a;
+  --bg-2: #171a20;
+  --bg-3: #1f242c;
 
   /* Bordas e sombras */
-  --border: #272a36;
-  --border-soft: #1f212b;
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --shadow-glow: 0 0 0 1px rgba(124, 131, 253, 0.15), 0 8px 32px rgba(99, 102, 241, 0.12);
+  --border: #2a2f38;
+  --border-soft: #1f242c;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
 
   /* Texto */
-  --text-primary: #eef0f6;
-  --text-secondary: #a6acc2;
-  --text-muted: #6b7086;
+  --text-primary: #eceef2;
+  --text-secondary: #a2a9b6;
+  /* Medido com axe: 4,87:1 sobre --bg-3 (a superfície mais clara em que
+     aparece, a sessão ativa da sidebar). O tom original (#6b7086) dava 4,19:1
+     e #838a99 ainda errava por 0,01. */
+  --text-muted: #878e9d;
 
-  /* Acento (gradiente indigo -> violeta) */
-  --accent-1: #6366f1;
-  --accent-2: #8b5cf6;
-  --accent-gradient: linear-gradient(135deg, var(--accent-1), var(--accent-2));
-  --accent-solid: #7c83fd;
+  /* Âmbar de citação — evidência. Contraste 8,9:1 sobre --bg-0. */
+  --cite-500: #e0a33e;
+  /* Âmbar claro para uso sobre superfície com realce (os tiles do split-flap
+     têm um gradiente que clareia o topo). 5,1:1 no frame mais claro do tile. */
+  --cite-400: #efc172;
+  --cite-200: #f6d9a0;
+  --cite-dim: rgba(224, 163, 62, 0.16);
+  --cite-glow: rgba(224, 163, 62, 0.32);
 
-  /* Semânticas */
-  --ok: #34d399;
-  --warn: #f5b942;
-  --error: #f87171;
+  /* Ciano de instrumento — telemetria. Contraste 7,6:1 sobre --bg-0. */
+  --probe-500: #3aafc9;
+  --probe-dim: rgba(58, 175, 201, 0.16);
+
+  /* Argila — sem contexto. Contraste 5,6:1 sobre --bg-0. */
+  --clay-500: #d4695a;
+  --clay-dim: rgba(212, 105, 90, 0.16);
+
+  /* Semânticas de status (o dot de saúde da API não é evidência nem telemetria) */
+  --ok: #6fbf8e;
+  --warn: #e0a33e;
+  --error: #d4695a;
 
   /* Bolhas de chat */
-  --bubble-user: linear-gradient(135deg, #4f46e5, #7c3aed);
-  --bubble-user-text: #f5f4ff;
-  --bubble-assistant: #1b1d27;
-  --bubble-assistant-border: #2a2d3a;
-  --bubble-ungrounded-border: #6b5219;
+  --bubble-user: var(--bg-3);
+  --bubble-user-text: var(--text-primary);
+  --bubble-assistant: #171a20;
+  --bubble-assistant-border: #2a2f38;
 
   /* Escala */
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
   --radius-pill: 999px;
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
-  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  /* Escala tipográfica 1,25 a partir de 16px */
+  --step--1: 0.8rem;
+  --step-0: 1rem;
+  --step-1: 1.25rem;
+  --step-2: 1.5625rem;
+  --step-3: 1.953rem;
+  --step-4: 2.441rem;
+  --step-5: 3.052rem;
+
+  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+
+  /* Movimento. Entradas 300-600ms, micro-interações 120-250ms. */
+  --motion-fast: 160ms;
+  --motion-mid: 240ms;
+  --motion-enter: 480ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 * {
@@ -69,6 +118,13 @@ a {
   color: inherit;
 }
 
+/* Foco de teclado sempre visível e nunca coberto por camada decorativa. */
+:focus-visible {
+  outline: 2px solid var(--cite-500);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -83,11 +139,18 @@ a {
   background: transparent;
 }
 
-.gradient-text {
-  background: var(--accent-gradient);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+/* Texto real para leitores de tela, atrás de um efeito visual aria-hidden.
+   Nunca usar display:none aqui — o valor precisa continuar na árvore de acessibilidade. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .badge-dot {
@@ -100,21 +163,54 @@ a {
 
 .badge-dot.ok {
   background: var(--ok);
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
+  box-shadow: 0 0 8px rgba(111, 191, 142, 0.55);
 }
 
 .badge-dot.down {
   background: var(--error);
-  box-shadow: 0 0 8px rgba(248, 113, 113, 0.6);
+  box-shadow: 0 0 8px rgba(212, 105, 90, 0.55);
 }
 
 .badge-dot.processing {
   background: var(--warn);
-  box-shadow: 0 0 8px rgba(245, 185, 66, 0.6);
+  box-shadow: 0 0 8px var(--cite-glow);
   animation: pulse 1.2s ease-in-out infinite;
 }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+
+/* ---------- Neutralização global do movimento ----------
+   Duas fontes, um resultado: a preferência do SO e a flag de desligamento
+   (?motion=off, localStorage.motion === 'off', VITE_DISABLE_MOTION no build).
+   O guard de JS marca <html data-motion="off">; esta regra faz o resto.
+   Conteúdo aparece direto, opacidade 1, sem deslocamento. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html[data-motion="off"] {
+  scroll-behavior: auto;
+}
+
+html[data-motion="off"] *,
+html[data-motion="off"] *::before,
+html[data-motion="off"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
 }
