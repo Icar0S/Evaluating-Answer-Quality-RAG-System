@@ -1,6 +1,6 @@
 """Fixtures dos testes de API.
 
-Todos os testes daqui são herméticos: nenhum Ollama real, nenhuma GPU, nenhum
+Todos os testes daqui são herméticos: nenhuma chamada real, nenhuma GPU, nenhum
 acesso à rede e nenhuma escrita em `logs/` ou `data/` do projeto. É isso que
 permite rodá-los no CI do GitHub, onde nada disso existe.
 
@@ -8,10 +8,10 @@ Três isolamentos importam:
 
 1. `Settings` é `@lru_cache` — sem limpar o cache, o primeiro teste congelaria a
    configuração para todos os outros.
-2. O `.env` real do usuário (que tem o Mac mini configurado) venceria os defaults
-   e faria o resultado do teste depender da máquina. Variáveis de ambiente têm
-   precedência sobre o `.env` no pydantic-settings, então sobrescrevemos todas as
-   que importam.
+2. O `.env` real do usuário (que tem o provider remoto configurado, com chave de
+   API de verdade) venceria os defaults e faria o resultado do teste depender da
+   máquina. Variáveis de ambiente têm precedência sobre o `.env` no
+   pydantic-settings, então sobrescrevemos todas as que importam.
 3. `providers` guarda o provider ativo em estado de módulo, que vazaria de um
    teste para o outro.
 """
@@ -28,21 +28,24 @@ from app.config import get_settings
 from app.rag import vector_store
 
 # Hosts propositalmente inexistentes: se algum mock deixar passar uma chamada,
-# o teste falha com erro de conexão em vez de acertar o Ollama real da máquina.
+# o teste falha com erro de conexão em vez de acertar um serviço real.
 LOCAL_BASE_URL = "http://ollama-local-de-teste:11434"
-REMOTE_BASE_URL = "http://ollama-remoto-de-teste:11434"
+REMOTE_BASE_URL = "http://api-remota-de-teste"
 LOCAL_MODEL = "modelo-local-de-teste"
 LOCAL_EMBEDDING_MODEL = "embeddings-local-de-teste"
 REMOTE_MODEL = "modelo-remoto-de-teste"
-REMOTE_EMBEDDING_MODEL = "embeddings-remoto-de-teste"
+REMOTE_API_KEY = "sk-chave-de-teste"
 REMOTE_LABEL = "Servidor de teste"
 
 
-class OllamaMock:
-    """Ollama falso: responde /api/tags, /api/chat e /api/embed, e grava as chamadas.
+class LlmBackendMock:
+    """Backend falso para os dois protocolos que o projeto fala (ver app/providers.py):
+
+    - "ollama" (local): /api/tags, /api/chat, /api/embed, /api/embeddings
+    - "smartdatatest" (remoto): /v1/ready, /v1/chat, com Bearer auth
 
     Por padrão o host remoto está *offline* (recusa conexão), reproduzindo o
-    cenário real de um servidor 24/7 que pode não estar acessível no momento.
+    cenário real de um servidor de terceiros que pode não estar acessível.
     """
 
     def __init__(self) -> None:
@@ -69,6 +72,8 @@ class OllamaMock:
             raise httpx.ConnectError("conexao recusada (mock)", request=request)
 
         path = request.url.path
+
+        # --- protocolo Ollama (local) ---
         if path == "/api/tags":
             return httpx.Response(200, json={"models": [{"name": LOCAL_MODEL}]})
 
@@ -92,6 +97,29 @@ class OllamaMock:
         if path == "/api/embeddings":
             return httpx.Response(200, json={"embedding": [0.1, 0.2, 0.3]})
 
+        # --- protocolo smartdatatest (remoto, ver llm-api-referencia.md) ---
+        if path == "/v1/ready":
+            return httpx.Response(200, json={"status": "ready"})
+
+        if path == "/v1/chat":
+            payload = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "content": self.completion,
+                    "thinking": None,
+                    "model": payload.get("model") or providers.REMOTE_DEFAULT_MODEL,
+                    "requested_model": payload.get("model") or providers.REMOTE_DEFAULT_MODEL,
+                    "fallback_applied": False,
+                    "max_tokens_adjusted": False,
+                    "sources": [],
+                    "tokens_in": 100,
+                    "tokens_out": self.eval_count,
+                    "duration_s": self.eval_duration_ns / 1e9,
+                    "queue_wait_s": 0.0,
+                },
+            )
+
         return httpx.Response(404, json={"error": f"rota nao mockada: {path}"})
 
 
@@ -102,10 +130,10 @@ def _isolated_settings(monkeypatch, tmp_path):
     monkeypatch.setenv("GENERATION_MODEL", LOCAL_MODEL)
     monkeypatch.setenv("EMBEDDING_MODEL", LOCAL_EMBEDDING_MODEL)
     # Vazio = provider remoto não configurado (o default de quem não mexeu no .env).
-    monkeypatch.setenv("REMOTE_OLLAMA_BASE_URL", "")
+    monkeypatch.setenv("REMOTE_API_BASE_URL", "")
+    monkeypatch.setenv("REMOTE_API_KEY", "")
     monkeypatch.setenv("REMOTE_GENERATION_MODEL", "")
-    monkeypatch.setenv("REMOTE_EMBEDDING_MODEL", "")
-    monkeypatch.setenv("REMOTE_OLLAMA_LABEL", REMOTE_LABEL)
+    monkeypatch.setenv("REMOTE_LABEL", REMOTE_LABEL)
     monkeypatch.setenv("ACTIVE_PROVIDER", "local")
     # Caminhos absolutos em tmp: nada é escrito em logs/ ou data/ do projeto.
     monkeypatch.setenv("LOGS_DIR", str(tmp_path / "logs"))
@@ -125,22 +153,24 @@ def _isolated_settings(monkeypatch, tmp_path):
 
 @pytest.fixture
 def remote_configured(monkeypatch):
-    """Preenche as variáveis do provider remoto (equivale ao .env com o Mac mini)."""
-    monkeypatch.setenv("REMOTE_OLLAMA_BASE_URL", REMOTE_BASE_URL)
+    """Preenche as variáveis do provider remoto (equivale ao .env com a API do Mac mini)."""
+    monkeypatch.setenv("REMOTE_API_BASE_URL", REMOTE_BASE_URL)
+    monkeypatch.setenv("REMOTE_API_KEY", REMOTE_API_KEY)
     monkeypatch.setenv("REMOTE_GENERATION_MODEL", REMOTE_MODEL)
-    monkeypatch.setenv("REMOTE_EMBEDDING_MODEL", REMOTE_EMBEDDING_MODEL)
     get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)
-def ollama(monkeypatch) -> OllamaMock:
-    """Intercepta todo tráfego httpx do backend e devolve respostas de Ollama falsas.
+def ollama(monkeypatch) -> LlmBackendMock:
+    """Intercepta todo tráfego httpx do backend e devolve respostas falsas.
 
     `autouse` de propósito: garante que nenhum teste da suíte consiga fazer uma
     chamada de rede real, mesmo por descuido. Testes que precisam inspecionar ou
-    reconfigurar as respostas só pedem a fixture pelo nome.
+    reconfigurar as respostas só pedem a fixture pelo nome. Nome mantido curto
+    (`ollama`) por compatibilidade com os testes existentes, mesmo cobrindo os
+    dois protocolos agora.
     """
-    mock = OllamaMock()
+    mock = LlmBackendMock()
     mock.set_offline(REMOTE_BASE_URL)
 
     real_client = httpx.Client

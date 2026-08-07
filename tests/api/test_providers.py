@@ -10,7 +10,6 @@ from conftest import (
     LOCAL_EMBEDDING_MODEL,
     LOCAL_MODEL,
     REMOTE_BASE_URL,
-    REMOTE_EMBEDDING_MODEL,
     REMOTE_LABEL,
     REMOTE_MODEL,
 )
@@ -31,7 +30,9 @@ def test_lista_os_dois_providers_quando_o_remoto_esta_configurado(client, remote
     assert remote["label"] == REMOTE_LABEL
     assert remote["base_url"] == REMOTE_BASE_URL
     assert remote["generation_model"] == REMOTE_MODEL
-    assert remote["embedding_model"] == REMOTE_EMBEDDING_MODEL
+    # Embeddings são sempre locais (a API remota não expõe essa rota) — o campo
+    # aqui existe só para exibição/log, e reflete o modelo local mesmo no remoto.
+    assert remote["embedding_model"] == LOCAL_EMBEDDING_MODEL
 
 
 def test_reachability_reflete_o_estado_real_de_cada_provider(client, remote_configured, ollama):
