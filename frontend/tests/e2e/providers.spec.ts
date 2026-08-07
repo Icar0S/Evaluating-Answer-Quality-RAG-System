@@ -48,7 +48,7 @@ function providerPayload(active: string, remoteReachable = true) {
       {
         name: "remote",
         label: "Servidor (Mac mini)",
-        base_url: "http://100.75.189.93:11434",
+        base_url: "https://llm.smartdatatest.com",
         generation_model: "coder-32k",
         embedding_model: "nomic-embed-text",
         reachable: remoteReachable,

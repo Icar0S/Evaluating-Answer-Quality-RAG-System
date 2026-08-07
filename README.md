@@ -1,10 +1,22 @@
 # Evaluating Answer Quality of a RAG System
 
+> **Artefato associado ao artigo:** "Relato de Experiência: Arquitetura de Testes
+> e Validação Semântica para um Sistema RAG no Setor Público", aceito no
+> SAST 2026 (11th Brazilian Symposium on Systematic and Automated Software
+> Testing), CBSoft 2026, São Paulo, SP.
+>
+> Este repositório é uma **implementação de referência aberta** dos princípios
+> descritos no artigo. O código, o golden dataset e o corpus regulatório do
+> sistema original não podem ser publicados por conterem informações
+> operacionais internas da organização parceira.
+>
+> 📄 **Camera-ready:** [docs/paper.pdf](docs/paper.pdf)
+
 Assistente de RAG 100% local, especializado em teste de sistemas baseados em LLM/RAG, com arquitetura de testes (RAGAS + Playwright) construída ao redor dele. Base experimental de um projeto de pesquisa sobre avaliação de qualidade de resposta em RAG usando LLM-as-a-Judge com Human-in-the-Loop.
 
 Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e o racional por trás delas.
 
-## Pré-requisitos
+## Requirements
 
 - [Ollama](https://ollama.com/download) instalado — **sempre necessário**, mesmo
   gerando pelo servidor remoto: a busca embeda a pergunta a cada consulta e a API
@@ -16,7 +28,7 @@ Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e 
 - Node.js 18+ — para os testes E2E (Playwright) e para alterar a homepage
   (ilha React). Não é preciso apenas para *rodar* o projeto.
 
-## Instalação
+## Installation
 
 ### Fase 0 — Setup do Ollama
 

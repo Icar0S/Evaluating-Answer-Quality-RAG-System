@@ -18,7 +18,7 @@ O Mac mini roda o Ollama e serve o modelo pela rede local (WiFi). O notebook Win
 **Estado validado que este documento reproduz:**
 - Modelo `coder-32k` (custom sobre `qwen2.5-coder:7b`, 32k de contexto)
 - 6,6GB em memória, 100% GPU, sem offload para CPU
-- IP fixo `192.168.18.200`, porta `11434`
+- IP fixo `192.168.1.200`, porta `11434` — *endereço de exemplo; use o da sua rede*
 - Aider funcionando do Windows com commits automáticos em git
 
 **Por que WiFi basta:** apenas tokens de texto trafegam (poucos KB/s). A latência de rede é irrelevante frente ao tempo de geração do modelo. Ethernet só ajudaria em estabilidade, não em velocidade.
@@ -95,18 +95,18 @@ ipconfig getifaddr en1
 ifconfig | grep "inet " | grep -v 127.0.0.1
 ```
 
-**Fixar (recomendado pela UI):** System Settings → Network → Wi-Fi → Details… → TCP/IP → "Configure IPv4: **Using DHCP with manual address**" → `192.168.18.200`.
+**Fixar (recomendado pela UI):** System Settings → Network → Wi-Fi → Details… → TCP/IP → "Configure IPv4: **Using DHCP with manual address**" → `192.168.1.200`.
 
 Essa opção fixa só o endereço; gateway e DNS continuam vindo do roteador.
 
 Via CLI:
 ```bash
-sudo networksetup -setmanualwithdhcprouter "Wi-Fi" 192.168.18.200
+sudo networksetup -setmanualwithdhcprouter "Wi-Fi" 192.168.1.200
 ```
 
-> ⚠️ Escolha um IP **alto** (`.200`, `.250`) para ficar fora do pool que o roteador distribui, evitando conflito. Verifique antes que está livre: `ping 192.168.18.200` de outra máquina — ninguém deve responder.
+> ⚠️ Escolha um IP **alto** (`.200`, `.250`) para ficar fora do pool que o roteador distribui, evitando conflito. Verifique antes que está livre: `ping 192.168.1.200` de outra máquina — ninguém deve responder.
 
-**Sobre mDNS:** `Mac-mini-de-Icaro.local` **não funcionou** a partir do Windows neste ambiente (a resolução `.local` no Windows é inconsistente). Não perca tempo depurando — use IP fixo. Se quiser um apelido, veja B4.
+**Sobre mDNS:** `Mac-mini-de-<usuario>.local` **não funcionou** a partir do Windows neste ambiente (a resolução `.local` no Windows é inconsistente). Não perca tempo depurando — use IP fixo. Se quiser um apelido, veja B4.
 
 ## A5. Modelos
 
@@ -258,7 +258,7 @@ print(f"prompt eval    : {d[\"prompt_eval_duration\"]/1e9:.2f}s")
 ## B1. Verificar conectividade
 
 ```powershell
-Invoke-RestMethod -Uri http://192.168.18.200:11434/api/tags
+Invoke-RestMethod -Uri http://192.168.1.200:11434/api/tags
 ```
 
 Deve retornar a lista de modelos incluindo `coder-32k`.
@@ -273,12 +273,12 @@ Deve retornar a lista de modelos incluindo `coder-32k`.
 ## B2. Variáveis de ambiente
 
 ```powershell
-setx OLLAMA_API_BASE "http://192.168.18.200:11434"
+setx OLLAMA_API_BASE "http://192.168.1.200:11434"
 ```
 
 > ⚠️ **Armadilha recorrente:** `setx` grava permanentemente mas **não afeta a sessão atual**. Para usar imediatamente:
 > ```powershell
-> $env:OLLAMA_API_BASE = "http://192.168.18.200:11434"
+> $env:OLLAMA_API_BASE = "http://192.168.1.200:11434"
 > ```
 > Sempre confirme com `$env:OLLAMA_API_BASE` antes de rodar o agente.
 
@@ -327,7 +327,7 @@ aider --model ollama_chat/coder-32k --map-tokens 1024
 
 Como mDNS não funciona, para usar nome em vez de IP — editar como administrador `C:\Windows\System32\drivers\etc\hosts`:
 ```
-192.168.18.200    macmini
+192.168.1.200    macmini
 ```
 Depois `http://macmini:11434` funciona em qualquer cliente.
 
@@ -340,7 +340,7 @@ Tentativa feita e documentada aqui para não ser repetida.
 irm https://claude.ai/install.ps1 | iex
 setx ANTHROPIC_AUTH_TOKEN "ollama"
 setx ANTHROPIC_API_KEY ""
-setx ANTHROPIC_BASE_URL "http://192.168.18.200:11434"
+setx ANTHROPIC_BASE_URL "http://192.168.1.200:11434"
 setx ANTHROPIC_MODEL "coder-32k"
 setx ANTHROPIC_SMALL_FAST_MODEL "coder-32k"
 ```
@@ -350,14 +350,14 @@ Problemas encontrados, em ordem:
 1. **PATH:** o instalador coloca em `C:\Users\<user>\.local\bin` mas **não adiciona ao PATH**. Correção:
    ```powershell
    [Environment]::SetEnvironmentVariable("Path",
-     [Environment]::GetEnvironmentVariable("Path","User") + ";C:\Users\Icaro\.local\bin", "User")
+     [Environment]::GetEnvironmentVariable("Path","User") + ";C:\Users\<usuario>\.local\bin", "User")
    ```
    (Não use `setx PATH` — funde PATH de sistema com o de usuário e trunca em 1024 caracteres.)
 
    Em ambientes com conda + venv, o mais robusto é o perfil do PowerShell:
    ```powershell
    if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force }
-   Add-Content $PROFILE "`n`$env:Path += ';C:\Users\Icaro\.local\bin'"
+   Add-Content $PROFILE "`n`$env:Path += ';C:\Users\<usuario>\.local\bin'"
    ```
 
 2. **A flag `--model` foi ignorada** — subiu com Sonnet 5 como padrão. Corrigir com `/model coder-32k` dentro da sessão.
@@ -406,7 +406,7 @@ Modelos pequenos funcionam bem **se as tarefas forem pequenas e bem delimitadas*
 - [ ] IP fixo confirmado
 
 **Cliente (Windows):**
-- [ ] `Invoke-RestMethod http://192.168.18.200:11434/api/tags` retorna `coder-32k`
+- [ ] `Invoke-RestMethod http://192.168.1.200:11434/api/tags` retorna `coder-32k`
 - [ ] `$env:OLLAMA_API_BASE` preenchido
 - [ ] `aider --model ollama_chat/coder-32k` sobe sem erro 404
 - [ ] Projeto é repositório git
