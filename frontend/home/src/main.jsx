@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import Background from "./Background";
 import Hud from "./Hud";
 import StatsBoard from "./StatsBoard";
 
@@ -11,11 +12,12 @@ if (import.meta.env.VITE_DISABLE_MOTION === "true") {
   document.documentElement.dataset.motion = "off";
 }
 
-// Duas ilhas, não uma aplicação. Todo o resto da página é HTML estático.
+// Três ilhas, não uma aplicação. Todo o resto da página é HTML estático.
 const mount = (id, node) => {
   const host = document.getElementById(id);
   if (host) createRoot(host).render(<StrictMode>{node}</StrictMode>);
 };
 
+mount("bg-root", <Background />);
 mount("hud-root", <Hud />);
 mount("stats-root", <StatsBoard />);

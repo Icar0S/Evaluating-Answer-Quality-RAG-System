@@ -22,7 +22,7 @@ function reading(raw, offline, kind) {
 // ("536 chunks indexados") em vez de cinco caracteres soltos.
 function StatCard({ id, label, plain, flap }) {
   return (
-    <div className="stat-card">
+    <div className="stat-card" data-spotlight>
       <p className="sr-only" aria-live="polite">
         <span id={id}>{plain}</span> {label}
       </p>

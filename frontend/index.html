@@ -28,10 +28,18 @@
 
   <!-- Bloqueante de propósito: define <html data-motion> antes do primeiro paint. -->
   <script src="/components/motion/guard.js"></script>
-  <script type="module" crossorigin src="/home-assets/index-BZaqwGBO.js"></script>
+  <script type="module" crossorigin src="/home-assets/index-BwJ26lmu.js"></script>
   <link rel="stylesheet" crossorigin href="/home-assets/index-BXrpZD0o.css">
 </head>
 <body>
+  <!-- Camada 0: gradiente estático, sempre pintado pelo CSS. É o fundo real no
+       celular, com prefers-reduced-motion e enquanto o chunk do three.js carrega.
+       Camada 1: o shader monta dentro de #bg-root (React.lazy).
+       Camada 2: o véu, que garante o contraste do texto sobre o shader.
+       Camada 3: o conteúdo. -->
+  <div class="bg-layer" id="bg-root" aria-hidden="true"></div>
+  <div class="bg-veil" aria-hidden="true"></div>
+
   <!-- O conteúdo inicial fica no HTML e o React o substitui numa única
        renderização: sem isto o HUD nasce vazio (230px), enche (491px) e o
        redimensionamento entra no CLS. -->
@@ -56,7 +64,7 @@
       avaliação de qualidade de resposta com LLM-as-a-Judge e Human-in-the-Loop.
     </p>
     <div class="hero-actions">
-      <a class="btn-primary" href="chat.html">Abrir o chat</a>
+      <a class="btn-primary" href="chat.html" data-magnet>Abrir o chat</a>
       <a class="btn-secondary" href="#sistema">Ver a arquitetura ↓</a>
     </div>
   </header>
@@ -75,7 +83,7 @@
   <section class="narrative-section" id="sistema">
     <h2 class="section-title">Problema → Abordagem → Sistema → Resultado</h2>
     <div class="narrative-grid">
-      <div class="narrative-step">
+      <div class="narrative-step" data-spotlight>
         <span class="narrative-index">01</span>
         <h3>Problema</h3>
         <p>
@@ -84,7 +92,7 @@
           aberto — especialmente com modelos 100% locais.
         </p>
       </div>
-      <div class="narrative-step">
+      <div class="narrative-step" data-spotlight>
         <span class="narrative-index">02</span>
         <h3>Abordagem</h3>
         <p>
@@ -93,7 +101,7 @@
           via LLM-as-a-Judge com revisão humana como contraponto.
         </p>
       </div>
-      <div class="narrative-step">
+      <div class="narrative-step" data-spotlight>
         <span class="narrative-index">03</span>
         <h3>Sistema</h3>
         <p>
@@ -102,7 +110,7 @@
           isolados.
         </p>
       </div>
-      <div class="narrative-step">
+      <div class="narrative-step" data-spotlight>
         <span class="narrative-index">04</span>
         <h3>Resultado</h3>
         <p>
@@ -117,22 +125,23 @@
   <section class="stack-section">
     <h2 class="section-title">Stack técnica</h2>
     <div class="stack-grid">
-      <div class="stack-badge"><div><strong>Ollama</strong><small>Geração + embeddings locais</small></div></div>
-      <div class="stack-badge"><div><strong>ChromaDB</strong><small>Índice vetorial persistente</small></div></div>
-      <div class="stack-badge"><div><strong>FastAPI</strong><small>API + métricas em tempo real</small></div></div>
-      <div class="stack-badge stack-badge-pending"><div><strong>RAGAS</strong><small>Avaliação semântica — Fase 2</small></div></div>
-      <div class="stack-badge stack-badge-pending"><div><strong>Playwright</strong><small>Testes E2E — Fase 2</small></div></div>
+      <div class="stack-badge glare-hover"><div><strong>Ollama</strong><small>Geração + embeddings locais</small></div></div>
+      <div class="stack-badge glare-hover"><div><strong>ChromaDB</strong><small>Índice vetorial persistente</small></div></div>
+      <div class="stack-badge glare-hover"><div><strong>FastAPI</strong><small>API + métricas em tempo real</small></div></div>
+      <div class="stack-badge stack-badge-pending glare-hover"><div><strong>RAGAS</strong><small>Avaliação semântica — Fase 2</small></div></div>
+      <div class="stack-badge stack-badge-pending glare-hover"><div><strong>Playwright</strong><small>Testes E2E — Fase 2</small></div></div>
     </div>
   </section>
 
   <section class="cta-section">
     <h2>Pronto para conversar com o assistente?</h2>
-    <a class="btn-primary" href="chat.html">Abrir o chat →</a>
+    <a class="btn-primary" href="chat.html" data-magnet>Abrir o chat →</a>
   </section>
 
   <footer class="home-footer">
     <span>RAG Test Specialist — projeto de pesquisa aplicada, 100% local.</span>
   </footer>
 
+  <script src="/components/motion/surface-effects.js" defer></script>
 </body>
 </html>

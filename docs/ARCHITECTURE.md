@@ -380,6 +380,52 @@ Todo o resto é monocromático. Afordância de interação (foco, aba ativa, bot
 primário) se resolve com contraste, nunca com um quarto acento. Os contrastes
 foram verificados com axe-core: zero violações WCAG 2.1 AA nas duas páginas.
 
+### Fundo animado (peso E) e o orçamento que ele consome
+
+A homepage tem um shader de fluido ao fundo (React Bits `LiquidEther`, three.js).
+É o único componente "peso E" do projeto e o mais caro de longe: **133,5 KB
+gzipped**, contra 50 KB de todo o restante da página.
+
+O que impede esse custo de virar problema:
+
+| Regra | Como é cumprida | Verificado |
+|---|---|---|
+| Não entra no bundle inicial | `React.lazy` + `Suspense`, fallback `null` | inicial ficou em 49,98 KB gz |
+| Não baixa quando não vai rodar | O `import()` só é avaliado depois dos guards | three.js **não é baixado** em mobile, com `prefers-reduced-motion` nem com `?motion=off` |
+| Pausa fora da viewport e com aba oculta | `IntersectionObserver` e `visibilitychange` — nativos do componente | — |
+| Não bloqueia cliques | `pointer-events: none`; o componente escuta `mousemove` na `window`, não no contêiner | — |
+| Some abaixo de 768px | `matchMedia`, com o gradiente estático do CSS assumindo | — |
+| Nunca derruba a página | Error boundary próprio (`ShaderBoundary`) | contexto WebGL negado cai no gradiente estático |
+| Contraste sobre o frame mais claro | Véu de `rgba(10,12,15,0.52)` entre shader e conteúdo | ver abaixo |
+
+O contraste **não foi calibrado no olho**. O axe não enxerga um canvas WebGL, e
+`readPixels` depois do frame devolve o buffer já limpo. O método usado: esconder
+todo o conteúdo, fotografar só as camadas de fundo em 10 frames animados e medir
+a luminância máxima do PNG composto. O pixel mais claro do fundo fica em
+L=0,0172, o que deixa `--text-primary` em 13,5:1 e `--text-secondary` em 6,6:1.
+
+Consequência de projeto que veio dessa medição: **texto solto sobre o fundo usa
+`--text-secondary`, nunca `--text-muted`** — o muted ficava em 4,75:1, que passa
+mas com margem fina demais para depender de como cada GPU pinta o frame. Dentro
+de card (fundo opaco) o muted continua valendo; a nota do RAGAS, que era o único
+texto muted apoiado direto no shader, ganhou fundo próprio.
+
+A paleta do shader também não é livre: `--cite-*` (âmbar) e `--probe-*` (ciano)
+são semânticos, e um fundo nesses tons roubaria o significado deles. O shader usa
+uma banda fria abaixo da croma do ciano, que nunca é lida como um dado.
+
+### Efeitos de superfície: por que vanilla e não componentes React
+
+`SpotlightCard`, `GlareHover` e `Magnet` são peso A (zero dependência) e foram
+portados para `components/motion/surface-effects.js`, dirigidos por atributo
+(`[data-spotlight]`, `[data-magnet]`, `.glare-hover`) em vez de por componente.
+
+O motivo é a ilha: nav, hero, narrativa, stack e rodapé são HTML estático
+justamente para o LCP não depender do JS. Envolver esses blocos em componentes
+React desfaria isso. Uma implementação por delegação de evento atende os dois
+mundos — o HTML estático e os cards que o React renderiza dentro de
+`#stats-root` — sem duplicar código e sem somar nada ao bundle.
+
 ### Desligar o movimento
 
 `frontend/components/motion/guard.js` é a fonte única de verdade, carregada como

@@ -1,0 +1,14 @@
+/* LiquidEther — React Bits (Backgrounds/LiquidEther, variante JS-CSS).
+   Única alteração no CSS do componente: pointer-events none.
+   O componente escuta mousemove na window (listenerTarget = defaultView), não no
+   contêiner, então o canvas pode ficar totalmente transparente a cliques sem
+   perder a interação com o cursor. Sem isso, um canvas de tela cheia atrás do
+   conteúdo engoliria todo clique da página. */
+.liquid-ether-container {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  pointer-events: none;
+}
