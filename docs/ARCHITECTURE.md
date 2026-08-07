@@ -231,7 +231,7 @@ escolhido.
 O desenho acima assumia que "remoto" seria sempre um segundo Ollama completo,
 espelhando o local (mesma rota `/api/chat`, mesmo endpoint de embeddings). Isso
 mudou quando o Mac mini passou a expor uma API própria e autenticada em
-`https://llm.smartdatatest.com` (ver [llm-api-referencia.md](../llm-api-referencia.md),
+`https://llm.smartdatatest.com` (ver [llm-api-referencia.md](llm-api-referencia.md),
 gerado automaticamente do OpenAPI dela) em vez do Ollama cru na porta 11434 via
 Tailscale — o motivo é segurança: `SETUP-LLM-LOCAL.md` já registrava que "Ollama
 não tem autenticação — quem alcançar a porta 11434 usa seus modelos", e o gateway

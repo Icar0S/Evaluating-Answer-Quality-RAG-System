@@ -3,7 +3,7 @@ setlocal enabledelayedexpansion
 
 REM Sobe o ambiente de desenvolvimento completo e valida que esta tudo no ar:
 REM   1. Backend FastAPI  (http://localhost:8000)
-REM   2. Providers Ollama (local + Mac mini via Tailscale)
+REM   2. Providers de geracao (Ollama local + API do servidor)
 REM   3. Frontend estatico (http://localhost:5500)
 REM   4. Suite de testes E2E (Playwright)
 REM
@@ -65,7 +65,7 @@ if !errorlevel! equ 0 (
 
 REM -------------------------------------------------------------- 2/4 providers
 echo.
-echo == 2/4  Ollama (local + Mac mini) ==
+echo == 2/4  Providers de geracao ==
 curl.exe -s --max-time 20 "%BACKEND_URL%/providers" > "%TEMP%\rag_providers.json"
 "%VENV_PY%" -c "import json,sys; d=json.load(open(sys.argv[1],encoding='utf-8')); [print('   [' + ('ONLINE ' if p['reachable'] else 'OFFLINE') + '] ' + p['label'].ljust(22) + p['base_url'].ljust(30) + 'modelo: ' + p['generation_model']) for p in d['providers']]; print('   Provider ativo: ' + d['active']); sys.exit(0 if any(p['name'] == 'remote' and p['reachable'] for p in d['providers']) else 1)" "%TEMP%\rag_providers.json"
 if !errorlevel! equ 0 (
@@ -73,10 +73,11 @@ if !errorlevel! equ 0 (
 ) else (
     set "REMOTE_STATUS=offline"
     echo.
-    echo    [AVISO] O Ollama do Mac mini nao respondeu.
-    echo            Abra o Ollama.app la e confira "Expose Ollama to the network"
-    echo            ^(armadilha conhecida -- ver SETUP-LLM-LOCAL.md, secao A2^).
+    echo    [AVISO] A API do servidor nao respondeu.
+    echo            /v1/ready e publico, entao isto e conectividade ou o servidor
+    echo            esta fora do ar -- nao e a chave. Ver docs\llm-api-referencia.md.
     echo            O modo Local segue funcionando normalmente.
+    echo            Para subir ja no modo servidor: scripts\start_dev_remote.bat
 )
 del "%TEMP%\rag_providers.json" >nul 2>&1
 
@@ -133,7 +134,7 @@ echo   Ambiente no ar
 echo =====================================================
 echo   Backend .......... %BACKEND_URL%
 echo   Frontend ......... %FRONTEND_URL%/index.html
-echo   Mac mini ......... !REMOTE_STATUS!
+echo   Servidor ......... !REMOTE_STATUS!
 echo   Testes E2E ....... !TESTS_STATUS!
 echo.
 echo   Para parar: feche as janelas "RAG backend" e "RAG frontend".

@@ -6,10 +6,15 @@ Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e 
 
 ## Pré-requisitos
 
-- [Ollama](https://ollama.com/download) instalado
+- [Ollama](https://ollama.com/download) instalado — **sempre necessário**, mesmo
+  gerando pelo servidor remoto: a busca embeda a pergunta a cada consulta e a API
+  remota não expõe rota de embeddings. No modo servidor ele carrega só o
+  `nomic-embed-text` (~274MB, roda em CPU).
 - Python 3.11+
-- Node.js 18+ (para os testes E2E com Playwright, Fase 2)
-- GPU com pelo menos 8GB de VRAM recomendada (testado em RTX 4060 Laptop 8GB)
+- GPU com pelo menos 8GB de VRAM — **só para geração local** (`qwen3:8b`).
+  Sem GPU livre, use o modo servidor (`scripts\start_dev_remote.bat`, ver Fase 1.5).
+- Node.js 18+ — para os testes E2E (Playwright) e para alterar a homepage
+  (ilha React). Não é preciso apenas para *rodar* o projeto.
 
 ## Instalação
 
@@ -78,47 +83,18 @@ Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e 
 
    Nenhuma etapa de build é necessária para *rodar* o projeto: a homepage é
    servida a partir de `frontend/index.html` e `frontend/home-assets/`, que são
-   versionados. Só é preciso Node para **mudar** a homepage — ver abaixo.
-
-### Mexendo na homepage
-
-A homepage é uma ilha React (Vite); o chat continua HTML/CSS/JS puro. A fonte
-fica em `frontend/home/` e a saída de build em `frontend/index.html` +
-`frontend/home-assets/`:
-
-```powershell
-cd frontend/home
-npm install        # uma vez
-npm run build      # regenera frontend/index.html e frontend/home-assets/
-```
-
-**Não edite `frontend/index.html` diretamente** — ele é gerado a partir de
-`frontend/home/index.html` e será sobrescrito. Detalhes e o racional em
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-### Desligando as animações
-
-Útil para testes determinísticos, máquinas fracas ou preferência pessoal. Qualquer
-uma destas desliga todo o movimento das duas páginas:
-
-| Como | Escopo |
-|---|---|
-| `?motion=off` na URL | Só naquele carregamento |
-| `localStorage.setItem('motion', 'off')` | Persistente, por navegador |
-| `VITE_DISABLE_MOTION=true npm run build` | Permanente, no artefato gerado |
-| `prefers-reduced-motion: reduce` no SO | Automático, respeitado sem configuração |
-
-`?motion=on` força ligado, inclusive por cima da preferência do sistema.
+   versionados. Só é preciso Node para **mudar** a homepage — ver
+   [Frontend](#frontend).
 
 ### Fase 1.5 — Provider remoto (opcional)
 
 Além do Ollama local, `/chat` pode gerar através da API do Mac mini em
-`https://llm.smartdatatest.com` — ver [llm-api-referencia.md](llm-api-referencia.md)
+`https://llm.smartdatatest.com` — ver [docs/llm-api-referencia.md](docs/llm-api-referencia.md)
 para o contrato completo (rotas, auth, limites). **Não é um Ollama**: é uma API
 própria, com autenticação Bearer, fila com 429/503 documentados, e sem rota de
 embeddings — por isso a recuperação (retrieval) continua sempre local mesmo com
 o provider remoto ativo; só a geração muda de lugar. (O antigo acesso direto via
-Tailscale/Ollama bruto, em [SETUP-LLM-LOCAL.md](SETUP-LLM-LOCAL.md), foi
+Tailscale/Ollama bruto, em [docs/SETUP-LLM-LOCAL.md](docs/SETUP-LLM-LOCAL.md), foi
 substituído por este gateway autenticado.)
 
 Preencha no `.env` (deixe em branco para manter 100% do comportamento local de hoje;
@@ -142,7 +118,69 @@ reais nos dois casos, vêm da própria resposta do provider).
 Trocar o modelo **local** continua igual a antes: editar `GENERATION_MODEL`/
 `EMBEDDING_MODEL` no `.env` e reiniciar o backend.
 
-### Endpoints da API
+#### Subindo tudo já no modo servidor
+
+```powershell
+scripts\start_dev_remote.bat
+```
+
+Sobe backend + frontend com `ACTIVE_PROVIDER=remote` e **sem carregar o modelo de
+geração local** — útil em máquina sem GPU livre, com bateria, ou quando o
+`qwen3:8b` não cabe na VRAM. Antes de subir, ele valida em ordem: chaves do
+servidor no `.env`, Ollama no ar **com o modelo de embeddings** (o de geração não
+é tocado), servidor acessível em `/v1/ready`, provider ativo efetivamente em
+`remote`, e índice vetorial não vazio. Qualquer uma dessas falhando, ele para e
+diz o que fazer.
+
+O que este modo **não** faz é dispensar o Ollama: a recuperação embeda a pergunta
+a cada consulta e a API remota não tem rota de embeddings. Em resumo —
+**embeddings: local (leve) · geração: servidor (pesado)**.
+
+Para o ambiente 100% local com a suíte E2E, continue usando
+`scripts\start_dev.bat`.
+
+## Frontend
+
+A homepage é uma ilha React (Vite); o chat (`chat.html`) continua HTML/CSS/JS
+puro. O racional dessa divisão está em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+### Mexendo na homepage
+
+A fonte fica em `frontend/home/` e a saída de build em `frontend/index.html` +
+`frontend/home-assets/` (ambos versionados, por isso rodar o projeto não exige
+Node):
+
+```powershell
+cd frontend/home
+npm install        # uma vez
+npm run build      # regenera frontend/index.html e frontend/home-assets/
+```
+
+**Não edite `frontend/index.html` diretamente** — ele é gerado a partir de
+`frontend/home/index.html` e será sobrescrito no próximo build. O CI tem um job
+(`homepage-build`) que rebuilda e falha se o artefato commitado estiver
+desatualizado.
+
+O chat não tem etapa de build: editar `frontend/components/*.js` e
+`frontend/styles/*.css` e recarregar a página basta.
+
+### Desligando as animações
+
+Útil para testes determinísticos, máquinas fracas ou preferência pessoal. Qualquer
+uma destas desliga todo o movimento das duas páginas:
+
+| Como | Escopo |
+|---|---|
+| `?motion=off` na URL | Só naquele carregamento |
+| `localStorage.setItem('motion', 'off')` | Persistente, por navegador |
+| `VITE_DISABLE_MOTION=true npm run build` | Permanente, no artefato gerado |
+| `prefers-reduced-motion: reduce` no SO | Automático, respeitado sem configuração |
+
+`?motion=on` força ligado, inclusive por cima da preferência do sistema. Com o
+movimento desligado, os blocos que entram por scroll renderizam no estado final
+imediatamente — é o que mantém a suíte headless determinística.
+
+## Endpoints da API
 
 | Método | Rota | Descrição |
 |---|---|---|
@@ -155,7 +193,7 @@ Trocar o modelo **local** continua igual a antes: editar `GENERATION_MODEL`/
 | `WS` | `/ws/metrics` | Mesmo snapshot, em push a cada ~1s (usado pelo painel de Monitor) |
 | `GET` | `/stats` | Números agregados de `logs/interactions.jsonl`, usados na homepage |
 
-### Testes
+## Testes
 
 Duas suítes, rodadas em paralelo pelo CI ([.github/workflows/ci.yml](.github/workflows/ci.yml))
 a cada push na `main` e em todo pull request.
@@ -183,7 +221,9 @@ npm test
 Os testes E2E que dependem de geração real do LLM se auto-pulam quando a API não
 está no ar (é o caso do CI); os demais mockam o backend e rodam em qualquer lugar.
 Para rodar tudo de uma vez localmente — subindo backend, checando os providers e
-executando as duas suítes — use `scripts\start_dev.bat`.
+executando as duas suítes — use `scripts\start_dev.bat`. Para subir o ambiente
+gerando pelo servidor, sem carregar o LLM local, use `scripts\start_dev_remote.bat`
+(não roda a suíte E2E, para não gastar fila do servidor a cada execução).
 
 Todas as interações são logadas em `logs/interactions.jsonl` (JSON Lines), uma linha por interação, com pergunta, contexto recuperado, resposta, métricas e metadados — isso alimenta a Fase 2 (RAGAS) e a escrita do artigo.
 
@@ -198,13 +238,25 @@ Camada de revisão humana e relatório consolidado comparando notas do RAGAS com
 ## Estrutura do projeto
 
 ```
-backend/app/          API FastAPI e pipeline de RAG (ingestion, retrieval, generation, vector_store)
-frontend/              Chat HTML/CSS/JS puro
-data/source_pdfs/      PDFs de produção (não versionados)
-data/vector_store/     Índice ChromaDB persistido (não versionado)
-scripts/                Setup do Ollama e ingestão via CLI
-tests/                  API, RAGAS, E2E, revisão humana (Fase 2/3)
-logs/                   interactions.jsonl (log estruturado, não versionado)
-docs/ARCHITECTURE.md    Decisões técnicas e racional
+backend/app/              API FastAPI e pipeline de RAG (ingestion, retrieval, generation, vector_store)
+backend/app/providers.py  Registro local/remoto e qual está ativo (embeddings são sempre locais)
+
+frontend/chat.html        Chat + Monitor — HTML/CSS/JS puro, sem build
+frontend/components/      chat.js, monitor.js e motion/ (guard de animação, indicador de abas)
+frontend/styles/          Tokens compartilhados + CSS por página
+frontend/assets/fonts/    IBM Plex Sans e Mono auto-hospedadas
+frontend/home/            Fonte da homepage (React + Vite) — só isto precisa de build
+frontend/index.html       GERADO por frontend/home/ — não editar à mão
+frontend/home-assets/     GERADO por frontend/home/ — JS/CSS com hash
+frontend/tests/           Suíte E2E (Playwright)
+
+data/source_pdfs/         PDFs de produção (não versionados)
+data/vector_store/        Índice ChromaDB persistido (não versionado)
+scripts/                  Setup do Ollama, ingestão via CLI e os .bat de ambiente
+scripts/start_dev.bat        sobe tudo em modo local + roda as duas suítes
+scripts/start_dev_remote.bat sobe tudo gerando pelo servidor, sem LLM local
+tests/                    API, RAGAS, revisão humana (Fase 2/3)
+logs/                     interactions.jsonl (log estruturado, não versionado)
+docs/ARCHITECTURE.md      Decisões técnicas e racional
 ```
 ```
