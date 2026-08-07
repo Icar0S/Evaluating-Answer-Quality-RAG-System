@@ -1,0 +1,136 @@
+/* Camada de movimento do chat.html. Três efeitos, nenhum deles decorativo:
+     1. filete âmbar na resposta fundamentada  (React Bits BorderGlow, portado)
+     2. carregamento com varredura de brilho   (React Bits ShinyText, portado)
+     3. indicador deslizante nas abas          (alternativa do GooeyNav)
+   O desligamento global vive em shared.css; aqui ficam só as neutralizações que
+   precisam de tratamento específico (as que dependem de cor, não de duração). */
+
+/* ---------- 1. Resposta fundamentada ----------
+   Âmbar = existe evidência recuperada. O filete é permanente; o halo acontece
+   uma vez, na chegada da mensagem, e some. Não é hover: precisa funcionar no
+   celular e no teclado, onde hover não existe. */
+
+.message-row.assistant.grounded .bubble {
+  box-shadow: inset 2px 0 0 var(--cite-500);
+}
+
+.message-row.assistant.grounded.is-arriving .bubble {
+  animation: cite-arrive 360ms var(--ease-out) both;
+}
+
+@keyframes cite-arrive {
+  0% {
+    box-shadow: inset 2px 0 0 var(--cite-500), 0 0 0 0 var(--cite-glow);
+  }
+  45% {
+    box-shadow: inset 2px 0 0 var(--cite-500), 0 0 0 5px var(--cite-dim);
+  }
+  100% {
+    box-shadow: inset 2px 0 0 var(--cite-500), 0 0 0 0 rgba(224, 163, 62, 0);
+  }
+}
+
+/* O bloco de fontes é a evidência em si; ganha a mesma cor. */
+.message-row.assistant.grounded .sources summary {
+  color: var(--cite-500);
+}
+
+/* ---------- 2. Carregamento ----------
+   Substitui os três pontos saltitantes. Diz o que está acontecendo (o texto é
+   lido por leitor de tela via role="status") e a varredura de 1,6s indica
+   progresso sem piscar — bem abaixo do limite de 3 Hz. */
+
+.loading-row {
+  align-self: flex-start;
+  padding: 12px 16px;
+}
+
+.loading-shine {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.01em;
+  background: linear-gradient(
+    90deg,
+    var(--text-muted) 0%,
+    var(--text-muted) 42%,
+    var(--cite-200) 50%,
+    var(--text-muted) 58%,
+    var(--text-muted) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shine 1.6s linear infinite;
+}
+
+@keyframes shine {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -20% 0;
+  }
+}
+
+/* Com o movimento desligado, texto recortado em gradiente vira risco de ficar
+   invisível. Volta a ser texto comum. */
+@media (prefers-reduced-motion: reduce) {
+  .loading-shine {
+    background: none;
+    color: var(--text-secondary);
+    -webkit-text-fill-color: var(--text-secondary);
+  }
+}
+
+html[data-motion="off"] .loading-shine {
+  background: none;
+  color: var(--text-secondary);
+  -webkit-text-fill-color: var(--text-secondary);
+}
+
+/* ---------- 3. Indicador das abas ----------
+   Trocar de provider move a geração de máquina; a pílula atravessa para dizer
+   isso. O indicador é um ::before do contêiner, e não um elemento: #provider-tabs
+   é reconstruído a cada polling (innerHTML = "") e apagaria qualquer nó filho.
+   Também mantém a contagem de .header-tab intacta para os testes E2E. */
+
+.header-tabs,
+.sidebar-tabs {
+  position: relative;
+}
+
+.header-tabs::before,
+.sidebar-tabs::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: var(--tab-w, 0);
+  transform: translateX(var(--tab-x, 0));
+  background: var(--bg-3);
+  border-radius: var(--radius-pill);
+  opacity: var(--tab-ready, 0);
+  pointer-events: none;
+  /* O overshoot é o que dá peso físico ao deslocamento. */
+  transition:
+    transform var(--motion-mid) cubic-bezier(0.34, 1.32, 0.5, 1),
+    width var(--motion-mid) var(--ease-out),
+    opacity var(--motion-fast) linear;
+}
+
+.header-tabs .header-tab,
+.sidebar-tabs .tab {
+  position: relative;
+  z-index: 1;
+  transition: color var(--motion-fast);
+}
+
+/* Enquanto o JS não assumiu, o realce estático continua sendo o da aba ativa.
+   Depois que assume, quem pinta é o indicador — senão o destino apareceria
+   destacado antes de a pílula chegar lá. */
+.header-tabs[data-indicator="on"] .header-tab.active,
+.sidebar-tabs[data-indicator="on"] .tab.active {
+  background: transparent;
+}

@@ -4,9 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RAG Test Specialist — Chat</title>
+
+  <link rel="preload" href="/assets/fonts/IBMPlexSans-latin-var.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/IBMPlexMono-Medium-latin.woff2" as="font" type="font/woff2" crossorigin />
+
   <link rel="stylesheet" href="styles/shared.css" />
   <link rel="stylesheet" href="styles/chat.css" />
   <link rel="stylesheet" href="styles/monitor.css" />
+  <link rel="stylesheet" href="styles/motion.css" />
+
+  <!-- Bloqueante de propósito: define <html data-motion> antes do primeiro paint. -->
+  <script src="components/motion/guard.js"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -38,7 +46,7 @@
           <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3" stroke-linecap="round"/>
           </svg>
-          <input type="search" id="session-search" placeholder="Buscar conversas..." />
+          <input type="search" id="session-search" placeholder="Buscar conversas..." aria-label="Buscar conversas" />
         </div>
 
         <div class="sidebar-tabs">
@@ -138,6 +146,7 @@
 
           <textarea
             id="question-input"
+            aria-label="Pergunta para o assistente"
             placeholder="Pergunte algo sobre teste de sistemas LLM/RAG..."
             rows="1"
             maxlength="4000"
@@ -164,5 +173,6 @@
 
   <script src="components/chat.js"></script>
   <script src="components/monitor.js"></script>
+  <script src="components/motion/tab-indicator.js"></script>
 </body>
 </html>

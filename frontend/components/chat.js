@@ -240,9 +240,22 @@ function toggleReaction(messageId, emoji) {
   renderChatLog(session);
 }
 
+// Id da resposta que acabou de chegar da API, para tocar o halo de chegada uma
+// vez só — re-renderizar o histórico não pode fazer bolhas antigas piscarem.
+let arrivingMessageId = null;
+
+function assistantGroundingClass(message) {
+  if (message.role !== "assistant") return "";
+  return message.grounded ? " grounded" : " ungrounded";
+}
+
 function buildMessageRow(message) {
   const row = document.createElement("div");
-  row.className = `message-row ${message.role}` + (message.role === "assistant" && !message.grounded ? " ungrounded" : "");
+  row.className = `message-row ${message.role}` + assistantGroundingClass(message);
+
+  if (message.id && message.id === arrivingMessageId) {
+    row.classList.add("is-arriving");
+  }
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
@@ -318,7 +331,15 @@ function showLoadingRow() {
   const row = document.createElement("div");
   row.className = "loading-row";
   row.id = "loading-row";
-  row.innerHTML = '<span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>';
+  // role=status: leitor de tela anuncia o estado. Os três pontos anteriores não
+  // diziam nada — nem para quem enxerga, nem para quem não enxerga.
+  row.setAttribute("role", "status");
+
+  const label = document.createElement("span");
+  label.className = "loading-shine";
+  label.textContent = "consultando o índice e gerando resposta...";
+  row.appendChild(label);
+
   chatLogEl.appendChild(row);
   chatLogEl.scrollTop = chatLogEl.scrollHeight;
 }
@@ -397,7 +418,11 @@ async function sendQuestion(question) {
     const freshSession = findSession(freshSessions, session.id);
     freshSession.messages.push(assistantMessage);
     persistSessions(freshSessions);
+
+    arrivingMessageId = assistantMessage.id;
     renderChatLog(freshSession);
+    arrivingMessageId = null;
+
     renderSessionList();
   } catch (err) {
     showError(err.message || "Falha ao conectar com a API. Verifique se o backend está em execução.");
