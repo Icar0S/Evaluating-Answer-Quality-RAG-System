@@ -41,7 +41,7 @@ Isso posiciona o hardware no tier "GPU ≤ 8GB VRAM" da tabela de referência do
 | Modelo de geração | `qwen3:8b` | Ver seção acima. |
 | Modelo de embeddings | `nomic-embed-text` | Ver seção acima. |
 | Backend | FastAPI | Integração natural com chamadas assíncronas ao Ollama, schemas tipados via Pydantic, e testabilidade (pytest + TestClient) direta para a Fase 2. |
-| Frontend | HTML/CSS/JS puro, sem framework | Mantém o frontend desacoplado do backend, facilitando tanto testes de API isolados quanto testes E2E via Playwright na Fase 2. |
+| Frontend | HTML/CSS/JS puro, sem framework | Mantém o frontend desacoplado do backend, facilitando tanto testes de API isolados quanto testes E2E via Playwright na Fase 2. **Revisado depois** — ver "Camada de movimento e ilha React" mais abaixo: a homepage passou a ter uma ilha React, o chat continua puro. |
 
 ### Chunking
 
@@ -326,3 +326,74 @@ O `.env` era silenciosamente ignorado e o bug era invisível na UI, porque o val
 default coincidia com o texto configurado.
 
 ## Fase 3 — Human-in-the-loop (a documentar caso confirmado)
+
+## Camada de movimento e ilha React na homepage
+
+### O que mudou em relação à decisão original
+
+A Fase 1 registrou "HTML/CSS/JS puro, sem framework" para o frontend inteiro.
+Isso continua valendo para `chat.html`, que é a tela de trabalho e onde a suíte
+E2E tem mais superfície. A **homepage** passou a ser híbrida:
+
+- `frontend/home/` — fonte React + Vite (só a homepage).
+- `frontend/index.html` e `frontend/home-assets/` — **saída de build, versionada**.
+- `chat.html`, `components/` e `styles/` — inalterados quanto a framework.
+
+O build ser versionado é o que preserva a propriedade que motivou a decisão
+original: `python -m http.server` (README, `playwright.config.ts`, CI) continua
+servindo o projeto sem nenhuma etapa de build. Rodar o projeto não exige Node;
+só *mudar a homepage* exige (`cd frontend/home && npm run build`).
+
+A homepage é uma **ilha**, não uma aplicação: nav, hero, narrativa, stack e rodapé
+são HTML estático. O React é dono de dois pontos, os dois que têm estado — o HUD
+(`#hud-root`, polling de `/metrics`) e o painel de números (`#stats-root`,
+`/stats`). Isso foi medido, não estimado: com a página inteira em React o LCP era
+536 ms porque nada pintava antes do JS executar; com o hero estático, voltou para
+68 ms (o original era 88 ms).
+
+### Por que o gsap foi removido
+
+Dois componentes vieram do React Bits (MIT + Commons Clause), copiados para dentro
+do projeto e adaptados: `SplitFlapText` e `AnimatedContent`. O `AnimatedContent`
+original anima via GSAP + ScrollTrigger. Medido neste projeto, gsap + ScrollTrigger
+custavam **46,2 KB gzipped — 48% do bundle da homepage** — para fazer um bloco
+entrar com fade e 24 px de deslocamento. Trocado por `IntersectionObserver` + uma
+transition CSS, que produz o mesmo resultado por ~0,3 KB. A API e o comportamento
+do componente não mudaram; reverter é reinstalar o gsap e trocar o motor.
+
+O `SplitFlapText` mantém o motor original (requestAnimationFrame + CSS 3D). Foi
+adaptado de carrossel (`words[]` ciclando num timer) para um valor único que vira
+quando o dado chega do backend, que é o que existe neste domínio.
+
+### Cor semântica
+
+A paleta deixou de ser decorativa. Três cores têm papel fixo e não aparecem fora
+dele — é o que faz a interface dizer, sem texto, o que o sistema sabe:
+
+| Token | Papel |
+|---|---|
+| `--cite-*` (âmbar) | Evidência: fonte citada, resposta fundamentada, leitura vinda do backend |
+| `--probe-*` (ciano) | Telemetria do instrumento: CPU/RAM/GPU/VRAM, tok/s, latência |
+| `--clay-*` (argila) | Ausência: contexto não encontrado, recusa do modelo, erro |
+
+Todo o resto é monocromático. Afordância de interação (foco, aba ativa, botão
+primário) se resolve com contraste, nunca com um quarto acento. Os contrastes
+foram verificados com axe-core: zero violações WCAG 2.1 AA nas duas páginas.
+
+### Desligar o movimento
+
+`frontend/components/motion/guard.js` é a fonte única de verdade, carregada como
+script bloqueante no `<head>` das duas páginas para definir `<html data-motion>`
+antes do primeiro paint. Desliga com qualquer uma destas:
+
+| Como | Para quê |
+|---|---|
+| `?motion=off` na URL | Testes E2E determinísticos, depuração |
+| `localStorage.motion = 'off'` | Preferência persistente do usuário |
+| `VITE_DISABLE_MOTION=true` no build | Artefato permanentemente sem movimento |
+| `prefers-reduced-motion: reduce` | Preferência do sistema operacional |
+
+Com o movimento desligado, componentes de entrada por scroll renderizam no estado
+final imediatamente, sem `IntersectionObserver` — é o que impede que a suíte
+headless dependa de timing de animação.
+

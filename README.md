@@ -76,6 +76,40 @@ Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e 
 
    Abra `http://localhost:5500/index.html` — a homepage leva ao chat (`chat.html`), que tem um trilho lateral com as views **Chat** e **Monitor do LLM**.
 
+   Nenhuma etapa de build é necessária para *rodar* o projeto: a homepage é
+   servida a partir de `frontend/index.html` e `frontend/home-assets/`, que são
+   versionados. Só é preciso Node para **mudar** a homepage — ver abaixo.
+
+### Mexendo na homepage
+
+A homepage é uma ilha React (Vite); o chat continua HTML/CSS/JS puro. A fonte
+fica em `frontend/home/` e a saída de build em `frontend/index.html` +
+`frontend/home-assets/`:
+
+```powershell
+cd frontend/home
+npm install        # uma vez
+npm run build      # regenera frontend/index.html e frontend/home-assets/
+```
+
+**Não edite `frontend/index.html` diretamente** — ele é gerado a partir de
+`frontend/home/index.html` e será sobrescrito. Detalhes e o racional em
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+### Desligando as animações
+
+Útil para testes determinísticos, máquinas fracas ou preferência pessoal. Qualquer
+uma destas desliga todo o movimento das duas páginas:
+
+| Como | Escopo |
+|---|---|
+| `?motion=off` na URL | Só naquele carregamento |
+| `localStorage.setItem('motion', 'off')` | Persistente, por navegador |
+| `VITE_DISABLE_MOTION=true npm run build` | Permanente, no artefato gerado |
+| `prefers-reduced-motion: reduce` no SO | Automático, respeitado sem configuração |
+
+`?motion=on` força ligado, inclusive por cima da preferência do sistema.
+
 ### Fase 1.5 — Provider remoto (opcional)
 
 Além do Ollama local, `/chat` pode gerar através da API do Mac mini em

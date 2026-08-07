@@ -27,6 +27,37 @@ jobs:
       - name: Rodar pytest
         run: pytest
 
+  # frontend/index.html e frontend/home-assets/ sao gerados por frontend/home/ e
+  # versionados de proposito (o projeto roda sem etapa de build). O risco disso e
+  # o artefato sair de sincronia com a fonte sem ninguem perceber; este job
+  # rebuilda e falha se o resultado for diferente do que esta commitado.
+  homepage-build:
+    name: Build da homepage esta atualizado
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/home/package-lock.json
+
+      - name: Instalar dependencias
+        working-directory: frontend/home
+        run: npm ci
+
+      - name: Rebuildar
+        working-directory: frontend/home
+        run: npm run build
+
+      - name: Conferir se ha diferenca
+        run: |
+          if ! git diff --exit-code -- frontend/index.html frontend/home-assets; then
+            echo "::error::O build da homepage esta desatualizado. Rode 'npm run build' em frontend/home/ e commite o resultado."
+            exit 1
+          fi
+
   e2e:
     name: Testes E2E (Playwright)
     runs-on: ubuntu-latest
