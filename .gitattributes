@@ -1,8 +1,13 @@
 # A saida de build da homepage e versionada e reconferida pelo CI (job
 # homepage-build). Se o fim de linha variar entre Windows e Linux, o rebuild no
 # CI diverge do que esta commitado e o job falha por um motivo que nao e o real.
-# O Vite sempre escreve LF; fixamos LF nos dois lados.
+# O Vite sempre escreve LF; fixamos LF nos dois lados. O template fonte
+# (frontend/home/index.html) tambem entra aqui: sem essa regra, checkout no
+# Windows com core.autocrlf converte suas quebras de linha para CRLF e o Vite
+# duplica o \r ao injetar a tag <script> no build, produzindo um
+# frontend/index.html que nunca bate com o build limpo do CI.
 frontend/index.html text eol=lf
+frontend/home/index.html text eol=lf
 frontend/home-assets/** text eol=lf
 
 # Fontes sao binarias — nenhuma normalizacao.
