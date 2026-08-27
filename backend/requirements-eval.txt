@@ -1,0 +1,17 @@
+# Camada de avaliação de qualidade (Fase 2, ver tests/deepeval/README.md).
+# Instalado num venv isolado (tests/deepeval/.venv) de propósito: deepeval
+# exige pydantic mais novo que o pydantic==2.10.4 pinado em requirements.txt
+# (conflito de resolução testado — pip recusa instalar os dois juntos). Por
+# isso NÃO herda de requirements.txt: repete só o que o pipeline
+# (retrieval/generation/vector_store/ingestion) importa de fato, sem pin de
+# pydantic, deixando o deepeval escolher a versão. Não deve afetar o venv que
+# roda a API (backend/.venv) nem tests/api/ — mesma filosofia de isolamento
+# do node_modules separado entre frontend/home/ e frontend/tests/.
+chromadb==1.5.9
+httpx==0.28.1
+pydantic-settings
+PyMuPDF==1.25.1
+tiktoken==0.8.0
+
+deepeval==4.2.0
+ollama==0.6.2   # dependência opcional do deepeval.models.OllamaModel, não vem por padrão

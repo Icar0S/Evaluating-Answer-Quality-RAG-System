@@ -281,7 +281,7 @@ mockada) antes de fechar a mudança: `/v1/ready`, `/v1/models` (catálogo real,
 confirmou `qwen3:8b` disponível) e um `/chat` completo da nossa API com o
 provider remoto ativo, ponta a ponta.
 
-## Fase 2 — Arquitetura de testes (a documentar conforme implementado)
+## Fase 2 — Arquitetura de testes
 
 ### Testes determinísticos vs. testes que exercitam o modelo
 
@@ -294,10 +294,12 @@ degradaria as duas:
   envolvem o LLM: o Ollama é substituído por `httpx.MockTransport` no backend e
   por `page.route`/`page.routeWebSocket` no frontend. Rodam em segundos, não
   flutuam e não exigem hardware.
-- **Não-determinísticos** (`frontend/tests/e2e/chat-flow.spec.ts` e, na Fase 2, a
-  avaliação RAGAS) — exercitam a geração real. São lentos (dezenas de segundos por
-  pergunta), dependem de GPU e do modelo carregado, e sua saída varia entre
-  execuções. Só fazem sentido rodando localmente contra a stack de verdade.
+- **Não-determinísticos** (`frontend/tests/e2e/chat-flow.spec.ts` e a avaliação
+  DeepEval em `tests/deepeval/`) — exercitam a geração real. São lentos (dezenas de
+  segundos por pergunta — na avaliação DeepEval, minutos, porque cada caso soma
+  geração + 5 métricas julgadas por LLM), dependem de GPU e do modelo carregado, e
+  sua saída varia entre execuções. Só fazem sentido rodando localmente contra a
+  stack de verdade.
 
 O CI do GitHub roda os dois grupos, mas só o primeiro produz asserções lá: os
 testes que precisam do LLM se auto-pulam via `test.skip(!isBackendUp(...))` em vez
@@ -305,9 +307,9 @@ de falhar. Isso mantém o pipeline honesto — falha vermelha significa regress�
 verdade, não ausência de GPU no runner.
 
 Consequência prática para o artigo: métricas de *qualidade de resposta* (fidelidade,
-alucinação) nunca vêm do CI — vêm da execução local do RAGAS registrada em
-`logs/interactions.jsonl`. O CI cobre a infraestrutura que produz esses números,
-não os números.
+alucinação) nunca vêm do CI — vêm da execução local do DeepEval, registrada em
+`tests/deepeval/results/*.json` e alimentando `logs/interactions.jsonl` indiretamente
+via `GET /stats`. O CI cobre a infraestrutura que produz esses números, não os números.
 
 ### Isolamento dos testes de API
 
@@ -324,6 +326,108 @@ pegou uma variável de ambiente documentada como `REMOTE_OLLAMA_LABEL` mas lida
 pelo backend como `REMOTE_LABEL` (o campo em `Settings` tinha nome divergente).
 O `.env` era silenciosamente ignorado e o bug era invisível na UI, porque o valor
 default coincidia com o texto configurado.
+
+### Avaliação de qualidade (DeepEval)
+
+O README original desta fase reservava o nome "RAGAS" pra essa camada, mas nenhuma
+linha de RAGAS chegou a existir no repo — só o placeholder `tests/ragas/results/.gitkeep`
+e o campo `ragas_faithfulness_avg` em `StatsResponse`, sempre `null`. Implementada com
+[DeepEval](https://deepeval.com/docs/introduction) no lugar, não como "mais uma" camada:
+cobre o mesmo espaço de métricas (fidelidade, relevância, precisão/recall de contexto) e
+soma suporte nativo a Ollama como juiz (`deepeval.models.OllamaModel`), integração
+`pytest`/CI de fábrica (`deepeval test run`) e dataset versionável em JSON local — sem
+exigir nenhum serviço de nuvem (Confident AI é *opcional*, nunca usado aqui:
+`CONFIDENT_API_KEY` nunca é setado, `DEEPEVAL_TELEMETRY_OPT_OUT=1` no `.env`). Detalhes de
+uso em [tests/deepeval/README.md](../tests/deepeval/README.md); aqui vão só as decisões.
+
+**Juiz local, mas não o mesmo modelo que gera.** `DEEPEVAL_JUDGE_MODEL=gemma3:4b` é
+deliberadamente diferente de `GENERATION_MODEL` (`qwen3:8b`) — usar o mesmo modelo pra
+gerar e julgar a própria resposta é um viés conhecido ("self-grading"). Os dois cabem na
+GPU de 8GB porque o Ollama troca os modelos em sequência (geração termina e descarrega
+antes do juiz carregar), não ficam os dois na VRAM ao mesmo tempo — trade-off aceito:
+um juiz de 4B é mais fraco do que um modelo maior daria, mas evitar o self-grading pesou
+mais que o tamanho do juiz, dado o hardware disponível (mesma lógica de tier já usada
+pra escolher `qwen3:8b`/`nomic-embed-text` na Fase 0).
+
+**Venv isolado.** `backend/requirements.txt` pina `pydantic==2.10.4`; `deepeval` exige uma
+versão mais nova — conflito de resolução testado (`pip install` recusa os dois juntos),
+não hipotético. `tests/deepeval/.venv/` fica separado do venv da API pelo mesmo motivo que
+`frontend/home/` e `frontend/tests/` têm `node_modules` separados: instalar a suíte de
+avaliação nunca deve arrastar versão de dependência da API que roda em produção.
+
+**Dataset público, não o golden dataset real.** As mesmas perguntas de saneamento básico
+que o golden dataset real cobre são exatamente o que o README já declara indisponível
+(informação operacional da CAGECE). `tests/deepeval/goldens/dataset.json` tem 10 perguntas
+curadas manualmente (não geradas por LLM) sobre os PDFs acadêmicos já versionados em
+`data/source_pdfs/` — cada uma com o trecho real do PDF de onde a resposta vem, verificado
+à mão antes de entrar no dataset.
+
+**Pipeline chamado in-process, não via HTTP.** Os testes importam
+`app.rag.retrieval`/`app.rag.generation` diretamente (as mesmas funções que `POST /chat`
+usa) em vez de subir o `uvicorn` e chamar por HTTP — diferença deliberada do Playwright,
+que testa a API via HTTP porque está testando a camada HTTP; aqui o alvo é a qualidade da
+resposta, não o protocolo, e a camada HTTP já tem sua própria cobertura em `tests/api/`.
+
+**Painel HTML, não uma página hospedada em outro domínio.** Cada rodada de
+`run_and_export.py` gera `results/<timestamp>.html` (+ `results/latest.html` estável) —
+arquivo autocontido, sem servidor, sem build, `file://` funciona — e abre sozinho no
+navegador padrão ao terminar. `view_report.py` reabre o mais recente sem rodar a
+avaliação de novo (equivalente ao `allure serve`). A renderização (`report.py`) lê só
+o JSON, nada fica hardcoded de uma rodada específica.
+
+**Resiliência a falha isolada do juiz local.** `evaluate()` roda com
+`ErrorConfig(ignore_errors=True)`: sem isso, uma resposta malformada do juiz numa
+única chamada (json truncado, ou vazio — vistos os dois na prática, ver adiante)
+derruba a rodada inteira depois de ~14 minutos de trabalho já feito. Com
+`ignore_errors=True`, aquela métrica específica fica marcada com erro (chip "ERRO"
+no painel, cor âmbar — nem verde nem vermelho, porque não é um veredito, é a
+ausência de um) e as outras 49 chamadas continuam valendo.
+
+**Calibração inicial.** Threshold de partida `0.7` pra todas as 5 métricas — não é dado
+medido, é ponto de partida documentado como tal. Primeira rodada completa (10 perguntas,
+`qwen3:8b` gerando, `gemma3:4b` julgando, `python tests/deepeval/run_and_export.py`,
+resultado em `tests/deepeval/results/20260827T103836Z.json`), médias:
+
+| Métrica | Média | Limiar |
+|---|---|---|
+| Faithfulness | 0,43 | 0,70 |
+| Answer Relevancy | 0,79 | 0,70 |
+| Contextual Precision | 0,96 | 0,70 |
+| Contextual Recall | 1,00 | 0,70 |
+| Contextual Relevancy | 0,55 | 0,70 |
+
+Taxa de aprovação nas 5 métricas simultaneamente: 1/10. À primeira vista parece que o
+sistema está mal, mas o motivo real, caso a caso, é mais interessante que o número:
+
+- **Recuperação está ótima** (Precision 0,96 / Recall 1,00) — o retriever quase sempre
+  traz os chunks certos. O problema não é achar o contexto.
+- **Faithfulness baixa tem duas causas distintas, não uma.** (1) Em pelo menos um caso
+  (`ares-tres-dimensoes`), o `qwen3:8b` respondeu com a frase-âncora de "não encontrei"
+  mesmo com o contexto certo recuperado — e a métrica pontuou isso como Faithfulness
+  `0.0`, com o motivo "nenhuma reivindicação verificável" (uma recusa não faz nenhuma
+  afirmação factual, então não deveria ser "infiel", deveria ser N/A). Isso é uma
+  limitação conhecida da métrica, não um bug do nosso pipeline — vale considerar filtrar
+  respostas com `grounded=False` antes de aplicar Faithfulness numa iteração futura.
+  (2) Em outros casos (`ares-reducao-anotacao`, `ragas-desafio-avaliacao`), a resposta é
+  substantiva e factualmente correta, mas o *reasoning* do juiz aponta que o
+  `retrieval_context` daquela pergunta especificamente não continha a informação citada
+  — um sinal de que o `qwen3:8b` respondeu parcialmente da própria memória paramétrica
+  em vez de só do contexto recuperado, porque RAGAS/ARES/RAGChecker/MetaRAG são artigos
+  muito próximos entre si (todos sobre avaliação de RAG) e a busca por similaridade pode
+  trazer o vizinho errado. É exatamente o tipo de falha que Faithfulness existe pra
+  pegar e que a heurística `grounded` (regex sobre `NOT_FOUND_MARKER`) não pega — o
+  motivo original pelo qual essa camada foi proposta (ver "Grounding e prevenção de
+  alucinação", Fase 1).
+- **Contextual Relevancy (0,55) e o threshold de 0,7 pra um juiz de 4B**: com Precision/Recall
+  altos, um Contextual Relevancy mais baixo sugere o juiz sendo mais rigoroso (ou menos
+  consistente) na granularidade "cada chunk individualmente responde a pergunta" do que
+  um juiz maior daria — coerente com o trade-off já documentado na escolha do juiz.
+
+Conclusão prática: `0.7` uniforme pra todas as métricas não é o threshold certo pra essa
+combinação de modelos — path natural pra próxima iteração é (a) excluir respostas não-
+fundamentadas (`grounded=False`) da amostra de Faithfulness, e (b) recalibrar threshold
+por métrica em vez de um valor único, com mais dados. Documentado aqui em vez de ajustado
+às pressas: o valor de uma primeira calibração é justamente expor isso.
 
 ## Fase 3 — Human-in-the-loop (a documentar caso confirmado)
 

@@ -1,7 +1,8 @@
 """/chat: roteamento por provider, metadados e log estruturado.
 
-O ponto central aqui não é a qualidade da resposta (isso é escopo do RAGAS na
-Fase 2), e sim *para onde* a chamada foi e o que ficou registrado — trocar de
+O ponto central aqui não é a qualidade da resposta (isso é escopo de
+tests/deepeval/, Fase 2), e sim *para onde* a chamada foi e o que ficou
+registrado — trocar de
 provider precisa redirecionar a geração de verdade, mas os embeddings ficam
 sempre no Ollama local (a API remota não expõe essa rota, ver
 llm-api-referencia.md e app/providers.py).

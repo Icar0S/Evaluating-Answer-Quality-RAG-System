@@ -277,9 +277,12 @@ body {
   }
 }
 
-/* O RAGAS ainda nao e medido. Sai da grade e vira uma nota discreta: dar a uma
-   metrica inexistente a mesma cerimonia de uma leitura real seria exatamente o
-   tipo de alegacao que esta pagina existe para nao fazer. */
+/* A fidelidade media (DeepEval, Fase 2) fica fora da grade principal: a grade
+   e 4/2/1 colunas de proposito (ver comentario acima) pra nunca deixar card
+   orfao, e uma 5a metrica quebraria isso em qualquer breakpoint. Vira uma
+   nota discreta em vez de um 5o card — nao por ser menos real, so por nao
+   caber no ritmo 4/2/1. Antes do run inicial de tests/deepeval, mostra
+   "em breve" em vez de um numero inventado. */
 .stats-pending-note {
   display: flex;
   align-items: baseline;

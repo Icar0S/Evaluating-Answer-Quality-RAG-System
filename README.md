@@ -203,12 +203,13 @@ imediatamente — é o que mantém a suíte headless determinística.
 | `POST` | `/providers/active` | Troca o provider ativo em runtime (`{"name": "local"\|"remote"}`) |
 | `GET` | `/metrics` | Snapshot pontual de CPU/RAM/GPU + última geração (polling) |
 | `WS` | `/ws/metrics` | Mesmo snapshot, em push a cada ~1s (usado pelo painel de Monitor) |
-| `GET` | `/stats` | Números agregados de `logs/interactions.jsonl`, usados na homepage |
+| `GET` | `/stats` | Números agregados de `logs/interactions.jsonl` + última avaliação DeepEval, usados na homepage |
 
 ## Testes
 
-Duas suítes, rodadas em paralelo pelo CI ([.github/workflows/ci.yml](.github/workflows/ci.yml))
-a cada push na `main` e em todo pull request.
+Três suítes. As duas primeiras rodam em paralelo pelo CI
+([.github/workflows/ci.yml](.github/workflows/ci.yml)) a cada push na `main`
+e em todo pull request; a terceira (DeepEval) roda só localmente — ver abaixo.
 
 **API (pytest)** — roteamento por provider, métricas do monitor e log estruturado.
 Herméticos: sem Ollama, sem GPU, sem rede. Rodam em ~1s. Ver
@@ -237,15 +238,43 @@ executando as duas suítes — use `scripts\start_dev.bat`. Para subir o ambient
 gerando pelo servidor, sem carregar o LLM local, use `scripts\start_dev_remote.bat`
 (não roda a suíte E2E, para não gastar fila do servidor a cada execução).
 
-Todas as interações são logadas em `logs/interactions.jsonl` (JSON Lines), uma linha por interação, com pergunta, contexto recuperado, resposta, métricas e metadados — isso alimenta a Fase 2 (RAGAS) e a escrita do artigo.
+**Qualidade da resposta ([DeepEval](https://deepeval.com/docs/introduction))** — fidelidade ao
+contexto, relevância da resposta, e precisão/recall/relevância da recuperação, julgados por um
+LLM local via Ollama (nunca OpenAI/nuvem). Exercita a stack real (geração + juiz + vector store
+populado); nunca roda no CI, mesma regra dos testes E2E de geração real. Ver
+[tests/deepeval/README.md](tests/deepeval/README.md):
+
+```powershell
+python -m venv tests/deepeval/.venv
+tests\deepeval\.venv\Scripts\pip install -r backend\requirements-eval.txt
+ollama pull gemma3:4b   # modelo-juiz, diferente do de geração
+tests\deepeval\.venv\Scripts\python.exe -m pytest tests/deepeval
+```
+
+(pytest puro, não `deepeval test run` — ver "Bug conhecido" em
+[tests/deepeval/README.md](tests/deepeval/README.md).)
+
+Pra ver os resultados com scores, limiares e o motivo de cada julgamento —
+não só pass/fail no terminal — use `tests\deepeval\run_and_export.py` (gera
+`results/*.json` + `results/*.html` e abre o painel sozinho) ou
+`tests\deepeval\view_report.py` pra reabrir sem rodar a avaliação de novo.
+HTML autocontido, arquivo de verdade em `tests/deepeval/results/`, sem
+servidor nem domínio externo.
+
+Todas as interações são logadas em `logs/interactions.jsonl` (JSON Lines), uma linha por interação, com pergunta, contexto recuperado, resposta, métricas e metadados — isso alimenta a suíte DeepEval e a escrita do artigo.
 
 ## Fase 2 — Arquitetura de testes
 
-Em construção. Vai cobrir: ingestão de corpus de teste via ZIP, geração de dataset sintético + curadoria manual, avaliação com RAGAS contra a API real, testes de API (pytest) e testes E2E (Playwright/TypeScript). Detalhes em `docs/ARCHITECTURE.md` conforme forem implementados.
+Testes de API (pytest), testes E2E (Playwright/TypeScript) e avaliação de qualidade de
+resposta ([DeepEval](https://deepeval.com/docs/introduction), ver seção "Testes" acima e
+[tests/deepeval/README.md](tests/deepeval/README.md)) — implementados. Em aberto: ingestão de
+corpus de teste via ZIP e geração de dataset sintético assistida por LLM (o dataset atual é
+curado manualmente, ver `tests/deepeval/goldens/dataset.json`). Detalhes em `docs/ARCHITECTURE.md`.
 
 ## Fase 3 — Human-in-the-loop (proposta)
 
-Camada de revisão humana e relatório consolidado comparando notas do RAGAS com avaliação humana — a implementar mediante confirmação.
+Camada de revisão humana e relatório consolidado comparando notas do DeepEval com avaliação
+humana — a implementar mediante confirmação.
 
 ## Estrutura do projeto
 

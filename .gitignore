@@ -20,8 +20,9 @@ logs/*.jsonl
 !logs/.gitkeep
 
 # Testes
-tests/ragas/results/*
-!tests/ragas/results/.gitkeep
+tests/deepeval/results/*
+!tests/deepeval/results/.gitkeep
+.deepeval/
 tests/human_review/annotations/*
 !tests/human_review/annotations/.gitkeep
 node_modules/
