@@ -221,30 +221,98 @@ def _perturb(value_text: str, is_percent: bool, variant: str) -> str | None:
     return new_value
 
 
-def make_variant(pages: list[str], variant: str, max_substitutions: int) -> tuple[list[str], list[Substitution]]:
+CITATION_SPAN = re.compile(r"\[[\d\s,;+-]+\]")
+
+# Um numero vale a pena perturbar quando alguem poderia fazer uma pergunta sobre
+# ele. Estas palavras, vizinhas do numero, sao o sinal mais barato disso.
+FACTUAL_CUES = (
+    "accuracy", "coverage", "precision", "recall", "score", "rate", "ratio",
+    "average", "mean", "median", "total", "sample", "participants", "subjects",
+    "classes", "projects", "cases", "tests", "mutants", "questions", "documents",
+    "tokens", "seconds", "minutes", "hours", "times", "versions", "runs",
+    "threshold", "percent", "improvement", "reduction", "increase", "decrease",
+    "of the", "up to", "we used", "consisted", "resulting in",
+)
+
+
+def _citation_spans(text: str) -> list[tuple[int, int]]:
+    """Intervalos ocupados por marcadores de citacao bibliografica."""
+    return [(m.start(), m.end()) for m in CITATION_SPAN.finditer(text)]
+
+
+def _factual_score(text: str, start: int, end: int) -> int:
+    """Quao provavel e que este numero seja um fato citavel por um caso de teste.
+
+    Numero dentro de [12, 34] e referencia bibliografica: mudar aquilo nao cria
+    defeito observavel nenhum, so estraga a bibliografia. Este foi o erro que a
+    primeira versao cometia -- as 40 substituicoes caiam quase todas na
+    introducao, que e onde a densidade de citacoes e maior, e C2/C4 ficavam sem
+    ancora possivel na suite.
+    """
+    window = text[max(0, start - 60) : end + 60].lower()
+    score = 0
+    if "%" in text[end : end + 2]:
+        score += 3
+    if any(cue in window for cue in FACTUAL_CUES):
+        score += 2
+    following = text[end : end + 25].lstrip()
+    if following[:1].isalpha():   # "16 Java classes", "30 participants"
+        score += 2
+    if re.search(r"(table|figure|section|fig\.|eq\.)\s*$", text[:start].lower()):
+        score -= 3
+    return score
+
+
+def make_variant(
+    pages: list[str], variant: str, max_substitutions: int
+) -> tuple[list[str], list[Substitution]]:
+    """Perturba valores numericos factuais, distribuindo-os pelo documento.
+
+    Duas regras que existem para C2 e C4 serem observaveis por um caso de teste:
+
+    1. marcadores de citacao ([13], [15, 36]) nunca sao tocados;
+    2. a cota de substituicoes e dividida entre as paginas, e dentro de cada
+       pagina os candidatos mais "factuais" vem primeiro. Sem isso a cota inteira
+       era consumida pela primeira pagina.
+    """
+    per_page = max(1, max_substitutions // max(1, len(pages)))
     substitutions: list[Substitution] = []
     new_pages: list[str] = []
 
     for page_number, page_text in enumerate(pages, start=1):
-
-        def replace(match: re.Match[str]) -> str:
-            if len(substitutions) >= max_substitutions:
-                return match.group(0)
-            value_text, percent = match.group(1), match.group(2)
-            replacement = _perturb(value_text, bool(percent), variant)
+        spans = _citation_spans(page_text)
+        candidates = []
+        for match in NUMBER_PATTERN.finditer(page_text):
+            begin, finish = match.start(1), match.end(1)
+            if any(low <= begin < high for low, high in spans):
+                continue
+            replacement = _perturb(match.group(1), bool(match.group(2)), variant)
             if replacement is None:
-                return match.group(0)
+                continue
+            candidates.append((_factual_score(page_text, begin, finish), begin, finish, match, replacement))
+
+        budget = per_page if len(substitutions) + per_page <= max_substitutions else max_substitutions - len(substitutions)
+        # Melhores primeiro para escolher, mas aplicados na ordem do texto para
+        # que os offsets nao se invalidem entre si.
+        chosen = sorted(sorted(candidates, key=lambda c: (-c[0], c[1]))[: max(0, budget)], key=lambda c: c[1])
+
+        rebuilt = []
+        cursor = 0
+        for score, begin, finish, match, replacement in chosen:
+            percent = match.group(2)
+            rebuilt.append(page_text[cursor:begin])
+            rebuilt.append(replacement)
+            cursor = finish
             substitutions.append(
                 Substitution(
                     page=page_number,
-                    original=match.group(0),
+                    original=match.group(1) + percent,
                     replacement=replacement + percent,
-                    rule=variant,
+                    rule=f"{variant}:score{score}",
                 )
             )
-            return replacement + percent
-
-        new_pages.append(NUMBER_PATTERN.sub(replace, page_text))
+        rebuilt.append(page_text[cursor:])
+        new_pages.append("".join(rebuilt))
 
     return new_pages, substitutions
 
@@ -317,6 +385,11 @@ def build_variants(max_substitutions: int, tokens_per_page: int) -> dict:
     manifest = json.loads(paths.CORPUS_MANIFEST.read_text(encoding="utf-8"))
     roles = manifest["roles"]
     paths.CORPUS_VARIANTS.mkdir(parents=True, exist_ok=True)
+
+    # Limpa variantes de builds anteriores: se o papel `primary` mudou, as
+    # antigas ficariam orfas no diretorio e viajariam no pacote de replicacao.
+    for stale in paths.CORPUS_VARIANTS.glob("*.pdf"):
+        stale.unlink()
 
     plan = [(roles["primary"], "prev"), (roles["primary"], "conflict")]
     report: dict[str, Any] = {"generated_at": datetime.now(timezone.utc).isoformat(), "variants": []}

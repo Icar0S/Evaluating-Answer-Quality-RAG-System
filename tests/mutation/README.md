@@ -124,10 +124,15 @@ Este é o item de maior tempo humano irredutível. O script de rascunho corta a
 parte mecânica, não o julgamento:
 
 ```bash
-# Índice do estudo precisa existir para rascunhar:
-python -m tests.mutation.tools.calibrate_retrieval_gate       # (também constrói o índice)
+# Constrói o índice do estudo (alguns minutos — embeda o corpus inteiro):
+python -m tests.mutation.tools.calibrate_retrieval_gate --index-only
 python -m tests.mutation.suite.draft_cases --all
 ```
+
+> A calibração do piso de recuperação **não** roda aqui: ela precisa de casos
+> factuais prontos para saber o que deve passar do piso, e esses casos são o
+> produto desta semana. Por isso `--index-only` agora e a calibração completa na
+> semana 3.
 
 As propostas saem em `suite/drafts.jsonl` com uma conferência automática rasa
 (valores citados que não aparecem no trecho). **Confira cada uma contra o

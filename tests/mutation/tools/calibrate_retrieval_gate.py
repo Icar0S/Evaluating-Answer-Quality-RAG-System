@@ -123,6 +123,11 @@ def write_to_study(value: float) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Calibra o piso de similaridade do baseline.")
     parser.add_argument("--write", action="store_true", help="grava o valor em config/study.yaml")
+    parser.add_argument(
+        "--index-only",
+        action="store_true",
+        help="so constroi/atualiza o indice do estudo e sai (nao exige casos prontos)",
+    )
     args = parser.parse_args(argv)
 
     paths.ensure_dirs()
@@ -132,7 +137,14 @@ def main(argv: list[str] | None = None) -> int:
     overrides["min_similarity_score"] = 0.0
 
     with sut_configuration(overrides) as resolved:
-        ensure_index(resolved)
+        report = ensure_index(resolved)
+        if args.index_only:
+            logger.info(
+                "Indice do estudo pronto: %s chunks (%s).",
+                report.get("chunks"),
+                "reindexado" if report.get("reindexed") else "reaproveitado",
+            )
+            return 0
         measurements = measure_top_similarity()
 
     result = choose_threshold(measurements)

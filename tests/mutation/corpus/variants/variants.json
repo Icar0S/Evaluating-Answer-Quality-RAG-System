@@ -1,499 +1,499 @@
 {
-  "generated_at": "2026-09-15T02:49:15.519418+00:00",
+  "generated_at": "2026-09-15T23:48:53.115552+00:00",
   "variants": [
     {
-      "document": "comparative_analysis_of_large_language_model_too.pdf",
+      "document": "does_prompt_engineering_really_impact_llm_genera.pdf",
       "variant": "prev",
-      "file": "comparative_analysis_of_large_language_model_too__prev.pdf",
-      "sha256": "e9646b426d8ca5d0f3349303552dea9a7216bdd00a036c27fae72cf793560608",
+      "file": "does_prompt_engineering_really_impact_llm_genera__prev.pdf",
+      "sha256": "b641be335d6359203211e5c1c5a66ab48b463425371d4d3f6092bc4a87c7afc1",
       "substitutions": [
         {
           "page": 1,
-          "original": "12",
-          "replacement": "10",
-          "rule": "prev"
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev:score4"
         },
         {
           "page": 1,
-          "original": "17",
-          "replacement": "14",
-          "rule": "prev"
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 1,
+          "original": "2026",
+          "replacement": "2024",
+          "rule": "prev:score2"
         },
         {
           "page": 1,
           "original": "11",
           "replacement": "9",
-          "rule": "prev"
-        },
-        {
-          "page": 1,
-          "original": "13",
-          "replacement": "10",
-          "rule": "prev"
-        },
-        {
-          "page": 1,
-          "original": "16",
-          "replacement": "13",
-          "rule": "prev"
-        },
-        {
-          "page": 1,
-          "original": "16",
-          "replacement": "13",
-          "rule": "prev"
-        },
-        {
-          "page": 1,
-          "original": "20",
-          "replacement": "16",
-          "rule": "prev"
-        },
-        {
-          "page": 1,
-          "original": "15",
-          "replacement": "12",
-          "rule": "prev"
-        },
-        {
-          "page": 1,
-          "original": "14",
-          "replacement": "11",
-          "rule": "prev"
-        },
-        {
-          "page": 1,
-          "original": "24",
-          "replacement": "19",
-          "rule": "prev"
-        },
-        {
-          "page": 1,
-          "original": "30",
-          "replacement": "24",
-          "rule": "prev"
-        },
-        {
-          "page": 1,
-          "original": "2024",
-          "replacement": "2022",
-          "rule": "prev"
-        },
-        {
-          "page": 1,
-          "original": "16",
-          "replacement": "13",
-          "rule": "prev"
-        },
-        {
-          "page": 1,
-          "original": "16",
-          "replacement": "13",
-          "rule": "prev"
+          "rule": "prev:score2"
         },
         {
           "page": 2,
-          "original": "24",
-          "replacement": "19",
-          "rule": "prev"
+          "original": "2026",
+          "replacement": "2024",
+          "rule": "prev:score2"
         },
         {
           "page": 2,
-          "original": "30",
-          "replacement": "24",
-          "rule": "prev"
+          "original": "32%",
+          "replacement": "22%",
+          "rule": "prev:score5"
         },
         {
           "page": 2,
-          "original": "2024",
-          "replacement": "2022",
-          "rule": "prev"
+          "original": "21%",
+          "replacement": "11%",
+          "rule": "prev:score5"
         },
         {
           "page": 2,
-          "original": "18",
-          "replacement": "14",
-          "rule": "prev"
-        },
-        {
-          "page": 2,
-          "original": "19",
-          "replacement": "15",
-          "rule": "prev"
-        },
-        {
-          "page": 2,
-          "original": "18",
-          "replacement": "14",
-          "rule": "prev"
-        },
-        {
-          "page": 2,
-          "original": "24",
-          "replacement": "19",
-          "rule": "prev"
-        },
-        {
-          "page": 2,
-          "original": "30",
-          "replacement": "24",
-          "rule": "prev"
-        },
-        {
-          "page": 2,
-          "original": "2024",
-          "replacement": "2022",
-          "rule": "prev"
+          "original": "89.5%",
+          "replacement": "79.5%",
+          "rule": "prev:score5"
         },
         {
           "page": 3,
-          "original": "2024",
-          "replacement": "2022",
-          "rule": "prev"
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev:score4"
         },
         {
           "page": 3,
-          "original": "24",
-          "replacement": "19",
-          "rule": "prev"
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev:score4"
         },
         {
           "page": 3,
-          "original": "30",
-          "replacement": "24",
-          "rule": "prev"
+          "original": "75",
+          "replacement": "60",
+          "rule": "prev:score4"
         },
         {
           "page": 3,
-          "original": "2024",
-          "replacement": "2022",
-          "rule": "prev"
-        },
-        {
-          "page": 4,
-          "original": "24",
-          "replacement": "19",
-          "rule": "prev"
-        },
-        {
-          "page": 4,
-          "original": "30",
-          "replacement": "24",
-          "rule": "prev"
-        },
-        {
-          "page": 4,
-          "original": "2024",
-          "replacement": "2022",
-          "rule": "prev"
-        },
-        {
-          "page": 4,
-          "original": "18",
-          "replacement": "14",
-          "rule": "prev"
-        },
-        {
-          "page": 4,
-          "original": "18",
-          "replacement": "14",
-          "rule": "prev"
-        },
-        {
-          "page": 4,
-          "original": "24",
-          "replacement": "19",
-          "rule": "prev"
-        },
-        {
-          "page": 4,
-          "original": "30",
-          "replacement": "24",
-          "rule": "prev"
-        },
-        {
-          "page": 4,
-          "original": "2024",
-          "replacement": "2022",
-          "rule": "prev"
-        },
-        {
-          "page": 5,
           "original": "10",
           "replacement": "8",
-          "rule": "prev"
+          "rule": "prev:score4"
         },
         {
-          "page": 5,
-          "original": "24",
-          "replacement": "19",
-          "rule": "prev"
+          "page": 4,
+          "original": "75",
+          "replacement": "60",
+          "rule": "prev:score4"
         },
         {
-          "page": 5,
-          "original": "30",
-          "replacement": "24",
-          "rule": "prev"
+          "page": 4,
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev:score4"
         },
         {
-          "page": 5,
-          "original": "2024",
-          "replacement": "2022",
-          "rule": "prev"
+          "page": 4,
+          "original": "75",
+          "replacement": "60",
+          "rule": "prev:score2"
         },
         {
-          "page": 5,
+          "page": 4,
           "original": "10",
           "replacement": "8",
-          "rule": "prev"
+          "rule": "prev:score4"
+        },
+        {
+          "page": 5,
+          "original": "56.58%",
+          "replacement": "46.58%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 5,
+          "original": "7.17%",
+          "replacement": "0.00%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 5,
+          "original": "95%",
+          "replacement": "85%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 5,
+          "original": "47.23%",
+          "replacement": "37.23%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 6,
+          "original": "90.3%",
+          "replacement": "80.3%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 6,
+          "original": "88.4%",
+          "replacement": "78.4%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 6,
+          "original": "17.28%",
+          "replacement": "7.28%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 6,
+          "original": "17.17%",
+          "replacement": "7.17%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 7,
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 7,
+          "original": "42.6%",
+          "replacement": "32.6%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 7,
+          "original": "26.0%",
+          "replacement": "16.0%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 7,
+          "original": "22.7%",
+          "replacement": "12.7%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 8,
+          "original": "2025",
+          "replacement": "2023",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 8,
+          "original": "2025",
+          "replacement": "2023",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 8,
+          "original": "2023",
+          "replacement": "2021",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 8,
+          "original": "2022",
+          "replacement": "2020",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 9,
+          "original": "2025",
+          "replacement": "2023",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 9,
+          "original": "31",
+          "replacement": "25",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 9,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 9,
+          "original": "2025",
+          "replacement": "2023",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 10,
+          "original": "33",
+          "replacement": "26",
+          "rule": "prev:score0"
+        },
+        {
+          "page": 10,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev:score0"
+        },
+        {
+          "page": 10,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 10,
+          "original": "10",
+          "replacement": "8",
+          "rule": "prev:score2"
         }
       ]
     },
     {
-      "document": "comparative_analysis_of_large_language_model_too.pdf",
+      "document": "does_prompt_engineering_really_impact_llm_genera.pdf",
       "variant": "conflict",
-      "file": "comparative_analysis_of_large_language_model_too__conflict.pdf",
-      "sha256": "67edf57cae029ed998e0b55687d967d8f988cb019d9317b017459c68b8469a44",
+      "file": "does_prompt_engineering_really_impact_llm_genera__conflict.pdf",
+      "sha256": "20d26c7c60fe563d9f8fe868788340269e4a0b27cc296f1f3f90f5495ef31c7d",
       "substitutions": [
         {
           "page": 1,
-          "original": "12",
-          "replacement": "16",
-          "rule": "conflict"
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict:score4"
         },
         {
           "page": 1,
-          "original": "17",
-          "replacement": "23",
-          "rule": "conflict"
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 1,
+          "original": "2026",
+          "replacement": "2029",
+          "rule": "conflict:score2"
         },
         {
           "page": 1,
           "original": "11",
           "replacement": "15",
-          "rule": "conflict"
-        },
-        {
-          "page": 1,
-          "original": "13",
-          "replacement": "18",
-          "rule": "conflict"
-        },
-        {
-          "page": 1,
-          "original": "16",
-          "replacement": "22",
-          "rule": "conflict"
-        },
-        {
-          "page": 1,
-          "original": "16",
-          "replacement": "22",
-          "rule": "conflict"
-        },
-        {
-          "page": 1,
-          "original": "20",
-          "replacement": "27",
-          "rule": "conflict"
-        },
-        {
-          "page": 1,
-          "original": "15",
-          "replacement": "20",
-          "rule": "conflict"
-        },
-        {
-          "page": 1,
-          "original": "14",
-          "replacement": "19",
-          "rule": "conflict"
-        },
-        {
-          "page": 1,
-          "original": "24",
-          "replacement": "32",
-          "rule": "conflict"
-        },
-        {
-          "page": 1,
-          "original": "30",
-          "replacement": "40",
-          "rule": "conflict"
-        },
-        {
-          "page": 1,
-          "original": "2024",
-          "replacement": "2027",
-          "rule": "conflict"
-        },
-        {
-          "page": 1,
-          "original": "16",
-          "replacement": "22",
-          "rule": "conflict"
-        },
-        {
-          "page": 1,
-          "original": "16",
-          "replacement": "22",
-          "rule": "conflict"
+          "rule": "conflict:score2"
         },
         {
           "page": 2,
-          "original": "24",
-          "replacement": "32",
-          "rule": "conflict"
+          "original": "2026",
+          "replacement": "2029",
+          "rule": "conflict:score2"
         },
         {
           "page": 2,
-          "original": "30",
-          "replacement": "40",
-          "rule": "conflict"
+          "original": "32%",
+          "replacement": "47%",
+          "rule": "conflict:score5"
         },
         {
           "page": 2,
-          "original": "2024",
-          "replacement": "2027",
-          "rule": "conflict"
+          "original": "21%",
+          "replacement": "36%",
+          "rule": "conflict:score5"
         },
         {
           "page": 2,
-          "original": "18",
-          "replacement": "24",
-          "rule": "conflict"
-        },
-        {
-          "page": 2,
-          "original": "19",
-          "replacement": "26",
-          "rule": "conflict"
-        },
-        {
-          "page": 2,
-          "original": "18",
-          "replacement": "24",
-          "rule": "conflict"
-        },
-        {
-          "page": 2,
-          "original": "24",
-          "replacement": "32",
-          "rule": "conflict"
-        },
-        {
-          "page": 2,
-          "original": "30",
-          "replacement": "40",
-          "rule": "conflict"
-        },
-        {
-          "page": 2,
-          "original": "2024",
-          "replacement": "2027",
-          "rule": "conflict"
+          "original": "89.5%",
+          "replacement": "100.0%",
+          "rule": "conflict:score5"
         },
         {
           "page": 3,
-          "original": "2024",
-          "replacement": "2027",
-          "rule": "conflict"
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict:score4"
         },
         {
           "page": 3,
-          "original": "24",
-          "replacement": "32",
-          "rule": "conflict"
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict:score4"
         },
         {
           "page": 3,
-          "original": "30",
-          "replacement": "40",
-          "rule": "conflict"
+          "original": "75",
+          "replacement": "101",
+          "rule": "conflict:score4"
         },
         {
           "page": 3,
-          "original": "2024",
-          "replacement": "2027",
-          "rule": "conflict"
-        },
-        {
-          "page": 4,
-          "original": "24",
-          "replacement": "32",
-          "rule": "conflict"
-        },
-        {
-          "page": 4,
-          "original": "30",
-          "replacement": "40",
-          "rule": "conflict"
-        },
-        {
-          "page": 4,
-          "original": "2024",
-          "replacement": "2027",
-          "rule": "conflict"
-        },
-        {
-          "page": 4,
-          "original": "18",
-          "replacement": "24",
-          "rule": "conflict"
-        },
-        {
-          "page": 4,
-          "original": "18",
-          "replacement": "24",
-          "rule": "conflict"
-        },
-        {
-          "page": 4,
-          "original": "24",
-          "replacement": "32",
-          "rule": "conflict"
-        },
-        {
-          "page": 4,
-          "original": "30",
-          "replacement": "40",
-          "rule": "conflict"
-        },
-        {
-          "page": 4,
-          "original": "2024",
-          "replacement": "2027",
-          "rule": "conflict"
-        },
-        {
-          "page": 5,
           "original": "10",
           "replacement": "14",
-          "rule": "conflict"
+          "rule": "conflict:score4"
         },
         {
-          "page": 5,
-          "original": "24",
-          "replacement": "32",
-          "rule": "conflict"
+          "page": 4,
+          "original": "75",
+          "replacement": "101",
+          "rule": "conflict:score4"
         },
         {
-          "page": 5,
-          "original": "30",
-          "replacement": "40",
-          "rule": "conflict"
+          "page": 4,
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict:score4"
         },
         {
-          "page": 5,
-          "original": "2024",
-          "replacement": "2027",
-          "rule": "conflict"
+          "page": 4,
+          "original": "75",
+          "replacement": "101",
+          "rule": "conflict:score2"
         },
         {
-          "page": 5,
+          "page": 4,
           "original": "10",
           "replacement": "14",
-          "rule": "conflict"
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 5,
+          "original": "56.58%",
+          "replacement": "71.58%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 5,
+          "original": "7.17%",
+          "replacement": "22.17%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 5,
+          "original": "95%",
+          "replacement": "100%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 5,
+          "original": "47.23%",
+          "replacement": "62.23%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 6,
+          "original": "90.3%",
+          "replacement": "100.0%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 6,
+          "original": "88.4%",
+          "replacement": "100.0%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 6,
+          "original": "17.28%",
+          "replacement": "32.28%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 6,
+          "original": "17.17%",
+          "replacement": "32.17%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 7,
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 7,
+          "original": "42.6%",
+          "replacement": "57.6%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 7,
+          "original": "26.0%",
+          "replacement": "41.0%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 7,
+          "original": "22.7%",
+          "replacement": "37.7%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 8,
+          "original": "2025",
+          "replacement": "2028",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 8,
+          "original": "2025",
+          "replacement": "2028",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 8,
+          "original": "2023",
+          "replacement": "2026",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 8,
+          "original": "2022",
+          "replacement": "2025",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 9,
+          "original": "2025",
+          "replacement": "2028",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 9,
+          "original": "31",
+          "replacement": "42",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 9,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 9,
+          "original": "2025",
+          "replacement": "2028",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 10,
+          "original": "33",
+          "replacement": "45",
+          "rule": "conflict:score0"
+        },
+        {
+          "page": 10,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict:score0"
+        },
+        {
+          "page": 10,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 10,
+          "original": "10",
+          "replacement": "14",
+          "rule": "conflict:score2"
         }
       ]
     }

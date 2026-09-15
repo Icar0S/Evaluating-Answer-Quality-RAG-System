@@ -40,7 +40,7 @@ if __package__ in (None, ""):
 
 from tests.mutation.runner import jsonl, paths
 from tests.mutation.runner.console import get_logger
-from tests.mutation.runner.sut import load_study_config, sut_configuration
+from tests.mutation.runner.sut import ensure_index, load_study_config, sut_configuration
 from tests.mutation.suite.loader import load_cases
 
 logger = get_logger("mutation.drafts")
@@ -222,7 +222,12 @@ def main(argv: list[str] | None = None) -> int:
     altered = _altered_values()
     proposals: list[dict] = []
 
-    with sut_configuration(study.baseline_overrides):
+    with sut_configuration(study.baseline_overrides) as resolved:
+        # O rascunho sai dos chunks indexados, entao o indice do estudo precisa
+        # existir. Construi-lo aqui evita a dependencia circular do runbook:
+        # calibrar o piso de recuperacao exige casos prontos, e escrever casos
+        # exige indice.
+        ensure_index(resolved)
         for case in cases:
             wants_altered = altered if {"C2", "C4"} & set(case.targets) else set()
             chunks = _pick_chunks(case, manifest, rng, wants_altered)
