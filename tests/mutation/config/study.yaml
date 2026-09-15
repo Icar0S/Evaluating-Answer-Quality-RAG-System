@@ -1,0 +1,132 @@
+# Configuração do estudo de mutação (protocolo IST/VSI:EQUISA, §7.2).
+#
+# Este arquivo é o "Study Context" da seção 3 do artigo em forma executável: é a
+# configuração exata do SUT sob a qual baseline e mutantes rodam. Ele NÃO muda os
+# defaults do assistente em produção (backend/app/config.py) — é um overlay
+# aplicado em memória pelo harness e descartado no fim (ver runner/sut.py).
+#
+# Por que o baseline do estudo difere dos defaults do repositório:
+#   - chunk 1200/200 (repo: 800/120) — os operadores K1/K2/K3 são definidos no
+#     protocolo como deltas a partir de 1200/200;
+#   - MMR ligado (repo: desligado) — sem um reranker no baseline, o operador R3
+#     ("desligar MMR") não teria o que desligar;
+#   - limiar de similaridade > 0 (repo: 0.0) — mesma razão para R4;
+#   - regra de citação ligada (repo: desligada) — mesma razão para P3;
+#   - temperatura 0.0 explícita — o protocolo exige não amplificar o
+#     não-determinismo, exceto no operador P4.
+# Cada uma dessas escolhas é declarada no artigo; nenhuma é silenciosa.
+
+study:
+  id: mutation-rag-ist-2026
+  title: Mutation-Based Adequacy Assessment of Test Suites for Retrieval-Augmented Assistants
+  protocol_version: "1.0"
+
+models:
+  # Geração e embeddings do SUT.
+  generation: qwen3:8b
+  embedding: nomic-embed-text
+  # Juiz (O4) e gerador de paráfrases (classe EQUIV da calibração) — família
+  # distinta da do SUT, para mitigar viés de autopreferência (§6.4) e
+  # circularidade (§10, validade interna). Trocar aqui exige trocar nos dois
+  # lugares: é a mesma exigência metodológica.
+  judge: gemma3:4b
+  paraphraser: gemma3:4b
+  # Modelo de embedding alternativo usado pelo operador E1.
+  embedding_alternative: all-minilm
+
+baseline_config:
+  # --- Chunking ---
+  chunk_size_tokens: 1200
+  chunk_overlap_tokens: 200
+  chunk_boundary_offset_tokens: 0
+
+  # --- Recuperação ---
+  top_k: 4
+  # Preenchido por tools/calibrate_retrieval_gate.py. Mantenha 0.0 até calibrar:
+  # um valor chutado aqui vira um confundidor silencioso na classe "fora do corpus".
+  min_similarity_score: 0.0
+  retrieval_use_mmr: true
+  retrieval_mmr_lambda: 0.7
+  retrieval_fetch_multiplier: 3
+
+  # --- Geração ---
+  generation_model: qwen3:8b
+  embedding_model: nomic-embed-text
+  generation_temperature: 0.0
+  generation_timeout_seconds: 300
+
+  # --- Prompt ---
+  prompt_require_grounding: true
+  prompt_require_abstention: true
+  prompt_require_citation: true
+  prompt_version: study-v1
+
+  # --- Isolamento: índice e corpus próprios do estudo ---
+  source_pdfs_dir: tests/mutation/work/index_src
+  vector_store_dir: tests/mutation/work/vector_store
+  vector_store_collection: mutation_study
+
+execution:
+  # §7.2 do protocolo.
+  baseline_repetitions: 10        # 30 casos x 10 = 300 invocações
+  campaign_repetitions: 5         # 18 mutantes x 30 casos x 5 = 2.700 invocações
+  stop_on_kill: false             # desligado de propósito: queremos todas as causas de morte
+  seed_from_repetition: true      # seed = índice da repetição (reprodutibilidade declarada)
+
+  # Um caso entra no conjunto avaliável S quando o baseline dá veredito único
+  # nas N execuções. Exigir que esse veredito único seja "pass" é um refinamento
+  # nosso sobre o §7.1: um caso que já reprova no sistema não-mutado reprovaria
+  # em todo mutante e inflaria a taxa de mortes sem carregar informação sobre o
+  # defeito injetado. analyze.py reporta os dois números (instáveis e
+  # estavelmente reprovados) separadamente.
+  evaluable_requires_baseline_pass: true
+
+  # RQ3 (§7.6): níveis de rigor.
+  levels:
+    L1: 1
+    L2: 5
+    L3: 30
+  l3_case_sample: 10              # L3 roda sobre subconjunto de 10 casos
+
+oracles:
+  enabled: [O1, O2, O3, O4, O5]
+
+  O1:
+    # Preenchido por calibration/calibrate.py (τ* por F1 máximo, IC bootstrap 95%).
+    tau: null
+    # Modelo de embedding FIXO do oráculo: não pode seguir a configuração do SUT,
+    # senão o operador E1 mudaria o próprio instrumento de medida junto com o SUT.
+    embedding_model: nomic-embed-text
+
+  O2:
+    # Assertivas determinísticas são deliberadamente só sobre a SAÍDA, nunca
+    # sobre os chunks recuperados. É a instanciação honesta de "suíte típica" que
+    # a hipótese H1 pressupõe — uma suíte que já assertasse sobre recuperação
+    # responderia a RQ1 por construção.
+    scope: output_only
+
+  O3:
+    backend: ragas                # ragas | deepeval (ver §9, ponto de decisão da semana 5)
+    metrics: [faithfulness, answer_relevancy, context_precision]
+    thresholds:
+      faithfulness: 0.7
+      answer_relevancy: 0.7
+      context_precision: 0.7
+    aggregate: all                # all = conjunção das três métricas
+    applies_to: modal             # roda sobre a resposta modal das N execuções
+
+  O4:
+    judgments: 5                  # maioria simples entre 5 julgamentos
+    temperature: 0.0
+    applies_to: modal
+
+  O5:
+    # O5(r, g) = O1(r, g) AND todas as O2(i)(r). Não é "oráculos em paralelo":
+    # uma violação determinística reprova o caso independentemente do escore
+    # semântico (§6.4).
+    conjunction: [O1, O2]
+
+coherence:
+  # §7.4 — procedimento de validade, não seção de resultados.
+  blind_reclassification_fraction: 0.30
+  blind_min_days: 7

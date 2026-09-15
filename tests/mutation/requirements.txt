@@ -1,0 +1,43 @@
+# Camada de mutação (tests/mutation/, protocolo IST/VSI:EQUISA).
+#
+# Instale num venv PRÓPRIO (tests/mutation/.venv), pelo mesmo motivo que
+# backend/requirements-eval.txt existe separado: ragas e deepeval exigem pydantic
+# mais novo que o pydantic==2.10.4 pinado em backend/requirements.txt, e o pip se
+# recusa a resolver os dois juntos. Por isso este arquivo NÃO herda de
+# requirements.txt — repete só o que o pipeline do SUT importa de fato
+# (retrieval/generation/vector_store/ingestion), sem pinar pydantic.
+#
+#   python -m venv tests/mutation/.venv
+#   tests/mutation/.venv/Scripts/activate      # Windows
+#   pip install -r tests/mutation/requirements.txt
+#
+# O venv da API (backend/.venv) continua intocado.
+
+# --- o que o SUT precisa para ser invocado in-process ---
+chromadb==1.5.9
+httpx==0.28.1
+pydantic-settings
+PyMuPDF==1.25.1
+tiktoken==0.8.0
+
+# --- harness, estatística e figuras ---
+PyYAML==6.0.2
+numpy==2.2.1
+scipy==1.15.1
+matplotlib==3.10.0
+
+# --- oráculo O3, backend `ragas` (o instrumento nomeado no protocolo) ---
+# Se o ponto de decisão da semana 5 mandar trocar de backend, troque
+# `oracles.O3.backend` em config/study.yaml e instale o bloco abaixo.
+ragas==0.2.14
+langchain-ollama==0.2.3
+
+# --- oráculo O3, backend `deepeval` (alternativa declarada, §9) ---
+# Descomente APENAS se for usar; instalar os dois juntos é resolvível, mas puxa
+# duas árvores de dependência grandes sem necessidade.
+# deepeval==4.2.0
+# ollama==0.6.2
+
+# Não é dependência de código, mas o estudo não roda sem: Ollama no ar com
+# qwen3:8b, nomic-embed-text, gemma3:4b (juiz, família distinta) e all-minilm
+# (operador E1). Ver o README desta pasta.

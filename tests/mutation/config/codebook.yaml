@@ -1,0 +1,70 @@
+# Codebook de coerência das mortes (§7.4 do protocolo).
+#
+# REGRA DE OURO: este arquivo é fechado ANTES de olhar qualquer resultado da
+# campanha. A data em `frozen_at` é o compromisso. Se um código novo se mostrar
+# necessário depois da coleta, ele entra como OTHER e a necessidade vira texto na
+# seção de ameaças — não se reescreve o codebook durante a classificação.
+
+frozen_at: null          # preencher com a data (YYYY-MM-DD) ao fechar, na semana 6
+frozen_by: null
+
+codes:
+  - code: RET-MISS
+    label: Evidência necessária não foi recuperada
+    definition: >
+      A resposta falha porque o chunk que contém a evidência exigida pelo caso não
+      aparece no contexto recuperado. Inclui recuperar zero chunks.
+    expected_from: [C1, C3, E2, K1, K3, K4, R1, R4]
+
+  - code: RET-DILUTE
+    label: Contexto recuperado diluído ou redundante
+    definition: >
+      A evidência está no contexto, mas acompanhada de tanto material irrelevante
+      ou repetido que a resposta se perde, generaliza ou responde à pergunta errada.
+    expected_from: [K2, R2, R3]
+
+  - code: RET-STALE
+    label: Evidência recuperada está desatualizada ou contradita
+    definition: >
+      O contexto traz um valor que já não é o do corpus de referência, ou traz dois
+      valores divergentes sem resolução.
+    expected_from: [C2, C4, E2]
+
+  - code: GEN-HALLUC
+    label: Afirmação não sustentada pelo contexto
+    definition: >
+      A resposta afirma algo que não está no contexto recuperado — inclusive quando
+      a afirmação é verdadeira no mundo, mas veio do conhecimento paramétrico.
+    expected_from: [P1]
+
+  - code: GEN-NOABSTAIN
+    label: Deveria ter se abstido e não se absteve
+    definition: >
+      O caso exige a frase de abstenção (fora do corpus) ou recusa (fora de escopo),
+      e a resposta tentou responder assim mesmo.
+    expected_from: [P2, R4]
+
+  - code: FMT-BREAK
+    label: Violação de formato ou de rastreabilidade
+    definition: >
+      A resposta é substancialmente correta mas quebra uma exigência formal do caso
+      — tipicamente não citar documento e página quando o caso é de rastreabilidade.
+    expected_from: [P3]
+
+  - code: FLOW-DESYNC
+    label: Resposta fora do fluxo esperado do caso
+    definition: >
+      A resposta responde a outra pergunta, pede esclarecimento quando não deveria,
+      ou deixa de pedir esclarecimento quando o caso é ambíguo.
+    expected_from: [K4, P1]
+
+  - code: OTHER
+    label: Não se encaixa em nenhum código acima
+    definition: >
+      Reservado. Uma proporção alta de OTHER é resultado a reportar, não um
+      problema a esconder: indica que o catálogo de causas estava incompleto.
+    expected_from: []
+
+# Uma morte é COERENTE quando o código atribuído está na lista `expected_from` do
+# operador que gerou o mutante. Incoerente = o caso reprovou, mas por outra razão
+# que não o defeito injetado — o que, somado, é a medida de validade do §7.4.

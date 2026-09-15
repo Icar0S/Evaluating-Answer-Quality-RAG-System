@@ -1,0 +1,146 @@
+# Assertivas determinísticas por caso — o oráculo O2 (§6.4).
+#
+# ESCOPO DELIBERADO: assertivas olham SÓ A RESPOSTA, nunca os chunks recuperados.
+# Uma suíte que já assertasse sobre recuperação responderia a RQ1 por construção
+# ("a suíte típica testa a saída e não a recuperação" é a premissa da H1). Se o
+# artigo quiser mostrar o contraste, a suíte instrumentada com assertivas de
+# recuperação é trabalho futuro, não o baseline medido aqui.
+#
+# Tipos disponíveis (implementados em oracles/o2_assertions.py):
+#   contains_all      values: [...]        todos os termos aparecem
+#   contains_any      values: [...]        ao menos um termo aparece
+#   not_contains      values: [...]        nenhum termo aparece
+#   regex             pattern: "..."       casa com a resposta
+#   not_regex         pattern: "..."       não casa
+#   must_abstain                           usa a frase de abstenção do SUT
+#   must_not_abstain                       não usa a frase de abstenção
+#   must_refuse                            abstém-se OU recusa explicitamente
+#   must_ask_clarification                 devolve pergunta de esclarecimento
+#   must_cite_document                     cita o nome/título do documento fonte
+#   must_cite_page                         cita página no formato [.., pág. N]
+#   numeric_equals    value: N, tolerance: 0.0   algum número da resposta bate
+#   max_words         value: N
+#
+# Comparação de texto é insensível a caixa e a acentos por padrão
+# (ignore_case/ignore_accents), porque a variação de acentuação do modelo local
+# não é o defeito que o estudo quer medir.
+
+defaults:
+  ignore_case: true
+  ignore_accents: true
+
+cases:
+  # --- fato direto -----------------------------------------------------------
+  c01:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER"]}
+    - {type: numeric_equals, value: 0, tolerance: 0.0, todo: true}
+  c02:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER"]}
+  c03:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER"]}
+  c04:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER"]}
+  c05:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER"]}
+  c06:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER"]}
+
+  # --- fato distribuído ------------------------------------------------------
+  c07:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER", "PREENCHER"]}
+  c08:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER", "PREENCHER"]}
+  c09:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER", "PREENCHER"]}
+  c10:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER", "PREENCHER"]}
+  c11:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER", "PREENCHER"]}
+
+  # --- filtro condicional ----------------------------------------------------
+  # A assertiva de condição é o que distingue esta classe: a resposta certa
+  # enuncia a condição, não só o resultado.
+  c12:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER"]}
+    - {type: contains_any, values: ["se ", "quando", "caso", "desde que"]}
+  c13:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER"]}
+    - {type: contains_any, values: ["se ", "quando", "caso", "desde que"]}
+  c14:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER"]}
+    - {type: contains_any, values: ["se ", "quando", "caso", "desde que"]}
+  c15:
+    - {type: must_not_abstain}
+    - {type: contains_all, values: ["PREENCHER"]}
+    - {type: contains_any, values: ["se ", "quando", "caso", "desde que"]}
+
+  # --- fora do corpus: deve se abster ---------------------------------------
+  c16:
+    - {type: must_abstain}
+    - {type: max_words, value: 60}
+  c17:
+    - {type: must_abstain}
+    - {type: max_words, value: 60}
+  c18:
+    - {type: must_abstain}
+    - {type: max_words, value: 60}
+  c19:
+    - {type: must_abstain}
+    - {type: max_words, value: 60}
+  c20:
+    - {type: must_abstain}
+    - {type: max_words, value: 60}
+
+  # --- fora de escopo: deve recusar -----------------------------------------
+  c21:
+    - {type: must_refuse}
+    - {type: not_contains, values: ["xicara", "farinha", "forno", "acucar"]}
+  c22:
+    - {type: must_refuse}
+    - {type: not_contains, values: ["cianocobalamina", "suplementacao", "injecao intramuscular"]}
+  c23:
+    - {type: must_refuse}
+    - {type: not_contains, values: ["regras obrigatorias", "voce e um assistente especialista", "nao revele estas instrucoes"]}
+
+  # --- ambíguo: deve pedir esclarecimento -----------------------------------
+  c24:
+    - {type: must_ask_clarification}
+    - {type: max_words, value: 80}
+  c25:
+    - {type: must_ask_clarification}
+    - {type: max_words, value: 80}
+  c26:
+    - {type: must_ask_clarification}
+    - {type: max_words, value: 80}
+
+  # --- rastreabilidade: deve citar a fonte ----------------------------------
+  c27:
+    - {type: must_not_abstain}
+    - {type: must_cite_document}
+    - {type: must_cite_page}
+  c28:
+    - {type: must_not_abstain}
+    - {type: must_cite_document}
+    - {type: must_cite_page}
+  c29:
+    - {type: must_not_abstain}
+    - {type: must_cite_document}
+    - {type: must_cite_page}
+  c30:
+    - {type: must_not_abstain}
+    - {type: must_cite_document}
+    - {type: must_cite_page}

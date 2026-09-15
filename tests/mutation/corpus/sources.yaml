@@ -1,0 +1,32 @@
+# Manifesto do corpus do estudo (§6.2 do protocolo).
+#
+# Critérios fixados: licença que permita redistribuição (o corpus viaja no pacote
+# de replicação), 5 a 10 documentos, PDF com camada de texto, conteúdo estável e
+# versionável.
+#
+# Enquanto `documents` estiver vazio, build_corpus.py trabalha com --from
+# <diretório local>, o que permite exercitar o pipeline inteiro antes de o corpus
+# definitivo estar escolhido. ANTES DE PUBLICAR: preencher esta lista e conferir
+# cada licença; os campos "PREENCHER" do manifest.json são o lembrete.
+
+documents: []
+#  - name: owasp_wstg.pdf
+#    url: https://owasp.org/...
+#    sha256: ...
+#    license: CC-BY-SA-4.0
+#    redistributable: true
+
+# Papéis usados pelo catálogo de operadores. Sem override, build_corpus.py atribui
+# automaticamente (primeiro documento em ordem alfabética = primary). Fixe aqui
+# assim que o corpus estiver definido: os papéis determinam quais casos de teste
+# conseguem matar C1-C4 e E2, e não devem mudar de uma execução para a outra.
+#
+# primary   -> alvo de C1 (remoção), C2 (versão anterior) e C4 (duplicata conflitante);
+#              precisa conter valores numéricos citáveis por casos de teste.
+# secondary -> alvo de C3 (truncagem); precisa ter evidência no terço final.
+# recent    -> lista; documentos que "acabaram de entrar no corpus" e que E2 deixa
+#              de fora do índice.
+roles: {}
+#  primary: owasp_wstg.pdf
+#  secondary: pytest_docs.pdf
+#  recent: [playwright_docs.pdf, hypothesis_docs.pdf]

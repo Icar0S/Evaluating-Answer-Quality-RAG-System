@@ -1,0 +1,501 @@
+{
+  "generated_at": "2026-09-15T02:49:15.519418+00:00",
+  "variants": [
+    {
+      "document": "comparative_analysis_of_large_language_model_too.pdf",
+      "variant": "prev",
+      "file": "comparative_analysis_of_large_language_model_too__prev.pdf",
+      "sha256": "e9646b426d8ca5d0f3349303552dea9a7216bdd00a036c27fae72cf793560608",
+      "substitutions": [
+        {
+          "page": 1,
+          "original": "12",
+          "replacement": "10",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "17",
+          "replacement": "14",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "11",
+          "replacement": "9",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "13",
+          "replacement": "10",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "20",
+          "replacement": "16",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "15",
+          "replacement": "12",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "14",
+          "replacement": "11",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "24",
+          "replacement": "19",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "30",
+          "replacement": "24",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev"
+        },
+        {
+          "page": 1,
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev"
+        },
+        {
+          "page": 2,
+          "original": "24",
+          "replacement": "19",
+          "rule": "prev"
+        },
+        {
+          "page": 2,
+          "original": "30",
+          "replacement": "24",
+          "rule": "prev"
+        },
+        {
+          "page": 2,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev"
+        },
+        {
+          "page": 2,
+          "original": "18",
+          "replacement": "14",
+          "rule": "prev"
+        },
+        {
+          "page": 2,
+          "original": "19",
+          "replacement": "15",
+          "rule": "prev"
+        },
+        {
+          "page": 2,
+          "original": "18",
+          "replacement": "14",
+          "rule": "prev"
+        },
+        {
+          "page": 2,
+          "original": "24",
+          "replacement": "19",
+          "rule": "prev"
+        },
+        {
+          "page": 2,
+          "original": "30",
+          "replacement": "24",
+          "rule": "prev"
+        },
+        {
+          "page": 2,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev"
+        },
+        {
+          "page": 3,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev"
+        },
+        {
+          "page": 3,
+          "original": "24",
+          "replacement": "19",
+          "rule": "prev"
+        },
+        {
+          "page": 3,
+          "original": "30",
+          "replacement": "24",
+          "rule": "prev"
+        },
+        {
+          "page": 3,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev"
+        },
+        {
+          "page": 4,
+          "original": "24",
+          "replacement": "19",
+          "rule": "prev"
+        },
+        {
+          "page": 4,
+          "original": "30",
+          "replacement": "24",
+          "rule": "prev"
+        },
+        {
+          "page": 4,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev"
+        },
+        {
+          "page": 4,
+          "original": "18",
+          "replacement": "14",
+          "rule": "prev"
+        },
+        {
+          "page": 4,
+          "original": "18",
+          "replacement": "14",
+          "rule": "prev"
+        },
+        {
+          "page": 4,
+          "original": "24",
+          "replacement": "19",
+          "rule": "prev"
+        },
+        {
+          "page": 4,
+          "original": "30",
+          "replacement": "24",
+          "rule": "prev"
+        },
+        {
+          "page": 4,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev"
+        },
+        {
+          "page": 5,
+          "original": "10",
+          "replacement": "8",
+          "rule": "prev"
+        },
+        {
+          "page": 5,
+          "original": "24",
+          "replacement": "19",
+          "rule": "prev"
+        },
+        {
+          "page": 5,
+          "original": "30",
+          "replacement": "24",
+          "rule": "prev"
+        },
+        {
+          "page": 5,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev"
+        },
+        {
+          "page": 5,
+          "original": "10",
+          "replacement": "8",
+          "rule": "prev"
+        }
+      ]
+    },
+    {
+      "document": "comparative_analysis_of_large_language_model_too.pdf",
+      "variant": "conflict",
+      "file": "comparative_analysis_of_large_language_model_too__conflict.pdf",
+      "sha256": "67edf57cae029ed998e0b55687d967d8f988cb019d9317b017459c68b8469a44",
+      "substitutions": [
+        {
+          "page": 1,
+          "original": "12",
+          "replacement": "16",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "17",
+          "replacement": "23",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "11",
+          "replacement": "15",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "13",
+          "replacement": "18",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "20",
+          "replacement": "27",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "15",
+          "replacement": "20",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "14",
+          "replacement": "19",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "24",
+          "replacement": "32",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "30",
+          "replacement": "40",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict"
+        },
+        {
+          "page": 1,
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict"
+        },
+        {
+          "page": 2,
+          "original": "24",
+          "replacement": "32",
+          "rule": "conflict"
+        },
+        {
+          "page": 2,
+          "original": "30",
+          "replacement": "40",
+          "rule": "conflict"
+        },
+        {
+          "page": 2,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict"
+        },
+        {
+          "page": 2,
+          "original": "18",
+          "replacement": "24",
+          "rule": "conflict"
+        },
+        {
+          "page": 2,
+          "original": "19",
+          "replacement": "26",
+          "rule": "conflict"
+        },
+        {
+          "page": 2,
+          "original": "18",
+          "replacement": "24",
+          "rule": "conflict"
+        },
+        {
+          "page": 2,
+          "original": "24",
+          "replacement": "32",
+          "rule": "conflict"
+        },
+        {
+          "page": 2,
+          "original": "30",
+          "replacement": "40",
+          "rule": "conflict"
+        },
+        {
+          "page": 2,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict"
+        },
+        {
+          "page": 3,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict"
+        },
+        {
+          "page": 3,
+          "original": "24",
+          "replacement": "32",
+          "rule": "conflict"
+        },
+        {
+          "page": 3,
+          "original": "30",
+          "replacement": "40",
+          "rule": "conflict"
+        },
+        {
+          "page": 3,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict"
+        },
+        {
+          "page": 4,
+          "original": "24",
+          "replacement": "32",
+          "rule": "conflict"
+        },
+        {
+          "page": 4,
+          "original": "30",
+          "replacement": "40",
+          "rule": "conflict"
+        },
+        {
+          "page": 4,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict"
+        },
+        {
+          "page": 4,
+          "original": "18",
+          "replacement": "24",
+          "rule": "conflict"
+        },
+        {
+          "page": 4,
+          "original": "18",
+          "replacement": "24",
+          "rule": "conflict"
+        },
+        {
+          "page": 4,
+          "original": "24",
+          "replacement": "32",
+          "rule": "conflict"
+        },
+        {
+          "page": 4,
+          "original": "30",
+          "replacement": "40",
+          "rule": "conflict"
+        },
+        {
+          "page": 4,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict"
+        },
+        {
+          "page": 5,
+          "original": "10",
+          "replacement": "14",
+          "rule": "conflict"
+        },
+        {
+          "page": 5,
+          "original": "24",
+          "replacement": "32",
+          "rule": "conflict"
+        },
+        {
+          "page": 5,
+          "original": "30",
+          "replacement": "40",
+          "rule": "conflict"
+        },
+        {
+          "page": 5,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict"
+        },
+        {
+          "page": 5,
+          "original": "10",
+          "replacement": "14",
+          "rule": "conflict"
+        }
+      ]
+    }
+  ]
+}

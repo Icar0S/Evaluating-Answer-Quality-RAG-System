@@ -1,0 +1,70 @@
+{
+  "generated_at": "2026-09-15T02:49:15.511873+00:00",
+  "source_dir": "C:\\Users\\Icaro\\Documents\\cagece-projetos\\Evaluating-Answer-Quality-RAG-System\\data\\source_pdfs",
+  "tokens_per_page": 1800,
+  "documents": [
+    {
+      "document": "comparative_analysis_of_large_language_model_too.pdf",
+      "source_file": "Comparative Analysis of Large Language Model Tools for Automated Test Data Generation from BDD.pdf",
+      "pages": 7,
+      "approx_tokens": 14675,
+      "sha256": "f8f716c8a1f88e6bdc9bd7e11a03d2de55419c063c97a99d3e8e115fb12a0a23",
+      "license": "PREENCHER",
+      "source_url": "PREENCHER"
+    },
+    {
+      "document": "large_language_models_for_software_testing_a_res.pdf",
+      "source_file": "Large_Language_Models_for_Software_Testing_A_Resea.pdf",
+      "pages": 22,
+      "approx_tokens": 40204,
+      "sha256": "dcf3eeacd6ebf4196332623e7ffdc3f8cb86ee7ad183b8cbaea55a2e5f7c9975",
+      "license": "PREENCHER",
+      "source_url": "PREENCHER"
+    },
+    {
+      "document": "metmap_metamorphic_testing_for_detecting_false_v.pdf",
+      "source_file": "MeTMaP Metamorphic Testing for Detecting False Vector Matching Problems in LLM-Augmented Generation.pdf",
+      "pages": 12,
+      "approx_tokens": 18754,
+      "sha256": "97db42c0c5df6ba1cbd59cb258205277f0850f848852437ad4dbf5a804121413",
+      "license": "PREENCHER",
+      "source_url": "PREENCHER"
+    },
+    {
+      "document": "metarag_metamorphic_testing_for_hallucination_de.pdf",
+      "source_file": "MetaRAG Metamorphic Testing for Hallucination Detection in RAG Systems.pdf",
+      "pages": 9,
+      "approx_tokens": 14758,
+      "sha256": "4bb3b2baf389145f7d323bb2945b5ce871f1cb8f028a76aaa75e1d0a7ea1a66d",
+      "license": "PREENCHER",
+      "source_url": "PREENCHER"
+    },
+    {
+      "document": "neurips_2024_ragchecker_a_fine_grained_framework.pdf",
+      "source_file": "NeurIPS-2024-ragchecker-a-fine-grained-framework-for-diagnosing-retrieval-augmented-generation-Paper-Datasets_and_Benchmarks_Track.pdf",
+      "pages": 16,
+      "approx_tokens": 22510,
+      "sha256": "9b3f9a9aa9818086e9aba87819a858591e4e6ba360cba4dadb3afbb82497adf8",
+      "license": "PREENCHER",
+      "source_url": "PREENCHER"
+    },
+    {
+      "document": "rag_driven_multiple_assertions_generation_with_l.pdf",
+      "source_file": "RAG-Driven Multiple Assertions Generation with Large Language Models.pdf",
+      "pages": 14,
+      "approx_tokens": 25129,
+      "sha256": "f78d2a4a9f4858e6b4b1e6d1d2d838e4ff42b18b13715c5155694b5d56275d18",
+      "license": "PREENCHER",
+      "source_url": "PREENCHER"
+    }
+  ],
+  "roles": {
+    "primary": "comparative_analysis_of_large_language_model_too.pdf",
+    "secondary": "large_language_models_for_software_testing_a_res.pdf",
+    "recent": [
+      "neurips_2024_ragchecker_a_fine_grained_framework.pdf",
+      "rag_driven_multiple_assertions_generation_with_l.pdf"
+    ]
+  },
+  "license_note": "Todo documento precisa de licença que permita redistribuição antes do pacote de replicação (Zenodo). Campos 'PREENCHER' bloqueiam o empacotamento."
+}

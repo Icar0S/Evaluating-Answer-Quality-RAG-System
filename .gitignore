@@ -33,3 +33,18 @@ tests/e2e/playwright-report/
 .vscode/
 .DS_Store
 .aider*
+
+# Estudo de mutação (tests/mutation/, ver o README de lá)
+tests/mutation/.venv/
+tests/mutation/work/
+tests/mutation/results/*
+!tests/mutation/results/.gitkeep
+tests/mutation/suite/drafts.jsonl
+# Os PDFs do corpus ficam de fora ENQUANTO as licenças não estiverem resolvidas
+# em corpus/sources.yaml — o corpus precisa ser redistribuível para ir ao pacote
+# de replicação. Resolvidas as licenças, remova estas duas linhas e versione o
+# corpus: ele é artefato do estudo, não subproduto. O manifesto e o registro das
+# variantes continuam versionados de qualquer forma (são pequenos e é o que
+# permite auditar o que mudou).
+tests/mutation/corpus/base/
+tests/mutation/corpus/variants/*.pdf
