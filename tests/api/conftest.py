@@ -198,11 +198,12 @@ def _stub_vector_store(monkeypatch):
     monkeypatch.setattr(
         vector_store,
         "query",
-        lambda embedding, top_k: {
+        lambda embedding, top_k, include_embeddings=False: {
             "ids": [["doc.pdf::p1::c0"]],
             "documents": [["Trecho de teste sobre avaliacao de RAG."]],
             "metadatas": [[{"document": "doc.pdf", "page": 1}]],
             "distances": [[0.25]],
+            "embeddings": [[[0.1, 0.2, 0.3]]],
         },
     )
 

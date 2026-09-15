@@ -40,35 +40,58 @@ def extract_pdf_pages(pdf_path: Path) -> list[tuple[int, str]]:
     return pages
 
 
-def chunk_text(text: str, chunk_size_tokens: int, overlap_tokens: int) -> list[str]:
+def chunk_text(
+    text: str,
+    chunk_size_tokens: int,
+    overlap_tokens: int,
+    boundary_offset_tokens: int = 0,
+) -> list[str]:
+    """Divide o texto em janelas de tokens com sobreposição.
+
+    boundary_offset_tokens desloca todas as fronteiras: o primeiro chunk fica
+    encurtado nesse tanto e os seguintes passam a cortar em posições diferentes,
+    sem perder nenhum token. Serve ao operador de mutação K4, que verifica o que
+    acontece quando um corte cai no meio de uma regra.
+    """
     tokens = _encoding.encode(text)
     if not tokens:
         return []
     if overlap_tokens >= chunk_size_tokens:
         overlap_tokens = max(chunk_size_tokens // 4, 0)
 
+    offset = boundary_offset_tokens % chunk_size_tokens if chunk_size_tokens > 0 else 0
+
     chunks: list[str] = []
     start = 0
+    first_size = chunk_size_tokens - offset if offset else chunk_size_tokens
+    size = max(first_size, 1)
     while start < len(tokens):
-        end = start + chunk_size_tokens
+        end = start + size
         chunks.append(_encoding.decode(tokens[start:end]))
         if end >= len(tokens):
             break
         start = end - overlap_tokens
+        size = chunk_size_tokens
     return chunks
 
 
-def build_chunk_records(pdf_path: Path, chunk_size_tokens: int, overlap_tokens: int) -> list[ChunkRecord]:
+def build_chunk_records(
+    pdf_path: Path,
+    chunk_size_tokens: int,
+    overlap_tokens: int,
+    boundary_offset_tokens: int = 0,
+) -> list[ChunkRecord]:
     records: list[ChunkRecord] = []
     doc_name = pdf_path.name
     for page_num, page_text in extract_pdf_pages(pdf_path):
-        for idx, chunk in enumerate(chunk_text(page_text, chunk_size_tokens, overlap_tokens)):
+        page_chunks = chunk_text(page_text, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)
+        for idx, chunk in enumerate(page_chunks):
             chunk_id = f"{pdf_path.stem}::p{page_num}::c{idx}"
             records.append(ChunkRecord(chunk_id=chunk_id, document=doc_name, page=page_num, text=chunk))
     return records
 
 
-def embed_texts(texts: list[str]) -> list[list[float]]:
+def embed_texts(texts: list[str], model: str | None = None) -> list[list[float]]:
     """Gera embeddings sempre via Ollama LOCAL, em lote quando /api/embed está disponível.
 
     Deliberadamente ignora o provider ativo: a API remota (smartdatatest, ver
@@ -81,7 +104,10 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
         return []
     settings = get_settings()
     base_url = settings.ollama_base_url
-    embedding_model = settings.embedding_model
+    # `model` explícito existe para quem precisa de um espaço de embedding fixo,
+    # independente da configuração corrente — é o caso do oráculo O1 do estudo de
+    # mutação, que não pode ser afetado pelo operador E1 (troca de embedding).
+    embedding_model = model or settings.embedding_model
     url = f"{base_url}/api/embed"
     with httpx.Client(timeout=settings.generation_timeout_seconds) as client:
         try:
@@ -123,7 +149,12 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
     all_records: list[ChunkRecord] = []
     for pdf_path in pdf_files:
         try:
-            records = build_chunk_records(pdf_path, settings.chunk_size_tokens, settings.chunk_overlap_tokens)
+            records = build_chunk_records(
+                pdf_path,
+                settings.chunk_size_tokens,
+                settings.chunk_overlap_tokens,
+                settings.chunk_boundary_offset_tokens,
+            )
             all_records.extend(records)
             logger.info(f"Ingerido {pdf_path.name}: {len(records)} chunks")
         except Exception as exc:
