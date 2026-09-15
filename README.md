@@ -271,6 +271,24 @@ resposta ([DeepEval](https://deepeval.com/docs/introduction), ver seção "Teste
 corpus de teste via ZIP e geração de dataset sintético assistida por LLM (o dataset atual é
 curado manualmente, ver `tests/deepeval/goldens/dataset.json`). Detalhes em `docs/ARCHITECTURE.md`.
 
+## Fase 4 — Estudo de mutação (pesquisa)
+
+O repositório é também o SUT de um estudo de teste de mutação para pipelines RAG,
+submetido à special issue **VSI:EQUISA** do *Information and Software Technology*
+(*Mutation-Based Adequacy Assessment of Test Suites for Retrieval-Augmented
+Assistants*). O estudo mutaciona as cinco camadas do pipeline — corpus, chunking,
+índice, recuperação e prompt — com 18 operadores, e mede quanto do veredito de
+adequação depende do oráculo escolhido.
+
+Tudo vive em [tests/mutation/](tests/mutation/), com venv próprio e índice
+próprio: **rodar a campanha não toca `data/vector_store` nem muda o
+comportamento do assistente**. Os parâmetros que os operadores mutacionam foram
+adicionados ao pipeline com defaults que preservam o comportamento anterior (o
+system prompt v1 sai byte a byte idêntico).
+
+Passo a passo completo — preparo, calibração, campanha, análise e o que ainda
+depende de decisão humana — em **[tests/mutation/README.md](tests/mutation/README.md)**.
+
 ## Fase 3 — Human-in-the-loop (proposta)
 
 Camada de revisão humana e relatório consolidado comparando notas do DeepEval com avaliação
@@ -297,6 +315,7 @@ scripts/                  Setup do Ollama, ingestão via CLI e os .bat de ambien
 scripts/start_dev.bat        sobe tudo em modo local + roda as duas suítes
 scripts/start_dev_remote.bat sobe tudo gerando pelo servidor, sem LLM local
 tests/                    API, RAGAS, revisão humana (Fase 2/3)
+tests/mutation/           Estudo de mutação para RAG (Fase 4) — operadores, oráculos, campanha e análise
 logs/                     interactions.jsonl (log estruturado, não versionado)
 docs/ARCHITECTURE.md      Decisões técnicas e racional
 ```
