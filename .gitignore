@@ -48,3 +48,6 @@ tests/mutation/suite/drafts.jsonl
 # permite auditar o que mudou).
 tests/mutation/corpus/base/
 tests/mutation/corpus/variants/*.pdf
+
+# Saida de analise ad-hoc; o artefato reproduzivel e oracle_diagnostic.json
+tests/mutation/calibration/scores.json
