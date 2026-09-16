@@ -30,6 +30,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from tests.mutation import stats as study_stats
+from tests.mutation.operators import apply as operators
 from tests.mutation.runner import paths
 from tests.mutation.runner.console import get_logger
 from tests.mutation.runner.sut import ensure_index, load_study_config, sut_configuration
@@ -136,6 +137,9 @@ def main(argv: list[str] | None = None) -> int:
     overrides = dict(study.baseline_overrides)
     overrides["min_similarity_score"] = 0.0
 
+    # work/ precisa refletir corpus/base antes de indexar; sem mutante
+    # aplicado, revert() e justamente "reconstruir do zero a partir do base".
+    operators.revert()
     with sut_configuration(overrides) as resolved:
         report = ensure_index(resolved)
         if args.index_only:

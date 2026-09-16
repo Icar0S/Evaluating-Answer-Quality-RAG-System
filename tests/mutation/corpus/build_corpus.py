@@ -458,8 +458,28 @@ def build(source_dir: Path, limit: int | None, tokens_per_page: int, roles_overr
         ),
     }
     paths.CORPUS_MANIFEST.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+    _invalidate_work()
     logger.info("manifest.json escrito com %d documentos; papéis: %s", len(documents), roles)
     return manifest
+
+
+def _invalidate_work() -> None:
+    """Descarta work/ e a assinatura do índice depois de reconstruir o corpus.
+
+    Sem isto, reconstruir o corpus não chegava ao índice: `ensure_index` compara
+    a assinatura com o conteúdo de work/index_src, que continuava com os PDFs
+    antigos, e concluía — corretamente, dado o que via — que nada havia mudado.
+    O sintoma foi um rascunho citando "(?= 0.377)" horas depois de o corpus já
+    conter "(p= 0.377)": o modelo leu o índice, não o corpus.
+    """
+    import shutil
+
+    for directory in (paths.WORK_CORPUS, paths.WORK_INDEX_SRC):
+        if directory.exists():
+            shutil.rmtree(directory)
+    if paths.WORK_STATE.exists():
+        paths.WORK_STATE.unlink()
+    logger.info("work/ invalidado — o próximo build de índice vai reindexar.")
 
 
 def apply_roles(roles_override: dict[str, Any]) -> int:

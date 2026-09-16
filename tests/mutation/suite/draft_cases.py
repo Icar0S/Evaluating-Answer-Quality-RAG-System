@@ -39,6 +39,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from tests.mutation.corpus.build_corpus import looks_like_bibliography
+from tests.mutation.operators import apply as operators
 from tests.mutation.runner import jsonl, paths
 from tests.mutation.runner.console import get_logger
 from tests.mutation.runner.sut import ensure_index, load_study_config, sut_configuration
@@ -168,7 +169,22 @@ def _pick_chunks(
 
         if case.evidence_role == "secondary":
             # C3 remove os ultimos 30%: a evidencia precisa morar la.
-            tail = [c for c in chunks if c["page"] and c["page"] > _c3_cut_page(document)]
+            cut = _c3_cut_page(document)
+            tail = [c for c in chunks if c["page"] and c["page"] > cut]
+            tail = [c for c in tail if _factual_density(c["text"]) > 0]
+            if not tail:
+                # Degradacao silenciosa aqui custaria caro: o caso sai parecendo
+                # normal e C3 fica sem quem o mate. Acontece quando a cauda do
+                # documento `secondary` tem poucas paginas de prosa e elas ja
+                # foram usadas por outro caso — o sinal e para trocar o papel,
+                # nao para aceitar o rascunho.
+                logger.warning(
+                    "%s: nenhum trecho com fato sobrou na cauda de %s (paginas > %d) — "
+                    "o rascunho vai sair de outro ponto do documento e NAO sustenta C3. "
+                    "Rode tools/audit_roles.py: provavelmente o papel `secondary` precisa "
+                    "de um documento com mais prosa no terco final.",
+                    case.case_id, document[:40], cut,
+                )
             chunks = tail or chunks
 
         if prefer_altered:
@@ -413,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
         # existir. Construi-lo aqui evita a dependencia circular do runbook:
         # calibrar o piso de recuperacao exige casos prontos, e escrever casos
         # exige indice.
+        operators.revert()   # work/ espelha corpus/base antes de indexar
         ensure_index(resolved)
         for case in cases:
             wants_altered = altered if {"C2", "C4"} & set(case.targets) else set()
