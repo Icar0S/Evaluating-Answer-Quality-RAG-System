@@ -46,8 +46,20 @@ documents: []
 #
 # Ao trocar o corpus, reavalie os três. O README explica como medir.
 roles:
+  # primary: 275 valores factuais, 40 deles perturbados pelas variantes. Mantido
+  # mesmo com rag_driven tendo mais fatos (329): trocar exigiria regerar as
+  # variantes e reancorar c01/c02/c15, sem ganho que justifique.
   primary: does_prompt_engineering_really_impact_llm_genera.pdf
-  secondary: rag_driven_multiple_assertions_generation_with_l.pdf
+
+  # secondary: escolhido pela cauda, não pelo total. C3 apaga as páginas 7-9 do
+  # metarag, e as três são prosa com 65 fatos citáveis. O rag_driven, que ocupava
+  # o papel antes, tem só a página 11 aproveitável no trecho apagado — três casos
+  # (c03, c11, c28) disputavam uma página, e o que sobrou virou "qual é o número
+  # da página mencionada no trecho?".
+  secondary: metarag_metamorphic_testing_for_hallucination_de.pdf
+
+  # recent: os dois menores documentos com fato suficiente. E2 tira ambos do
+  # índice de uma vez; documento grande derrubaria casos alheios ao defeito.
   recent:
-    - metarag_metamorphic_testing_for_hallucination_de.pdf
     - evaluator_bias_in_llm_based_program_repair_a_dis.pdf
+    - qaquest_a_gamified_plugin_for_manual_testing.pdf

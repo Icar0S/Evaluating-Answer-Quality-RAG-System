@@ -304,14 +304,29 @@ def _verify(proposal: dict, chunks: list[dict], case, altered: set[str]) -> list
     context = " ".join(chunk["text"] for chunk in chunks)
     context_numbers = _numbers(context)
     answer = proposal.get("expected_output", "")
+    # A citacao entre colchetes carrega o numero da PAGINA, que por definicao nao
+    # esta no texto do trecho. Conferir numero ali acusava todo caso de
+    # rastreabilidade por fazer exatamente o que o caso pede.
+    answer_body = re.sub(r"\[[^\]]*\]", " ", answer)
     problems: list[str] = []
 
-    missing = sorted(_numbers(answer) - context_numbers)
+    missing = sorted(_numbers(answer_body) - context_numbers)
     if missing:
         problems.append(f"numero(s) da resposta ausentes do trecho: {missing}")
 
     if {"C2", "C4"} & set(case.targets):
-        if not (_numbers(answer) & {n.rstrip("%").replace(",", ".") for n in altered}):
+        # Os dois lados precisam da MESMA normalizacao. Tirar o "%" so do
+        # conjunto perturbado fazia "56.58%" nao casar com "56.58" e reprovava
+        # rascunho correto — o c02 apanhou disso.
+        def bare(value: str) -> str:
+            return value.rstrip("%").rstrip(".,").replace(",", ".")
+
+        # Numero entre colchetes na resposta e referencia bibliografica, nao
+        # fato: o c15 passou citando "[11]" porque as variantes tinham mexido no
+        # "11" de "September 8-11, 2026". Ancora que vem de citacao ou de data de
+        # cabecalho nao torna C2/C4 observaveis.
+        citable = _numbers(answer_body)
+        if not ({bare(n) for n in citable} & {bare(n) for n in altered}):
             problems.append(
                 "nao cita valor que as variantes prev/conflict alteram — C2 e C4 "
                 "sobreviveriam por construcao"
@@ -384,7 +399,7 @@ def _page_of(chunk_id: str) -> int | None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Propõe rascunhos de casos a partir do corpus.")
-    parser.add_argument("--case", help="rascunha só um case_id")
+    parser.add_argument("--case", help="rascunha um case_id, ou varios separados por virgula")
     parser.add_argument("--all", action="store_true", help="rascunha todos os casos ainda em rascunho")
     parser.add_argument(
         "--recheck",
@@ -408,9 +423,11 @@ def main(argv: list[str] | None = None) -> int:
 
     cases = load_cases()
     if args.case:
-        cases = [case for case in cases if case.case_id == args.case]
-        if not cases:
-            raise SystemExit(f"case_id {args.case} não existe em golden.jsonl")
+        wanted = {c.strip() for c in args.case.split(",")}
+        cases = [case for case in cases if case.case_id in wanted]
+        missing = wanted - {case.case_id for case in cases}
+        if missing:
+            raise SystemExit(f"case_id inexistente em golden.jsonl: {sorted(missing)}")
     else:
         cases = [case for case in cases if case.is_draft and case.evidence_role != "none"]
 
@@ -420,7 +437,17 @@ def main(argv: list[str] | None = None) -> int:
 
     rng = random.Random(args.seed)
     altered = _altered_values()
-    used_chunks: set[str] = set()
+    # Trechos ja reivindicados por OUTROS casos ficam fora de alcance. Sem isto o
+    # rodizio so valia dentro de uma execucao, e reger caso a caso (--case c04,
+    # --case c05) voltava a produzir perguntas iguais: cada processo comecava
+    # sem saber o que os outros usaram.
+    selecionados = {case.case_id for case in cases}
+    used_chunks: set[str] = {
+        chunk_id
+        for row in jsonl.read(DRAFTS_PATH)
+        if row["case_id"] not in selecionados
+        for chunk_id in row["source_chunk_ids"]
+    }
     role_cursor: dict[str, int] = {}
     proposals: list[dict] = []
 

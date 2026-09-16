@@ -97,10 +97,10 @@
   ],
   "roles": {
     "primary": "does_prompt_engineering_really_impact_llm_genera.pdf",
-    "secondary": "rag_driven_multiple_assertions_generation_with_l.pdf",
+    "secondary": "metarag_metamorphic_testing_for_hallucination_de.pdf",
     "recent": [
-      "metarag_metamorphic_testing_for_hallucination_de.pdf",
-      "evaluator_bias_in_llm_based_program_repair_a_dis.pdf"
+      "evaluator_bias_in_llm_based_program_repair_a_dis.pdf",
+      "qaquest_a_gamified_plugin_for_manual_testing.pdf"
     ]
   },
   "license_note": "Todo documento precisa de licença que permita redistribuição antes do pacote de replicação (Zenodo). Campos 'PREENCHER' bloqueiam o empacotamento.",
