@@ -381,6 +381,34 @@ def build(source_dir: Path, limit: int | None, tokens_per_page: int, roles_overr
     return manifest
 
 
+def apply_roles(roles_override: dict[str, Any]) -> int:
+    """Regrava apenas `roles` no manifesto, validando contra os documentos existentes."""
+    if not roles_override:
+        logger.error("corpus/sources.yaml nao define `roles`. Nada a repinar.")
+        return 1
+
+    manifest = json.loads(paths.CORPUS_MANIFEST.read_text(encoding="utf-8"))
+    known = {document["document"] for document in manifest["documents"]}
+
+    missing: list[str] = []
+    for role, value in roles_override.items():
+        for name in (value if isinstance(value, list) else [value]):
+            if name not in known:
+                missing.append(f"{role} -> {name}")
+    if missing:
+        logger.error("Papeis apontam para documentos que nao estao no corpus: %s", missing)
+        return 1
+
+    manifest["roles"] = dict(manifest.get("roles", {}))
+    manifest["roles"].update(roles_override)
+    paths.CORPUS_MANIFEST.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    logger.info("Papeis repinados: %s", manifest["roles"])
+    logger.info("Se `primary` mudou, rode --make-variants: as variantes seguem esse papel.")
+    return 0
+
+
 def build_variants(max_substitutions: int, tokens_per_page: int) -> dict:
     manifest = json.loads(paths.CORPUS_MANIFEST.read_text(encoding="utf-8"))
     roles = manifest["roles"]
@@ -434,6 +462,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=8, help="quantos documentos usar (protocolo: 5 a 10)")
     parser.add_argument("--tokens-per-page", type=int, default=DEFAULT_TOKENS_PER_PAGE)
     parser.add_argument("--make-variants", action="store_true", help="gera apenas as variantes prev/conflict")
+    parser.add_argument(
+        "--roles-only",
+        action="store_true",
+        help="so repina os papeis do manifesto a partir de sources.yaml, sem re-renderizar",
+    )
     parser.add_argument("--max-substitutions", type=int, default=40)
     args = parser.parse_args(argv)
 
@@ -447,6 +480,11 @@ def main(argv: list[str] | None = None) -> int:
     if paths.CORPUS_SOURCES.exists():
         sources = yaml.safe_load(paths.CORPUS_SOURCES.read_text(encoding="utf-8")) or {}
         roles_override = sources.get("roles") or {}
+
+    if args.roles_only:
+        # Repinar papeis nao muda um byte do corpus, entao re-renderizar seria so
+        # trocar o sha256 de todo documento e forcar uma reindexacao inutil.
+        return apply_roles(roles_override)
 
     source_dir = Path(args.source)
     if not source_dir.is_absolute():

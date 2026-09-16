@@ -9,8 +9,11 @@
       "pages": 10,
       "approx_tokens": 18800,
       "sha256": "7a07d4e9099f74c717b57d4dbf9ca3ed0a909b91d58677fa0e135c2b222a45c8",
-      "license": "PREENCHER",
-      "source_url": "PREENCHER"
+      "license": "DESCONHECIDA",
+      "source_url": "PREENCHER",
+      "redistributable": "unknown",
+      "license_note": "o PDF não declara licença — verifique na página do editor/arXiv antes de publicar",
+      "identifier": "arXiv:2507.14256"
     },
     {
       "document": "evaluator_bias_in_llm_based_program_repair_a_dis.pdf",
@@ -18,8 +21,11 @@
       "pages": 8,
       "approx_tokens": 15271,
       "sha256": "e36d78a5a0a082cf9f924c8b0d58e2049ab0de449348d675918b039275ba6e29",
-      "license": "PREENCHER",
-      "source_url": "PREENCHER"
+      "license": "DESCONHECIDA",
+      "source_url": "PREENCHER",
+      "redistributable": "unknown",
+      "license_note": "o PDF não declara licença — verifique na página do editor/arXiv antes de publicar",
+      "identifier": "DOI:10.1145/3664606"
     },
     {
       "document": "large_language_models_for_software_testing_a_res.pdf",
@@ -27,8 +33,11 @@
       "pages": 22,
       "approx_tokens": 40204,
       "sha256": "e2f2bddfb02a7f88a456db3b876a5c4696e6ea228d03f631a6c2cd16bba5aec6",
-      "license": "PREENCHER",
-      "source_url": "PREENCHER"
+      "license": "ACM",
+      "source_url": "PREENCHER",
+      "redistributable": "no",
+      "license_note": "copyright licenciado à ACM — redistribuição do PDF não é garantida",
+      "identifier": "arXiv:2509.25043"
     },
     {
       "document": "metmap_metamorphic_testing_for_detecting_false_v.pdf",
@@ -36,8 +45,11 @@
       "pages": 12,
       "approx_tokens": 18754,
       "sha256": "8e721f7e308027306a03df1df541947dc848231a917251dbaf8aeadb9e6abcb1",
-      "license": "PREENCHER",
-      "source_url": "PREENCHER"
+      "license": "ACM",
+      "source_url": "PREENCHER",
+      "redistributable": "no",
+      "license_note": "copyright licenciado à ACM — redistribuição do PDF não é garantida",
+      "identifier": "DOI:10.1145/3650105.3652297"
     },
     {
       "document": "metarag_metamorphic_testing_for_hallucination_de.pdf",
@@ -45,8 +57,10 @@
       "pages": 9,
       "approx_tokens": 14758,
       "sha256": "c381623bf4708a53f44304f903ab0c0aa4a04cf6d36d1f50d0d7af29d1dec7c3",
-      "license": "PREENCHER",
-      "source_url": "PREENCHER"
+      "license": "CC-BY-4.0",
+      "source_url": "PREENCHER",
+      "redistributable": "yes",
+      "license_note": "Creative Commons Attribution 4.0 — redistribuição permitida com atribuição"
     },
     {
       "document": "neurips_2024_ragchecker_a_fine_grained_framework.pdf",
@@ -54,8 +68,10 @@
       "pages": 16,
       "approx_tokens": 22510,
       "sha256": "c41a29f575e45c94a899746d3efb68b1f7d0ece0795b5ecd6328beb87ddb60b8",
-      "license": "PREENCHER",
-      "source_url": "PREENCHER"
+      "license": "DESCONHECIDA",
+      "source_url": "PREENCHER",
+      "redistributable": "unknown",
+      "license_note": "o PDF não declara licença — verifique na página do editor/arXiv antes de publicar"
     },
     {
       "document": "qaquest_a_gamified_plugin_for_manual_testing.pdf",
@@ -63,8 +79,11 @@
       "pages": 5,
       "approx_tokens": 8911,
       "sha256": "fcb219539050ea8ce0190dd65b3bf3366e496a78625085bf9cbbca1d263d9c36",
-      "license": "PREENCHER",
-      "source_url": "PREENCHER"
+      "license": "DESCONHECIDA",
+      "source_url": "PREENCHER",
+      "redistributable": "unknown",
+      "license_note": "o PDF não declara licença — verifique na página do editor/arXiv antes de publicar",
+      "identifier": "DOI:10.1111/j.1559-1816.2004.tb02690.x"
     },
     {
       "document": "rag_driven_multiple_assertions_generation_with_l.pdf",
@@ -72,17 +91,25 @@
       "pages": 14,
       "approx_tokens": 25129,
       "sha256": "3995a9c4f2a52c3fd40fc18c17670c56b738c610c9eba1a153a0e496fd57481d",
-      "license": "PREENCHER",
-      "source_url": "PREENCHER"
+      "license": "DESCONHECIDA",
+      "source_url": "PREENCHER",
+      "redistributable": "unknown",
+      "license_note": "o PDF não declara licença — verifique na página do editor/arXiv antes de publicar",
+      "identifier": "DOI:10.1007/s10664-025-10641-1"
     }
   ],
   "roles": {
     "primary": "does_prompt_engineering_really_impact_llm_genera.pdf",
-    "secondary": "evaluator_bias_in_llm_based_program_repair_a_dis.pdf",
+    "secondary": "rag_driven_multiple_assertions_generation_with_l.pdf",
     "recent": [
-      "qaquest_a_gamified_plugin_for_manual_testing.pdf",
-      "rag_driven_multiple_assertions_generation_with_l.pdf"
+      "metarag_metamorphic_testing_for_hallucination_de.pdf",
+      "evaluator_bias_in_llm_based_program_repair_a_dis.pdf"
     ]
   },
-  "license_note": "Todo documento precisa de licença que permita redistribuição antes do pacote de replicação (Zenodo). Campos 'PREENCHER' bloqueiam o empacotamento."
+  "license_note": "Todo documento precisa de licença que permita redistribuição antes do pacote de replicação (Zenodo). Campos 'PREENCHER' bloqueiam o empacotamento.",
+  "license_audit": {
+    "yes": 1,
+    "no": 2,
+    "unknown": 5
+  }
 }

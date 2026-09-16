@@ -6,27 +6,48 @@
 #
 # Enquanto `documents` estiver vazio, build_corpus.py trabalha com --from
 # <diretório local>, o que permite exercitar o pipeline inteiro antes de o corpus
-# definitivo estar escolhido. ANTES DE PUBLICAR: preencher esta lista e conferir
-# cada licença; os campos "PREENCHER" do manifest.json são o lembrete.
+# definitivo estar escolhido.
+#
+# ATENÇÃO — estado atual da licença: a auditoria
+# (`python -m tests.mutation.tools.audit_licenses`) encontrou apenas UM documento
+# confirmadamente redistribuível no corpus montado a partir de data/source_pdfs.
+# O corpus, como está, não pode ser publicado no Zenodo. Ver o README, seção
+# "O que ainda depende de você".
 
 documents: []
-#  - name: owasp_wstg.pdf
-#    url: https://owasp.org/...
+#  - name: metarag_metamorphic_testing_for_hallucination_de.pdf
+#    url: https://ceur-ws.org/...
 #    sha256: ...
-#    license: CC-BY-SA-4.0
+#    license: CC-BY-4.0
 #    redistributable: true
 
-# Papéis usados pelo catálogo de operadores. Sem override, build_corpus.py atribui
-# automaticamente (primeiro documento em ordem alfabética = primary). Fixe aqui
-# assim que o corpus estiver definido: os papéis determinam quais casos de teste
-# conseguem matar C1-C4 e E2, e não devem mudar de uma execução para a outra.
+# ---------------------------------------------------------------------------
+# Papéis usados pelo catálogo de operadores.
 #
-# primary   -> alvo de C1 (remoção), C2 (versão anterior) e C4 (duplicata conflitante);
-#              precisa conter valores numéricos citáveis por casos de teste.
-# secondary -> alvo de C3 (truncagem); precisa ter evidência no terço final.
-# recent    -> lista; documentos que "acabaram de entrar no corpus" e que E2 deixa
-#              de fora do índice.
-roles: {}
-#  primary: owasp_wstg.pdf
-#  secondary: pytest_docs.pdf
-#  recent: [playwright_docs.pdf, hypothesis_docs.pdf]
+# Sem override aqui, build_corpus.py atribui por ordem alfabética — o que serve
+# para destravar o pipeline, mas não para rodar o estudo: os papéis decidem quais
+# operadores conseguem ser mortos por algum caso.
+#
+# primary   -> alvo de C1 (remoção), C2 (versão anterior) e C4 (duplicata
+#              conflitante). Precisa de valores numéricos citáveis espalhados
+#              pelo documento, porque são eles que as variantes perturbam.
+#
+# secondary -> alvo de C3 (truncar -30%). Precisa de PROSA COM FATOS no terço
+#              final. Este é o papel que mais erra na atribuição automática: em
+#              artigo de conferência o terço final costuma ser a bibliografia, e
+#              caso nenhum cita bibliografia — C3 viraria mutante equivalente.
+#              Medido em 15/09/2026, dos 8 documentos deste corpus apenas
+#              rag_driven tinha prosa (e não referências) no trecho que C3 apaga.
+#
+# recent    -> lista; documentos que "acabaram de entrar no corpus" e que E2
+#              deixa de fora do índice. Preferir documentos menores: E2 remove
+#              todos eles do índice de uma vez, e um documento grande derrubaria
+#              casos que nada têm a ver com o defeito injetado.
+#
+# Ao trocar o corpus, reavalie os três. O README explica como medir.
+roles:
+  primary: does_prompt_engineering_really_impact_llm_genera.pdf
+  secondary: rag_driven_multiple_assertions_generation_with_l.pdf
+  recent:
+    - metarag_metamorphic_testing_for_hallucination_de.pdf
+    - evaluator_bias_in_llm_based_program_repair_a_dis.pdf

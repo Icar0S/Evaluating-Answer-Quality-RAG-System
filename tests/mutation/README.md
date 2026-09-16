@@ -74,6 +74,8 @@ tests/mutation/
 ├── oracles/                # o1_cosine, o2_assertions, o3_ragas, o4_judge, o5_conjunctive
 ├── runner/                 # ponte com o SUT, custo (GPU/Wh), JSONL, caminhos
 ├── tools/
+│   ├── audit_roles.py                # papéis do corpus servem aos operadores C1-C4 e E2?
+│   ├── audit_licenses.py             # o corpus pode ir para o Zenodo?
 │   ├── calibrate_retrieval_gate.py   # calibra o piso de similaridade do baseline
 │   └── make_synthetic_results.py     # dados falsos para testar a análise sem GPU
 ├── run_campaign.py         # baseline + mutantes -> runs.jsonl
@@ -109,14 +111,35 @@ repagina por orçamento de tokens (~1800/página). As duas decisões têm motivo
   a página inteira e **K1–K4 seriam inertes por construção** — o SUT quebra
   chunks por página.
 
-**Portão:** `corpus/manifest.json` existe, tem 5–10 documentos, e os papéis
-(`primary`, `secondary`, `recent`) apontam para os documentos certos. Fixe os
-papéis em `corpus/sources.yaml` assim que o corpus estiver definido — eles
-determinam quais casos conseguem matar C1–C4 e E2.
+Os papéis (`primary`, `secondary`, `recent`) nascem atribuídos por ordem
+alfabética, o que destrava o pipeline mas não serve para rodar o estudo: eles
+decidem quais operadores conseguem ser mortos por algum caso. Meça e escolha:
 
-> **Licença:** os campos `license` e `source_url` do manifesto nascem como
-> `PREENCHER`. O corpus viaja no pacote de replicação; sem licença que permita
-> redistribuição, ele não pode ser publicado.
+```bash
+python -m tests.mutation.tools.audit_roles --suggest
+# adote a escolha editando `roles` em corpus/sources.yaml e:
+python -m tests.mutation.corpus.build_corpus --roles-only
+python -m tests.mutation.corpus.build_corpus --make-variants   # se `primary` mudou
+```
+
+O papel que mais erra na atribuição automática é o `secondary`, alvo de C3
+(truncar -30%): em artigo de conferência o terço final costuma ser a
+bibliografia, e caso nenhum cita bibliografia — C3 viraria equivalente por
+construção. `audit_roles` mede quanto do trecho que C3 apaga é prosa com fatos e
+reprova a escolha quando não é.
+
+```bash
+python -m tests.mutation.tools.audit_licenses --write
+```
+
+Classifica cada documento em `yes` / `no` / `unknown` a partir das declarações
+impressas no PDF e grava no manifesto. **`unknown` nunca vira `yes` por
+conveniência**: o script extrai o DOI/arXiv da primeira página justamente para
+você confirmar na fonte. Um pacote de replicação publicado sem direito de
+redistribuição é o pior desfecho possível deste passo.
+
+**Portão:** `audit_roles` sem problemas, `audit_licenses` sem nenhum documento
+`no` ou `unknown`, e `corpus/manifest.json` com 5–10 documentos.
 
 ### Semana 2 — os 30 casos
 
@@ -392,8 +415,15 @@ sai byte a byte idêntico e os 18 testes de `tests/api/` continuam passando:
 ## 6. O que ainda depende de você
 
 1. **19 casos de `golden.jsonl`** e suas assertivas (semana 2).
-2. **Licenças do corpus** — `license` e `source_url` do manifesto estão como
-   `PREENCHER`; sem isso o corpus não pode ir para o Zenodo.
+2. **Licenças do corpus.** A auditoria de 15/09/2026 sobre o corpus montado a
+   partir de `data/source_pdfs` encontrou **1 documento redistribuível
+   (CC-BY-4.0), 2 bloqueados (ACM) e 5 sem licença declarada no PDF**. Como
+   está, o corpus não pode ir para o Zenodo. Confirme os 5 `unknown` na fonte
+   (o manifesto guarda o DOI/arXiv de cada um) e troque os bloqueados por
+   documentos de licença aberta — proceedings CEUR-WS (CC BY 4.0), preprints
+   arXiv com licença CC declarada e documentação técnica sob licença livre são
+   os caminhos mais rápidos. Depois de trocar, rode de novo `audit_licenses`,
+   `audit_roles` e `build_corpus`.
 3. **Calibrações** — τ* e o piso de recuperação. Enquanto o piso for 0,0,
    `apply verify` recusa R4 de propósito.
 4. **Congelar o codebook** antes de olhar resultado.
@@ -412,6 +442,7 @@ sai byte a byte idêntico e os 18 testes de `tests/api/` continuam passando:
 | Campanha lenta demais | `--exclude-cuttable` (12 operadores) ou reduza a suíte preservando as 7 classes |
 | `matplotlib` ausente | `analyze.py --skip-figures` gera só as tabelas |
 | Índice reconstruído toda hora | confira `work/state.json`; a assinatura muda com chunking, embedding ou conteúdo de `index_src` |
+| Um operador de corpus nunca mata ninguém | quase sempre é papel mal atribuído — rode `tools/audit_roles.py` |
 
 `tests/mutation/work/` é descartável: apague à vontade, `apply.py` reconstrói a
 partir de `corpus/base/`. O índice do estudo fica em `work/vector_store` e nunca
