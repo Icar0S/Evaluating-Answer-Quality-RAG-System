@@ -2,7 +2,7 @@
 
 **Artigo:** *Mutation-Based Adequacy Assessment of Test Suites for Retrieval-Augmented Assistants*
 **Destino:** Information and Software Technology, special issue VSI:EQUISA · submissão 13/12/2026
-**Branch:** `journal-ist` · **Última atualização:** 16/09/2026
+**Branch:** `journal-ist` · **Última atualização:** 16/09/2026 (semana 3 concluída)
 
 Este documento registra o que foi construído e executado até aqui, as decisões de
 projeto com suas razões, e o que já dá para escrever do artigo. Ele existe porque
@@ -18,7 +18,7 @@ justificar para um revisor.
 |---|---|---|
 | 1 | Corpus escolhido e versionado; esqueleto de `tests/mutation/` | **concluída** |
 | 2 | 30 casos + `golden.jsonl` + `assertions.yaml` | **concluída** |
-| 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | parcial — piso de recuperação calibrado, τ* pendente |
+| 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | **concluída** — τ* = 0,60, e a calibração virou resultado (§4.7) |
 | 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída antecipadamente** |
 | 5 | O3, O4, O5 prontos; `run_campaign.py` validado | código pronto, piloto não executado |
 | 6 | Baseline (300 inv.) + campanha (2.700 inv.) | não iniciada |
@@ -159,6 +159,26 @@ Cada resposta de referência foi conferida contra o trecho de origem no índice.
 verify` passa nos 18 operadores — R4 deixa de ser mutante equivalente por
 construção.
 
+### 3.4 Calibração de τ* (semana 3)
+
+Conjunto final: **247 pares** (111 EQUIV, 136 ERRO) sobre 22 casos. Os oito casos
+cuja referência é a frase fixa de abstenção ficaram de fora: eles não produzem
+ERRO — não existe versão "errada plausível" de uma abstenção — e suas paráfrases
+seriam variantes de uma única sentença, pares quase idênticos que mediriam a
+capacidade do cosseno de reconhecer uma frase fixa, não de julgar uma resposta.
+
+Conferência visual de 100% dos 115 pares EQUIV, como o §6.3 exige: **111
+aprovados, 4 rejeitados**. As rejeições não foram de fato perdido, e sim de
+degeneração (`"O Pitest (Pitest) foi adotado"`) e de relação alterada
+(`"estável entre sementes"` virando `"estável quando comparado com sementes"`).
+
+τ* = 0,60, e o resultado da calibração virou achado — ver §4.7.
+
+Limitação a declarar, espelho da que o protocolo já previa: as paráfrases saíram
+conservadoras (troca de verbo e conectivo, mesma estrutura). Somada aos erros
+programáticos da classe ERRO, **τ\* é limite superior pelos dois lados**, não só
+por um.
+
 ---
 
 ## 4. Achados metodológicos — material para o artigo
@@ -279,6 +299,62 @@ Três bugs que não quebravam nada e só apareciam ao ler a saída:
 **Onde entra:** §3 (Study Context) para a normalização do corpus; o resto como
 nota de replicação no pacote do Zenodo.
 
+### 4.7 O oráculo de cosseno ordena pelo avesso
+
+Este é o achado mais forte até aqui, e ele apareceu **antes da campanha**, na
+calibração de τ* (§6.3).
+
+O procedimento do protocolo — varrer τ ∈ [0,60; 0,95] e escolher o F1 máximo —
+devolveu τ* = 0,60, o mínimo da grade, com **AUC = 0,485**. Abaixo de 0,5 é pior
+que o acaso: o F1 máximo é obtido aceitando tudo. Nenhum limiar separa paráfrase
+correta de erro injetado.
+
+Não é defeito de medição. Controles diretos:
+
+| controle | cosseno |
+|---|---|
+| idêntico | 1,0000 |
+| paráfrase correta | 0,9907 |
+| **frase negada** (sentido oposto) | **0,9912** |
+| **número trocado** (56,58% → 85,00%) | **0,9184** |
+| assunto alheio | 0,5973 |
+| outro idioma | 0,4165 |
+
+O embedding separa *tópico* com folga e é quase cego a *valor* e *polaridade*.
+Uma frase negada pontua acima de uma paráfrase legítima.
+
+A quebra por tipo de erro mostra que o AUC agregado esconde regimes opostos:
+
+| tipo de erro | n | média | AUC vs. paráfrase (nomic) | AUC (all-minilm) |
+|---|---|---|---|---|
+| condição invertida | 20 | 0,9947 | **0,091** | **0,174** |
+| número trocado | 53 | 0,9876 | **0,248** | **0,140** |
+| *paráfrase correta* | *111* | *0,9702* | — | — |
+| entidade substituída | 63 | 0,9418 | 0,808 | 0,752 |
+
+O oráculo funciona para entidade trocada e **se inverte** para número e condição:
+nesses dois o erro pontua mais alto que a paráfrase correta em 75% e 91% das
+comparações. O padrão replica em dois modelos de embedding de famílias
+diferentes, então o achado é sobre o **método** — cosseno contra referência — e
+não sobre a escolha de modelo deste estudo.
+
+A razão é estrutural: o erro injetado é a referência com **um token alterado**,
+textualmente quase idêntica; a paráfrase é uma **reescrita honesta**, com outro
+verbo e outra ordem. O cosseno mede proximidade de superfície, não equivalência
+semântica, e por isso prefere a corrupção mínima à reformulação legítima.
+
+Consequência para o artigo: é mais forte que a limitação que o protocolo
+antecipava ("τ* é limite superior"). Neste par corpus/modelo **não existe τ*
+útil**, e o oráculo mais barato e mais comum na prática é justamente o que não
+enxerga o defeito que mais importa em RAG — um número errado numa frase correta.
+
+Reproduzível por `python -m tests.mutation.calibration.diagnose_o1`, com saída em
+`calibration/oracle_diagnostic.json`.
+
+**Onde entra:** §6.3 (calibração como instrumento), §7.2 (Results — oracle bias)
+como resultado central, §8 (Discussion) como implicação para a prática de
+avaliação de RAG, §10 (Threats) para a validade de constructo.
+
 ---
 
 ## 5. Seções do artigo que já dão para escrever
@@ -348,8 +424,6 @@ dia.
 | Item | Estado | Impacto |
 |---|---|---|
 | **Licenças do corpus** | 1 redistribuível, 2 bloqueados (ACM), 5 sem declaração | Bloqueia o Zenodo. Trocar documento depois da campanha significa refazer tudo |
-| **τ\* do oráculo O1** | não calibrado | Bloqueia `evaluate.py` e, portanto, todos os vereditos |
-| **300 pares de calibração** | não gerados | Pré-requisito de τ*; inclui ~2 h de conferência visual dos 150 pares EQUIV |
 | **Codebook congelado** | `frozen_at: null` | Precisa ser fechado **antes** de ver qualquer resultado (§7.4) |
 
 ### Revisões recomendadas antes da campanha
