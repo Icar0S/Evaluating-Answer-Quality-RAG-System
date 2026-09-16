@@ -222,6 +222,32 @@ def _slug(name: str) -> str:
 
 # ----------------------------------------------------------------- variantes
 
+# Sinais de lista de referencias. Detectar bibliografia pelo titulo "REFERENCES"
+# nao funciona neste corpus: a renormalizacao junta paragrafos e nem todo artigo
+# usa o estilo [N] Autor — o rag_driven nao usa, e por isso a primeira versao
+# deste detector deu a cauda dele como 100% prosa quando metade e bibliografia.
+# Densidade de marcas (ano, "et al", colchete numerado, DOI/arXiv/paginacao) por
+# mil caracteres separa os dois casos com folga: neste corpus, prosa fica entre
+# 0 e 6, bibliografia entre 11 e 16.
+REFERENCE_MARKS = (
+    re.compile(r"(19|20)\d{2}"),
+    re.compile(r"et al", re.IGNORECASE),
+    re.compile(r"\[\d{1,3}\]"),
+    re.compile(r"arXiv|doi\.org|https?://|pp\.\s*\d+|In:\s", re.IGNORECASE),
+)
+BIBLIOGRAPHY_DENSITY = 9.0
+
+
+def reference_density(text: str) -> float:
+    """Marcas de referencia por mil caracteres."""
+    per_thousand = max(1, len(text)) / 1000
+    return sum(len(pattern.findall(text)) for pattern in REFERENCE_MARKS) / per_thousand
+
+
+def looks_like_bibliography(text: str) -> bool:
+    return reference_density(text) >= BIBLIOGRAPHY_DENSITY
+
+
 NUMBER_PATTERN = re.compile(r"(?<![\w.])(\d{1,4}(?:[.,]\d{1,3})?)(%?)(?![\w])")
 
 

@@ -36,36 +36,25 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from tests.mutation.corpus.build_corpus import CITATION_SPAN, FACTUAL_CUES, NUMBER_PATTERN
+from tests.mutation.corpus.build_corpus import (
+    CITATION_SPAN,
+    FACTUAL_CUES,
+    NUMBER_PATTERN,
+    looks_like_bibliography,
+)
 from tests.mutation.runner import paths
 from tests.mutation.runner.console import get_logger
 
 logger = get_logger("mutation.papeis")
 
 C3_KEEP_FRACTION = 0.7          # espelha o operador C3 do catálogo
-BIBLIOGRAPHY_ENTRY = re.compile(r"\[\d{1,3}\]\s+[A-Z]")
 
 MIN_TAIL_FACTS = 10             # abaixo disso, C3 tem pouco o que matar
 MIN_TAIL_PROSE = 0.5            # metade do trecho apagado precisa ser prosa
 
 
-def bibliography_start(text: str) -> int:
-    """Onde a bibliografia começa: primeiro ponto com densidade alta de '[N] Autor'.
-
-    Procurar o título "REFERENCES" não basta — a renormalização do corpus junta
-    parágrafos e o cabeçalho pode não sobreviver como linha isolada. Densidade de
-    entradas é um sinal mais robusto.
-    """
-    hits = [match.start() for match in BIBLIOGRAPHY_ENTRY.finditer(text)]
-    for index, position in enumerate(hits):
-        if sum(1 for other in hits[index:] if other - position < 4000) >= 8:
-            return position
-    heading = re.search(r"\b(REFERENCES|REFER[ÊE]NCIAS|Bibliography)\b", text)
-    return heading.start() if heading else len(text)
-
-
 def count_factual_numbers(text: str) -> int:
-    """Números que um caso de teste poderia citar — ignora marcadores de citação."""
+    """Numeros que um caso de teste poderia citar — ignora marcadores de citacao."""
     spans = [(m.start(), m.end()) for m in CITATION_SPAN.finditer(text)]
     total = 0
     for match in NUMBER_PATTERN.finditer(text):
@@ -78,7 +67,15 @@ def count_factual_numbers(text: str) -> int:
     return total
 
 
-def measure() -> list[dict]:
+def measure() -> tuple[list[dict], dict]:
+    """Mede PAGINA A PAGINA, que e a granularidade em que C3 opera.
+
+    A versao anterior procurava o ponto onde a bibliografia comeca e tratava tudo
+    dali em diante como referencia. O modelo estava errado para este corpus:
+    nestes artigos a lista de referencias fica no MEIO e e seguida de apendice
+    (tabelas de resultado, checklist de submissao). Medir por pagina evita
+    decidir onde a bibliografia "termina" — pergunta que nao tem resposta limpa.
+    """
     import fitz
 
     manifest = json.loads(paths.CORPUS_MANIFEST.read_text(encoding="utf-8"))
@@ -88,23 +85,32 @@ def measure() -> list[dict]:
         with fitz.open(paths.CORPUS_BASE / document["document"]) as handle:
             pages = [page.get_text() for page in handle]
 
-        full = "\n".join(pages)
         keep = max(1, round(len(pages) * C3_KEEP_FRACTION))
-        cut_at = len("\n".join(pages[:keep])) + 1
-        bibliography = bibliography_start(full)
-
-        tail_length = max(0, len(full) - cut_at)
-        prose_in_tail = max(0, min(bibliography, len(full)) - cut_at)
-        prose_share = prose_in_tail / tail_length if tail_length else 0.0
+        tail = pages[keep:]
+        tail_detail = [
+            {
+                "page": keep + offset + 1,
+                "bibliography": looks_like_bibliography(text),
+                "facts": count_factual_numbers(text),
+            }
+            for offset, text in enumerate(tail)
+        ]
+        prose_pages = [d for d in tail_detail if not d["bibliography"]]
 
         rows.append(
             {
                 "document": document["document"],
                 "pages": len(pages),
-                "c3_deletes": f"{keep + 1}-{len(pages)}",
-                "facts_total": count_factual_numbers(full[:bibliography]),
-                "tail_prose_share": round(prose_share, 3),
-                "tail_facts": count_factual_numbers(full[cut_at : cut_at + prose_in_tail]),
+                "c3_deletes": f"{keep + 1}-{len(pages)}" if tail else "-",
+                "facts_total": sum(
+                    count_factual_numbers(text)
+                    for text in pages
+                    if not looks_like_bibliography(text)
+                ),
+                "tail_pages": len(tail_detail),
+                "tail_prose_pages": len(prose_pages),
+                "tail_facts": sum(d["facts"] for d in prose_pages),
+                "tail_detail": tail_detail,
             }
         )
     return rows, manifest.get("roles", {})
@@ -126,20 +132,17 @@ def check(rows: list[dict], roles: dict) -> list[str]:
 
     secondary = by_document.get(roles.get("secondary", ""))
     if secondary is None:
-        problems.append("papel `secondary` não aponta para um documento do corpus")
-    else:
-        if secondary["tail_prose_share"] < MIN_TAIL_PROSE:
-            problems.append(
-                f"secondary ({secondary['document'][:40]}): só "
-                f"{secondary['tail_prose_share']:.0%} do trecho que C3 apaga (págs "
-                f"{secondary['c3_deletes']}) é prosa — o resto é bibliografia, que caso "
-                "nenhum cita. C3 seria equivalente por construção"
-            )
-        if secondary["tail_facts"] < MIN_TAIL_FACTS:
-            problems.append(
-                f"secondary ({secondary['document'][:40]}): apenas "
-                f"{secondary['tail_facts']} fatos citáveis no trecho que C3 apaga"
-            )
+        problems.append("papel `secondary` nao aponta para um documento do corpus")
+    elif secondary["tail_facts"] == 0:
+        # Unico veredito automatico que se sustenta: zero fato citavel no trecho
+        # que C3 apaga significa que nenhum caso pode morrer por causa de C3.
+        # Acima de zero a pergunta e "esses fatos valem um caso?", que e
+        # julgamento — a ferramenta mostra a evidencia e a pessoa decide.
+        problems.append(
+            f"secondary ({secondary['document'][:40]}): nenhum fato citavel nas paginas "
+            f"{secondary['c3_deletes']}, que sao as que C3 apaga. C3 seria equivalente "
+            "por construcao"
+        )
 
     recent = roles.get("recent") or []
     recent = recent if isinstance(recent, list) else [recent]
@@ -165,10 +168,7 @@ def check(rows: list[dict], roles: dict) -> list[str]:
 def suggest(rows: list[dict]) -> dict:
     """Melhor candidato para cada papel, pelas métricas acima."""
     by_facts = sorted(rows, key=lambda r: -r["facts_total"])
-    fit_for_c3 = [
-        r for r in rows
-        if r["tail_prose_share"] >= MIN_TAIL_PROSE and r["tail_facts"] >= MIN_TAIL_FACTS
-    ]
+    fit_for_c3 = [r for r in rows if r["tail_facts"] > 0]
     secondary = max(fit_for_c3, key=lambda r: r["tail_facts"], default=None)
 
     taken = {secondary["document"]} if secondary else set()
@@ -194,26 +194,42 @@ def main(argv: list[str] | None = None) -> int:
 
     rows, roles = measure()
 
-    print(f"\n{'documento':<50}{'pág':>5}{'C3 apaga':>10}{'fatos':>7}{'prosa/cauda':>13}{'fatos/cauda':>13}")
+    header = "\n{:<50}{:>5}{:>10}{:>7}{:>13}{:>12}".format(
+        "documento", "pag", "C3 apaga", "fatos", "prosa/cauda", "fatos/cauda"
+    )
+    print(header)
     print("-" * 100)
     for row in sorted(rows, key=lambda r: -r["tail_facts"]):
+        prose = f"{row['tail_prose_pages']}/{row['tail_pages']}"
         print(
             f"{row['document'][:48]:<50}{row['pages']:>5}{row['c3_deletes']:>10}"
-            f"{row['facts_total']:>7}{row['tail_prose_share']:>12.0%}{row['tail_facts']:>13}"
+            f"{row['facts_total']:>7}{prose:>13}{row['tail_facts']:>12}"
         )
 
-    print("\nPapéis atuais:")
+    # Evidencia pagina a pagina do documento que ocupa o papel `secondary`: e a
+    # escolha que nenhum limiar acertou em tres tentativas, entao a ferramenta
+    # mostra o material e quem decide e voce.
+    secondary_name = roles.get("secondary")
+    secondary = next((r for r in rows if r["document"] == secondary_name), None)
+    if secondary:
+        print(f"\nPaginas que C3 apagaria de `secondary` ({secondary_name[:44]}):")
+        for detail in secondary["tail_detail"]:
+            kind = "bibliografia" if detail["bibliography"] else "prosa"
+            print(f"  pag {detail['page']:>3}  {kind:<13} {detail['facts']:>3} fatos citaveis")
+        print("  -> confira se esses fatos sustentam um caso de teste (c03, c11, c28).")
+
+    print("\nPapeis atuais:")
     for role, value in roles.items():
         print(f"  {role:<10} {value}")
 
     problems = check(rows, roles)
     print()
     if problems:
-        logger.warning("Atribuição atual tem %d problema(s):", len(problems))
+        logger.warning("Atribuicao atual tem %d problema(s):", len(problems))
         for problem in problems:
             logger.warning("  - %s", problem)
     else:
-        logger.info("Atribuição de papéis OK para os operadores C1-C4 e E2.")
+        logger.info("Atribuicao de papeis OK para os operadores C1-C4 e E2.")
 
     if args.suggest:
         print("\nSugestão a partir das métricas (confira antes de adotar):")

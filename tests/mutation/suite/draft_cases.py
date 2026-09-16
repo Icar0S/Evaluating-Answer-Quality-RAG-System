@@ -38,6 +38,7 @@ import httpx
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from tests.mutation.corpus.build_corpus import looks_like_bibliography
 from tests.mutation.runner import jsonl, paths
 from tests.mutation.runner.console import get_logger
 from tests.mutation.runner.sut import ensure_index, load_study_config, sut_configuration
@@ -62,7 +63,9 @@ PROMPT_BY_CLASS = {
     ),
     "rastreabilidade": (
         "Escreva UMA pergunta factual sobre o TRECHO. A resposta de referência deve "
-        "terminar citando a fonte no formato [documento, pág. N] com os valores dados."
+        "terminar citando a fonte entre colchetes, com o NOME DO ARQUIVO e o NÚMERO DA "
+        "PÁGINA que aparecem no cabeçalho do trecho — copie-os literalmente, não "
+        "escreva a palavra \"documento\" nem \"N\"."
     ),
 }
 
@@ -156,7 +159,10 @@ def _pick_chunks(
         rng.shuffle(documents)
 
     for document in documents:
-        chunks = [c for c in _chunks_of(document) if c["chunk_id"] not in used]
+        chunks = [
+            c for c in _chunks_of(document)
+            if c["chunk_id"] not in used and not looks_like_bibliography(c["text"])
+        ]
         if not chunks:
             continue
 
@@ -199,8 +205,30 @@ def _factual_density(text: str) -> int:
     return count_factual_numbers(text)
 
 
-def _ask_model(case, chunks: list[dict], document: str, model: str, base_url: str, timeout: int) -> dict:
+def _ask_model(
+    case,
+    chunks: list[dict],
+    document: str,
+    model: str,
+    base_url: str,
+    timeout: int,
+    altered: set[str] | None = None,
+) -> dict:
     instruction = PROMPT_BY_CLASS.get(case.case_class, PROMPT_BY_CLASS["fato_direto"])
+
+    if altered and {"C2", "C4"} & set(case.targets):
+        # Escolher um trecho que CONTEM valor perturbado nao bastava: o modelo
+        # via o trecho inteiro e respondia citando outro numero qualquer. C2 e C4
+        # so sao observaveis se a resposta de referencia citar justamente um dos
+        # valores que as variantes mudam, entao a exigencia vai explicita.
+        context_text = " ".join(chunk["text"] for chunk in chunks)
+        present = sorted(value for value in altered if value in context_text)
+        if present:
+            instruction += (
+                "\n\nOBRIGATORIO: a resposta de referencia precisa citar "
+                "literalmente um destes valores do trecho: "
+                f"{', '.join(present[:8])}."
+            )
     blocks = "\n\n".join(
         f"[TRECHO {index} — {document}, pág. {chunk.get('page', '?')}]\n{chunk['text'][:3000]}"
         for index, chunk in enumerate(chunks, start=1)
@@ -280,6 +308,13 @@ def _verify(proposal: dict, chunks: list[dict], case, altered: set[str]) -> list
         text = str(value).strip()
         if PLACEHOLDER_LIKE.match(text) and text not in context:
             problems.append(f"placeholder nao preenchido: '{text}'")
+
+    for chunk in chunks:
+        if looks_like_bibliography(chunk["text"]):
+            problems.append(
+                f"trecho {chunk['chunk_id']} e lista de referencias — um caso que pergunta "
+                "sobre entrada de bibliografia nao testa o pipeline"
+            )
 
     pages = {str(chunk.get("page")) for chunk in chunks}
     for cited in re.findall(r"p[aá]g\.?\s*(\d+)", answer, re.IGNORECASE):
@@ -387,10 +422,25 @@ def main(argv: list[str] | None = None) -> int:
                 continue
 
             document = chunks[0]["chunk_id"].split("::")[0]
-            try:
-                proposal = _ask_model(case, chunks, document, model, base_url, timeout)
-            except (httpx.HTTPError, json.JSONDecodeError) as exc:
-                logger.error("%s: falha ao rascunhar — %s", case.case_id, exc)
+            proposal = None
+            for attempt in (1, 2):
+                try:
+                    proposal = _ask_model(case, chunks, document, model, base_url, timeout, altered)
+                    break
+                except httpx.TimeoutException:
+                    # A primeira chamada paga o carregamento do modelo na VRAM, e
+                    # numa placa de 8 GB ela vem logo depois da indexacao, que
+                    # deixou o modelo de embedding ocupando o lugar. Foi assim que
+                    # c01 falhou nas duas primeiras rodadas: e sempre o primeiro
+                    # caso da lista que morre, nunca o mesmo caso por merito.
+                    if attempt == 1:
+                        logger.warning("%s: timeout (modelo carregando?) — tentando de novo", case.case_id)
+                        continue
+                    logger.error("%s: timeout nas duas tentativas", case.case_id)
+                except (httpx.HTTPError, json.JSONDecodeError) as exc:
+                    logger.error("%s: falha ao rascunhar — %s", case.case_id, exc)
+                    break
+            if proposal is None:
                 continue
 
             problems = _verify(proposal, chunks, case, altered)
@@ -414,7 +464,17 @@ def main(argv: list[str] | None = None) -> int:
             status = "REVISAR" if problems else "ok"
             logger.info("%s [%s] %s", case.case_id, status, proposal.get("question", "")[:80])
 
-    jsonl.write_all(DRAFTS_PATH, proposals)
+    # Merge, nunca substituicao: `--case c01` reescrevendo o arquivo inteiro
+    # apagaria os outros 17 rascunhos ja conferidos. Reger um caso e a operacao
+    # mais natural do mundo depois de olhar um rascunho ruim, e ela nao pode
+    # custar o trabalho feito nos demais.
+    existing = {row["case_id"]: row for row in jsonl.read(DRAFTS_PATH)}
+    for proposal in proposals:
+        existing[proposal["case_id"]] = proposal
+    merged = [existing[key] for key in sorted(existing)]
+    jsonl.write_all(DRAFTS_PATH, merged)
+
+    proposals = merged
     flagged = sum(1 for p in proposals if p["auto_check"] != ["ok"])
     logger.info("%d rascunhos em %s (%d com pendência automática)", len(proposals), DRAFTS_PATH, flagged)
     logger.info(
