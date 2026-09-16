@@ -33,6 +33,27 @@ def embed(text: str, model: str) -> list[float]:
     return _cache[key]
 
 
+def prime(texts: list[str], model: str) -> int:
+    """Embeda em lote tudo que ainda não está em cache. Devolve quantos foram.
+
+    Existe por causa da RQ3, não por desempenho em si. O oráculo O1 é
+    classificado como "custo baixo" no §6.4, e a RQ3 compara o custo dos cinco
+    oráculos entre si. Uma implementação que embeda um texto por chamada HTTP
+    gastaria ~2.700 idas ao Ollama na campanha e faria O1 parecer caro — mas o
+    custo seria do laço, não do oráculo. Medir a versão ingênua responderia a
+    pergunta errada.
+
+    O endpoint /api/embed aceita lista; quem chama agrupa o que já tem em mãos
+    (as N repetições de um caso, mais a referência) antes de pontuar.
+    """
+    faltando = [t for t in dict.fromkeys(texts) if (model, t) not in _cache and t.strip()]
+    if not faltando:
+        return 0
+    for texto, vetor in zip(faltando, embed_texts(faltando, model=model)):
+        _cache[(model, texto)] = vetor
+    return len(faltando)
+
+
 def cosine(a: list[float], b: list[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b))
     norm_a = math.sqrt(sum(x * x for x in a))

@@ -1,0 +1,80 @@
+{
+  "nomic-embed-text": {
+    "equiv": {
+      "n": 111,
+      "mean": 0.9702
+    },
+    "by_rule": {
+      "invert_condition": {
+        "n": 20,
+        "mean": 0.9947,
+        "min": 0.9651,
+        "max": 0.9994,
+        "auc_vs_equiv": 0.091
+      },
+      "replace_entity": {
+        "n": 63,
+        "mean": 0.9418,
+        "min": 0.8391,
+        "max": 0.9872,
+        "auc_vs_equiv": 0.808
+      },
+      "swap_number": {
+        "n": 53,
+        "mean": 0.9876,
+        "min": 0.9534,
+        "max": 0.9999,
+        "auc_vs_equiv": 0.248
+      }
+    },
+    "auc_global": 0.485,
+    "controls": {
+      "identico": 1.0,
+      "parafrase correta": 0.9907,
+      "frase negada": 0.9912,
+      "numero trocado": 0.9184,
+      "entidade trocada": 0.8095,
+      "assunto alheio": 0.5973,
+      "outro idioma": 0.4165
+    }
+  },
+  "all-minilm": {
+    "equiv": {
+      "n": 111,
+      "mean": 0.9389
+    },
+    "by_rule": {
+      "invert_condition": {
+        "n": 20,
+        "mean": 0.9861,
+        "min": 0.9394,
+        "max": 0.9987,
+        "auc_vs_equiv": 0.174
+      },
+      "replace_entity": {
+        "n": 63,
+        "mean": 0.8863,
+        "min": 0.5483,
+        "max": 0.9851,
+        "auc_vs_equiv": 0.752
+      },
+      "swap_number": {
+        "n": 53,
+        "mean": 0.9888,
+        "min": 0.9333,
+        "max": 0.9998,
+        "auc_vs_equiv": 0.14
+      }
+    },
+    "auc_global": 0.429,
+    "controls": {
+      "identico": 1.0,
+      "parafrase correta": 0.9836,
+      "frase negada": 0.9739,
+      "numero trocado": 0.9257,
+      "entidade trocada": 0.7131,
+      "assunto alheio": 0.287,
+      "outro idioma": 0.0195
+    }
+  }
+}

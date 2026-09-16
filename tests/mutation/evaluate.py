@@ -174,6 +174,11 @@ def main(argv: list[str] | None = None) -> int:
             oracle_cost: dict[str, dict[str, float]] = defaultdict(lambda: {"wall_ms": 0.0, "gpu_s": 0.0, "wh": 0.0})
 
             if any(o in enabled for o in PER_RUN_ORACLES):
+                # Uma ida ao Ollama para as N repetições mais a referência, em vez
+                # de uma por repetição. Ver o docstring de o1_cosine.prime: isto
+                # é sobre medir o custo certo na RQ3, não sobre desempenho.
+                if "O1" in enabled or "O5" in enabled:
+                    o1_cosine.prime([reference] + [r["answer"] for r in valid_runs], embedding_model)
                 for run in valid_runs:
                     started = time.perf_counter()
                     verdicts = evaluate_per_run(
