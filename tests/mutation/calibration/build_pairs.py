@@ -221,7 +221,13 @@ def generate_paraphrases(
     reference: str, model: str, base_url: str, count: int, timeout: int
 ) -> list[str]:
     paraphrases: list[str] = []
-    for index in range(count):
+    # Mais tentativas que o alvo: com temperatura 0,8 e seeds diferentes o modelo
+    # ainda repete bastante, e pedir exatamente N rendia 80 parafrases unicas onde
+    # se esperava 154 — a classe EQUIV ficava MENOR que a ERRO, invertendo o
+    # desequilibrio que se queria corrigir.
+    for index in range(count * 3):
+        if len(paraphrases) >= count:
+            break
         payload = {
             "model": model,
             "messages": [
@@ -237,7 +243,9 @@ def generate_paraphrases(
             response = client.post(f"{base_url}/api/chat", json=payload)
             response.raise_for_status()
             text = response.json().get("message", {}).get("content", "").strip()
-        if text and text not in paraphrases:
+        # Copia da referencia nao e parafrase: entra no conjunto como par de
+        # similaridade 1,0 e puxa o limiar para cima sem informar nada.
+        if text and text not in paraphrases and text.strip() != reference.strip():
             paraphrases.append(text)
     return paraphrases
 

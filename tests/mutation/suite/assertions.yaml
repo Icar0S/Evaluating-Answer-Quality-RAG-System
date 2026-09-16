@@ -38,11 +38,11 @@ cases:
   c03:
   - {type: must_not_abstain}
   - type: contains_all
-    values: [3.79%, '19']
+    values: ['19', '3,79%', '0,9410', '0,0357']
   c04:
   - {type: must_not_abstain}
   - type: contains_all
-    values: [50.00%, '5.4']
+    values: ['5.4', '50,00%', '24,33%', '3.1']
   c05:
   - {type: must_not_abstain}
   - type: contains_all
@@ -50,7 +50,7 @@ cases:
   c06:
   - {type: must_not_abstain}
   - type: contains_all
-    values: [90.30%]
+    values: ['90,30', '140']
   c07:
   - {type: must_not_abstain}
   - type: contains_all
