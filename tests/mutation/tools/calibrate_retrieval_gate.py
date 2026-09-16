@@ -96,10 +96,31 @@ def choose_threshold(measurements: list[dict]) -> dict:
         chosen_value = round((min(positives) + max(negatives)) / 2, 3)
         chosen = {"threshold": chosen_value, "f1": 1.0, "rule": "ponto médio da folga"}
     else:
-        # Sem separação, prefere-se o maior limiar entre os de F1 máximo: ele
-        # rejeita mais ruído, que é o comportamento que R4 depois remove.
-        chosen = dict(max(candidates, key=lambda row: row["threshold"]))
-        chosen["rule"] = "maior limiar com F1 máximo"
+        # Sem separação, os dois erros NÃO custam o mesmo:
+        #
+        # - piso que barra um positivo derruba o caso no BASELINE, e caso que
+        #   reprova no baseline sai do conjunto avaliável (§7.1) — some do
+        #   denominador das três RQs sem quebrar nada;
+        # - piso que deixa passar um negativo apenas transfere o trabalho para a
+        #   instrução de abstenção (P2), e isso é observável no resultado.
+        #
+        # Por isso o piso fica com margem ABAIXO do menor positivo, mesmo que
+        # isso custe F1. A primeira versão escolhia "o maior limiar com F1
+        # máximo", que caiu exatamente sobre o positivo mais baixo (0,488 contra
+        # c01 em 0,488): qualquer variação entre execuções quebraria o baseline.
+        margin = 0.02
+        safe_ceiling = min(positives) - margin
+        safe = [row for row in rows if row["threshold"] <= safe_ceiling]
+        if safe:
+            best_safe = max(row["f1"] for row in safe)
+            chosen = dict(max(
+                (row for row in safe if row["f1"] == best_safe),
+                key=lambda row: row["threshold"],
+            ))
+            chosen["rule"] = f"maior F1 mantendo margem de {margin:.2f} abaixo do menor positivo"
+        else:
+            chosen = dict(max(candidates, key=lambda row: row["threshold"]))
+            chosen["rule"] = "maior limiar com F1 máximo (sem margem possível)"
 
     return {
         "chosen": chosen,

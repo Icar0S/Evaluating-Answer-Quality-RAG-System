@@ -44,7 +44,7 @@ baseline_config:
   top_k: 4
   # Preenchido por tools/calibrate_retrieval_gate.py. Mantenha 0.0 até calibrar:
   # um valor chutado aqui vira um confundidor silencioso na classe "fora do corpus".
-  min_similarity_score: 0.0
+  min_similarity_score: 0.428
   retrieval_use_mmr: true
   retrieval_mmr_lambda: 0.7
   retrieval_fetch_multiplier: 3
