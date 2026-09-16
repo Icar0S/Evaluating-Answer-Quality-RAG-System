@@ -93,7 +93,7 @@ oracles:
 
   O1:
     # Preenchido por calibration/calibrate.py (τ* por F1 máximo, IC bootstrap 95%).
-    tau: null
+    tau: 0.6
     # Modelo de embedding FIXO do oráculo: não pode seguir a configuração do SUT,
     # senão o operador E1 mudaria o próprio instrumento de medida junto com o SUT.
     embedding_model: nomic-embed-text

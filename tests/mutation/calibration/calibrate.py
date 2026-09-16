@@ -104,10 +104,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     paths.ensure_dirs()
-    pairs = jsonl.read(paths.CALIBRATION_PAIRS)
-    if not pairs:
+    todos = jsonl.read(paths.CALIBRATION_PAIRS)
+    if not todos:
         logger.error("calibration/pairs.jsonl vazio — rode build_pairs.py antes.")
         return 1
+
+    # Par rejeitado na conferência sai do conjunto: ele FOI conferido, e o
+    # veredito foi "não preserva os fatos". Contá-lo como pendente travaria a
+    # calibração para sempre; mantê-lo no conjunto seria pior ainda, porque um
+    # rótulo EQUIV errado é exatamente o que desloca τ*.
+    pairs = [p for p in todos if not p.get("excluded")]
+    rejeitados = len(todos) - len(pairs)
+    if rejeitados:
+        logger.info("%d pares excluídos pela conferência visual não entram na calibração.", rejeitados)
 
     unreviewed = [p for p in pairs if p["label"] == "EQUIV" and not p.get("reviewed")]
     if unreviewed and not args.allow_unreviewed:

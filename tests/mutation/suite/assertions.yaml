@@ -62,7 +62,7 @@ cases:
   c09:
   - {type: must_not_abstain}
   - type: contains_any
-    values: [maturidade, empiricos]
+    values: [maturidade, empíricos]
   c10:
   - {type: must_not_abstain}
   - type: contains_any
@@ -80,7 +80,7 @@ cases:
   c13:
   - {type: must_not_abstain}
   - type: contains_any
-    values: [configuracao, selecionada]
+    values: [configuração, selecionada]
   - {type: regex, pattern: \b(se|quando|caso|casos|desde que|apenas|somente|porque|com base em|a partir
       de|dependendo|condicao|criterio)\b}
   c14:
@@ -90,7 +90,7 @@ cases:
   c15:
   - {type: must_not_abstain}
   - type: contains_any
-    values: [referencia, influencia]
+    values: [referência, influencia]
   - {type: regex, pattern: \b(se|quando|caso|casos|desde que|apenas|somente|porque|com base em|a partir
       de|dependendo|condicao|criterio)\b}
   c16:
