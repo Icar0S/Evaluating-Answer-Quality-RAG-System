@@ -125,29 +125,78 @@ def _chunks_of(document: str) -> list[dict]:
     return sorted(chunks, key=lambda chunk: (chunk["page"] or 0, chunk["chunk_id"]))
 
 
-def _pick_chunks(case, manifest: dict, rng: random.Random, prefer_altered: set[str]) -> list[dict]:
+def _pick_chunks(
+    case,
+    manifest: dict,
+    rng: random.Random,
+    prefer_altered: set[str],
+    used: set[str],
+    role_cursor: dict[str, int],
+) -> list[dict]:
+    """Escolhe o(s) trecho(s) que vao embasar o rascunho.
+
+    Tres regras que so ficaram obvias depois de olhar a primeira leva de
+    rascunhos:
+
+    1. **Nao reaproveitar trecho.** Dois slots sorteados no mesmo chunk produzem
+       a mesma pergunta (aconteceu com c04/c05 e c29/c30): dois dos seis casos de
+       fato direto viravam duplicata e a suite perdia cobertura sem avisar.
+    2. **Rodizio entre os documentos do papel.** `recent` tem dois documentos;
+       pegar sempre o primeiro da lista embaralhada deixava o segundo sem
+       nenhum caso, e E2 so seria morto pela metade do que remove.
+    3. **Preferir trechos densos em fatos.** Um chunk cujo unico numero e o ano
+       do cabecalho da conferencia nao sustenta um caso de fato direto.
+    """
     documents = _documents_for_role(case.evidence_role, manifest)
-    rng.shuffle(documents)
+    if len(documents) > 1:
+        cursor = role_cursor.get(case.evidence_role, 0)
+        documents = documents[cursor % len(documents):] + documents[: cursor % len(documents)]
+        role_cursor[case.evidence_role] = cursor + 1
+    else:
+        rng.shuffle(documents)
 
     for document in documents:
-        chunks = _chunks_of(document)
+        chunks = [c for c in _chunks_of(document) if c["chunk_id"] not in used]
         if not chunks:
             continue
 
         if case.evidence_role == "secondary":
-            # C3 remove os últimos 30%: a evidência precisa morar lá.
-            chunks = chunks[int(len(chunks) * 0.7) :] or chunks
+            # C3 remove os ultimos 30%: a evidencia precisa morar la.
+            tail = [c for c in chunks if c["page"] and c["page"] > _c3_cut_page(document)]
+            chunks = tail or chunks
 
         if prefer_altered:
             with_values = [c for c in chunks if any(value in c["text"] for value in prefer_altered)]
             chunks = with_values or chunks
 
+        if case.case_class in ("fato_direto", "filtro_condicional", "rastreabilidade"):
+            chunks = sorted(chunks, key=lambda c: -_factual_density(c["text"]))[: max(3, len(chunks) // 3)]
+
         if case.case_class == "fato_distribuido" and len(chunks) >= 2:
             first = rng.randrange(0, len(chunks) - 1)
             second = rng.randrange(first + 1, len(chunks))
-            return [chunks[first], chunks[second]]
-        return [rng.choice(chunks)]
+            picked = [chunks[first], chunks[second]]
+        else:
+            picked = [rng.choice(chunks)]
+
+        used.update(c["chunk_id"] for c in picked)
+        return picked
     return []
+
+
+def _c3_cut_page(document: str) -> int:
+    """Ultima pagina que C3 preserva — abaixo dela a evidencia sobrevive a truncagem."""
+    import fitz
+
+    with fitz.open(paths.CORPUS_BASE / document) as handle:
+        total = handle.page_count
+    return max(1, round(total * 0.7))
+
+
+def _factual_density(text: str) -> int:
+    from tests.mutation.tools.audit_roles import count_factual_numbers
+
+    return count_factual_numbers(text)
 
 
 def _ask_model(case, chunks: list[dict], document: str, model: str, base_url: str, timeout: int) -> dict:
@@ -172,32 +221,132 @@ def _ask_model(case, chunks: list[dict], document: str, model: str, base_url: st
         return json.loads(response.json().get("message", {}).get("content", "{}"))
 
 
-def _verify(proposal: dict, chunks: list[dict]) -> list[str]:
-    """Conferência automática rasa — não substitui a leitura humana.
+PLACEHOLDER_LIKE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)+\[")
+NUMBER_IN_TEXT = re.compile(r"\d+(?:[.,]\d+)*%?")
+TEMPLATE_LEFTOVER = re.compile(r"\[documento|\[doc,|p[aá]g\.?:", re.IGNORECASE)
 
-    Só pega o erro mais comum e mais caro do rascunho automático: a resposta citar
-    um valor que não está no trecho. O que passa daqui ainda precisa de olho.
+
+def _numbers(text: str) -> set[str]:
+    """Numeros normalizados: sem separador decimal e sem pontuacao de borda.
+
+    "42,6%" e "42.6%" sao o mesmo fato. O modelo escreve em pt-BR e o corpus em
+    en-US, entao comparar as duas grafias como strings cruas reprovava rascunho
+    correto — foi 40% do ruido da primeira rodada de conferencia.
+    """
+    found = set()
+    for raw in NUMBER_IN_TEXT.findall(text):
+        cleaned = raw.rstrip(".,").replace(",", ".")
+        if cleaned:
+            found.add(cleaned)
+    return found
+
+
+def _verify(proposal: dict, chunks: list[dict], case, altered: set[str]) -> list[str]:
+    """Conferencia automatica rasa — nao substitui a leitura humana.
+
+    A regra e reportar so o que e verificavel e acionavel. A primeira versao
+    checava todo `key_values` como literal, e o modelo costuma preencher aquilo
+    com conceitos ("metricas tradicionais"): 15 dos 19 rascunhos vinham marcados,
+    o que treina a pessoa a ignorar o aviso — pior do que nao avisar. Restam
+    quatro checagens, todas com consequencia clara:
+
+    1. numero da resposta que nao existe no trecho — indicio de invencao;
+    2. caso que mira C2/C4 sem citar valor que as variantes perturbam — os dois
+       operadores sobreviveriam por construcao;
+    3. sobra de gabarito ("[documento, pag. N]" literal, `snake_case_id`) — o
+       modelo devolveu o molde em vez de preencher;
+    4. pagina citada diferente da pagina de onde o trecho veio.
     """
     context = " ".join(chunk["text"] for chunk in chunks)
-    problems = []
+    context_numbers = _numbers(context)
+    answer = proposal.get("expected_output", "")
+    problems: list[str] = []
+
+    missing = sorted(_numbers(answer) - context_numbers)
+    if missing:
+        problems.append(f"numero(s) da resposta ausentes do trecho: {missing}")
+
+    if {"C2", "C4"} & set(case.targets):
+        if not (_numbers(answer) & {n.rstrip("%").replace(",", ".") for n in altered}):
+            problems.append(
+                "nao cita valor que as variantes prev/conflict alteram — C2 e C4 "
+                "sobreviveriam por construcao"
+            )
+
+    if TEMPLATE_LEFTOVER.search(answer):
+        problems.append("sobra de gabarito na resposta (cite o nome real do documento)")
+
     for value in proposal.get("key_values", []):
-        if value and str(value) not in context:
-            problems.append(f"valor '{value}' não aparece no trecho")
-    for number in re.findall(r"\d[\d.,]{1,}", proposal.get("expected_output", "")):
-        if number not in context:
-            problems.append(f"número '{number}' da resposta não aparece no trecho")
+        text = str(value).strip()
+        if PLACEHOLDER_LIKE.match(text) and text not in context:
+            problems.append(f"placeholder nao preenchido: '{text}'")
+
+    pages = {str(chunk.get("page")) for chunk in chunks}
+    for cited in re.findall(r"p[aá]g\.?\s*(\d+)", answer, re.IGNORECASE):
+        if cited not in pages:
+            problems.append(f"cita pag. {cited}, mas o trecho veio da(s) pag. {sorted(pages)}")
+
     return problems
+
+
+def recheck() -> int:
+    """Reaplica a conferencia sobre drafts.jsonl, sem chamar o modelo.
+
+    Separar conferir de gerar importa: melhorar a heuristica custava 10 minutos
+    de GPU a cada tentativa enquanto as duas coisas estavam no mesmo comando.
+    """
+    if not DRAFTS_PATH.exists():
+        logger.error("%s nao existe — rode --all antes.", DRAFTS_PATH)
+        return 1
+
+    from app.rag import vector_store
+
+    study = load_study_config()
+    altered = _altered_values()
+    cases = {case.case_id: case for case in load_cases()}
+    rows = jsonl.read(DRAFTS_PATH)
+
+    with sut_configuration(study.baseline_overrides):
+        stored = vector_store.get_collection().get(include=["documents"])
+        text_by_id = dict(zip(stored["ids"], stored["documents"]))
+
+        for row in rows:
+            chunks = [
+                {"chunk_id": cid, "text": text_by_id.get(cid, ""), "page": _page_of(cid)}
+                for cid in row["source_chunk_ids"]
+            ]
+            problems = _verify(row, chunks, cases[row["case_id"]], altered)
+            row["auto_check"] = problems or ["ok"]
+
+    jsonl.write_all(DRAFTS_PATH, rows)
+    flagged = [r for r in rows if r["auto_check"] != ["ok"]]
+    logger.info("%d rascunhos reconferidos; %d com pendencia.", len(rows), len(flagged))
+    for row in flagged:
+        logger.info("  %s: %s", row["case_id"], "; ".join(row["auto_check"]))
+    return 0
+
+
+def _page_of(chunk_id: str) -> int | None:
+    match = re.search(r"::p(\d+)::", chunk_id)
+    return int(match.group(1)) if match else None
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Propõe rascunhos de casos a partir do corpus.")
     parser.add_argument("--case", help="rascunha só um case_id")
     parser.add_argument("--all", action="store_true", help="rascunha todos os casos ainda em rascunho")
+    parser.add_argument(
+        "--recheck",
+        action="store_true",
+        help="so reaplica a conferencia sobre drafts.jsonl, sem chamar o modelo",
+    )
     parser.add_argument("--seed", type=int, default=20260922)
     args = parser.parse_args(argv)
 
+    if args.recheck:
+        return recheck()
     if not (args.case or args.all):
-        parser.error("use --case <id> ou --all")
+        parser.error("use --case <id>, --all ou --recheck")
 
     paths.ensure_dirs()
     study = load_study_config()
@@ -220,6 +369,8 @@ def main(argv: list[str] | None = None) -> int:
 
     rng = random.Random(args.seed)
     altered = _altered_values()
+    used_chunks: set[str] = set()
+    role_cursor: dict[str, int] = {}
     proposals: list[dict] = []
 
     with sut_configuration(study.baseline_overrides) as resolved:
@@ -230,7 +381,7 @@ def main(argv: list[str] | None = None) -> int:
         ensure_index(resolved)
         for case in cases:
             wants_altered = altered if {"C2", "C4"} & set(case.targets) else set()
-            chunks = _pick_chunks(case, manifest, rng, wants_altered)
+            chunks = _pick_chunks(case, manifest, rng, wants_altered, used_chunks, role_cursor)
             if not chunks:
                 logger.warning("%s: nenhum chunk disponível para o papel '%s'", case.case_id, case.evidence_role)
                 continue
@@ -242,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
                 logger.error("%s: falha ao rascunhar — %s", case.case_id, exc)
                 continue
 
-            problems = _verify(proposal, chunks)
+            problems = _verify(proposal, chunks, case, altered)
             proposals.append(
                 {
                     "case_id": case.case_id,

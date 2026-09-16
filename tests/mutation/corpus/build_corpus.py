@@ -52,25 +52,80 @@ PAGE_WIDTH, PAGE_HEIGHT = 595.0, 842.0  # A4 em pontos
 MARGIN = 40.0
 FONT_SIZES = (8.0, 7.0, 6.5, 6.0)
 
-# Pontuação tipográfica que o conjunto Base-14 do PDF (latin-1) não representa.
+# O conjunto Base-14 do PDF representa latin-1 e mais nada. Sem tradução, todo
+# símbolo fora disso virava "?" — 1372 deles no primeiro corpus montado, sendo
+# 677 num único documento. Não é perda cosmética: notação estatística é
+# exatamente o que os casos factuais citam, e "p = 0,377" virando "? = 0,377"
+# apaga o fato que o caso ia testar.
 PUNCTUATION_MAP = {
     "‘": "'", "’": "'", "“": '"', "”": '"',
-    "–": "-", "—": "-", "…": "...", " ": " ",
+    "–": "-", "—": "-", "…": "...", " ": " ",
     "−": "-", "•": "-", "ﬁ": "fi", "ﬂ": "fl",
+}
+
+# Letras gregas e operadores matemáticos que a NFKC não reduz a ASCII. A grafia
+# por extenso ("alpha") é preferível ao símbolo perdido: um caso de teste pode
+# citar "alpha = 0,05", nunca "? = 0,05".
+SYMBOL_MAP = {
+    "α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta", "ε": "epsilon",
+    "ζ": "zeta", "η": "eta", "θ": "theta", "λ": "lambda", "μ": "mu",
+    "π": "pi", "ρ": "rho", "σ": "sigma", "τ": "tau", "φ": "phi",
+    "χ": "chi", "ψ": "psi", "ω": "omega", "κ": "kappa", "ν": "nu",
+    "Δ": "Delta", "Σ": "Sigma", "Ω": "Omega", "Φ": "Phi", "Θ": "Theta",
+    "≤": "<=", "≥": ">=", "≠": "!=", "≈": "~=", "≡": "==",
+    "×": "x", "÷": "/", "±": "+/-", "∞": "inf", "√": "sqrt",
+    "→": "->", "←": "<-", "⇒": "=>", "↔": "<->",
+    "∈": " in ", "∉": " not in ", "⊂": " subset ", "∪": " union ", "∩": " inter ",
+    "∑": "sum", "∏": "prod", "∫": "int", "∂": "d", "∇": "grad",
+    "·": ".", "∗": "*", "⋅": ".", "°": " graus", "‰": " por mil",
+    "™": "(TM)", "®": "(R)", "©": "(c)", "§": "sec.", "€": "EUR",
+    # Decoração de tabela de resultados: seta para cima/baixo marcando
+    # melhor/pior, círculo marcando ausência. Aparecem centenas de vezes.
+    "↑": "+", "↓": "-", "○": "o", "●": "*", "◦": "o", "†": "+", "‡": "++",
+    "⟨": "<", "⟩": ">", "≪": "<<", "≫": ">>", "′": "'", "″": '"', "⋆": "*",
 }
 
 
 def _latin1_safe(text: str) -> str:
     """Deixa o texto representável pelas fontes Base-14 do PDF, sem perder conteúdo.
 
-    Acentos do português sobrevivem (estão em latin-1); o que cai são símbolos
-    matemáticos e alfabetos não-latinos, substituídos por '?' para que a perda
-    fique visível no corpus em vez de silenciosa.
+    Três passadas, nesta ordem:
+
+    1. pontuação tipográfica para o equivalente ASCII;
+    2. NFKC, que resolve sozinha as classes que têm decomposição de
+       compatibilidade — itálico matemático (𝑝 -> p), ligaduras, expoentes,
+       largura dupla. É o que recupera a notação estatística dos artigos;
+    3. tabela explícita para grego e operadores, que a NFKC não reduz.
+
+    Acentos do português sobrevivem (estão em latin-1). O que ainda escapar vira
+    "?" — visível de propósito, para a perda não passar despercebida.
     """
     for source, target in PUNCTUATION_MAP.items():
         text = text.replace(source, target)
-    text = unicodedata.normalize("NFC", text)
-    return text.encode("latin-1", errors="replace").decode("latin-1")
+    text = unicodedata.normalize("NFKC", text)
+    for source, target in SYMBOL_MAP.items():
+        text = text.replace(source, target)
+    return "".join(_fold_to_latin1(ch) for ch in text)
+
+
+def _fold_to_latin1(char: str) -> str:
+    """Ultimo recurso por caractere: decompoe e larga os acentos que sobrarem.
+
+    Recupera nomes proprios de autores — Ismayle, Gencer, Sahin viram
+    representaveis em vez de "?". So o que nao tem nenhuma forma latina
+    (emoji, pedaco de parentese gigante do LaTeX) ainda vira "?", e ai o "?"
+    e informacao: marca onde a extracao perdeu algo de verdade.
+    """
+    try:
+        return char.encode("latin-1").decode("latin-1")
+    except UnicodeEncodeError:
+        pass
+    decomposed = unicodedata.normalize("NFKD", char)
+    stripped = "".join(c for c in decomposed if unicodedata.category(c) != "Mn")
+    try:
+        return stripped.encode("latin-1").decode("latin-1")
+    except UnicodeEncodeError:
+        return "?"
 
 
 def _reflow(text: str) -> str:

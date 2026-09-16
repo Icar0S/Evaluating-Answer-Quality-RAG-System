@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-09-15T23:48:53.115552+00:00",
+  "generated_at": "2026-09-16T01:15:27.495887+00:00",
   "variants": [
     {
       "document": "does_prompt_engineering_really_impact_llm_genera.pdf",
       "variant": "prev",
       "file": "does_prompt_engineering_really_impact_llm_genera__prev.pdf",
-      "sha256": "b641be335d6359203211e5c1c5a66ab48b463425371d4d3f6092bc4a87c7afc1",
+      "sha256": "9983edf06e6a32a0298b2a8b5e52d406c5e1a047d79291936f8755697ab92145",
       "substitutions": [
         {
           "page": 1,
@@ -253,7 +253,7 @@
       "document": "does_prompt_engineering_really_impact_llm_genera.pdf",
       "variant": "conflict",
       "file": "does_prompt_engineering_really_impact_llm_genera__conflict.pdf",
-      "sha256": "20d26c7c60fe563d9f8fe868788340269e4a0b27cc296f1f3f90f5495ef31c7d",
+      "sha256": "7d1e8e6f975101af6c6d880f4e8c4a758e94b368c5a9105f34a828a62414d31d",
       "substitutions": [
         {
           "page": 1,
