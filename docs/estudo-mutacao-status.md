@@ -2,7 +2,7 @@
 
 **Artigo:** *Mutation-Based Adequacy Assessment of Test Suites for Retrieval-Augmented Assistants*
 **Destino:** Information and Software Technology, special issue VSI:EQUISA · submissão 13/12/2026
-**Branch:** `journal-ist` · **Última atualização:** 16/09/2026 (semana 5 em curso — piloto executado)
+**Branch:** `journal-ist` · **Última atualização:** 17/09/2026 (semana 5 concluída; três decisões pendentes para a semana 6)
 
 Este documento registra o que foi construído e executado até aqui, as decisões de
 projeto com suas razões, e o que já dá para escrever do artigo. Ele existe porque
@@ -20,8 +20,8 @@ justificar para um revisor.
 | 2 | 30 casos + `golden.jsonl` + `assertions.yaml` | **concluída** |
 | 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | **concluída** — τ* = 0,60, e a calibração virou resultado (§4.7) |
 | 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída** — 18/18 revertem sem resíduo E injetam o defeito declarado (§3.5) |
-| 5 | O3, O4, O5 prontos; `run_campaign.py` validado | **piloto executado** — O4 estável; O3 inviável com juiz de 4B (§3.6) |
-| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | não iniciada |
+| 5 | O3, O4, O5 prontos; `run_campaign.py` validado | **concluída** — O4 estável; O3 inviável com juízes locais (§4.9); três decisões abertas (§6) |
+| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **aguardando decisões** — O3, c16, duração (§6) |
 | 7–13 | Coerência, RQ3, escrita, submissão | não iniciadas |
 
 O cronograma está **adiantado**: o portão GO/NO-GO da semana 4 fechou junto com a
@@ -43,7 +43,7 @@ tests/api (regressão do SUT)         VERDE — 18 testes
 
 ## 2. O que foi construído
 
-49 arquivos versionados em `tests/mutation/`: ~6.900 linhas de Python e ~1.800 de
+56 arquivos versionados em `tests/mutation/`: ~7.850 linhas de Python e ~2.000 de
 configuração e dados. Mais 264 linhas de mudança no SUT (`backend/app/`).
 
 ### 2.1 Mudanças no SUT
@@ -78,11 +78,21 @@ config/codebook.yaml     códigos de coerência, a congelar antes de ver resulta
 corpus/                  normalização dos PDFs, variantes prev/conflict, manifesto
 operators/catalog.yaml   os 18 operadores com camada, ponto de falha e patch
 operators/apply.py       aplica/reverte idempotente + portão `verify`
-suite/                   30 casos, assertivas, geração de rascunho, promoção, validação
-calibration/             300 pares rotulados por construção, varredura de τ
-oracles/                 O1 cosseno, O2 assertivas, O3 RAGAS, O4 juiz, O5 conjunção
+suite/                   30 casos, assertivas, validação (com --check-retrieval)
+  draft_cases.py           rascunha casos a partir do corpus indexado; --recheck sem GPU
+  promote_drafts.py        promove rascunho conferido para golden.jsonl, com bloqueios
+  build_assertions.py      deriva assertivas e RODA O2 contra a própria referência
+calibration/             pares rotulados por construção, varredura de τ, conferência
+  review_pairs.py          apoio à conferência visual de 100% dos pares EQUIV (§6.3)
+  diagnose_o1.py           o que o cosseno vê e não vê, por tipo de erro e por modelo
+oracles/                 O1 cosseno, O2 assertivas, O3 RAGAS/deepeval, O4 juiz, O5 conjunção
 runner/                  ponte com o SUT, custo (GPU/Wh por NVML), JSONL, caminhos
-tools/                   auditoria de papéis e licenças, calibração do piso, dados sintéticos
+tools/
+  audit_roles.py           papéis do corpus servem aos operadores C1-C4 e E2?
+  audit_licenses.py        o corpus pode ir para o Zenodo?
+  verify_mutants.py        cada mutante injeta o defeito declarado? (§10, executável)
+  calibrate_retrieval_gate.py  piso de similaridade do baseline
+  make_synthetic_results.py    dados falsos para validar a análise sem GPU
 run_campaign.py          baseline + mutantes -> runs.jsonl
 evaluate.py              oráculos sobre o log -> verdicts.jsonl
 coherence.py             classificação de coerência + κ intra-avaliador
@@ -176,6 +186,11 @@ degeneração (`"O Pitest (Pitest) foi adotado"`) e de relação alterada
 
 τ* = 0,60, e o resultado da calibração virou achado — ver §4.7.
 
+Limitação a declarar, espelho da que o protocolo já previa: as paráfrases saíram
+conservadoras (troca de verbo e conectivo, mesma estrutura). Somada aos erros
+programáticos da classe ERRO, **τ\* é limite superior pelos dois lados**, não só
+por um.
+
 ### 3.5 Fidelidade dos mutantes (semana 4)
 
 `apply verify` prova que os 18 operadores aplicam e revertem sem resíduo. Não
@@ -204,6 +219,18 @@ ponto do pipeline que ele deveria alterar, e grava `operators/fidelity_report.js
 | P2 | regra de abstenção ausente, ancoragem preservada |
 | P3 | regra de citação ausente, ancoragem preservada |
 | P4 | `temperature: 0.8` nas opções enviadas ao Ollama |
+
+Duas sondas precisaram ser endurecidas depois da primeira rodada, e o motivo é
+o mesmo achado de sempre — checagem que passa pelo motivo errado é pior que
+nenhuma:
+
+- **R4** usava a primeira pergunta "fora do corpus" da lista, cujo melhor chunk
+  (0,492) já passa do piso de 0,428: baseline e mutante devolviam 4 chunks e a
+  checagem passava sem observar nada. A sonda agora é a pergunta negativa de
+  menor similaridade (0,418), onde o baseline devolve zero.
+- **K3** era conferido por contagem de chunks, que não muda ao tirar a
+  sobreposição — o que muda é o conteúdo. Agora mede quantos caracteres do fim
+  do 1º chunk reaparecem no início do 2º.
 
 ### 3.6 Piloto (semana 5)
 
@@ -272,23 +299,6 @@ noites resolvem; mas é decisão de cronograma.
 do piloto, a temperatura 0. O ponto de decisão da semana 5 (§9) está respondido:
 o juiz fica, e é ele que pega o que o O1 não vê — número trocado sai como
 `fail / wrong_value`.
-
-Duas sondas precisaram ser endurecidas depois da primeira rodada, e o motivo é
-o mesmo achado de sempre — checagem que passa pelo motivo errado é pior que
-nenhuma:
-
-- **R4** usava a primeira pergunta "fora do corpus" da lista, cujo melhor chunk
-  (0,492) já passa do piso de 0,428: baseline e mutante devolviam 4 chunks e a
-  checagem passava sem observar nada. A sonda agora é a pergunta negativa de
-  menor similaridade (0,418), onde o baseline devolve zero.
-- **K3** era conferido por contagem de chunks, que não muda ao tirar a
-  sobreposição — o que muda é o conteúdo. Agora mede quantos caracteres do fim
-  do 1º chunk reaparecem no início do 2º.
-
-Limitação a declarar, espelho da que o protocolo já previa: as paráfrases saíram
-conservadoras (troca de verbo e conectivo, mesma estrutura). Somada aos erros
-programáticos da classe ERRO, **τ\* é limite superior pelos dois lados**, não só
-por um.
 
 ---
 
@@ -466,76 +476,196 @@ Reproduzível por `python -m tests.mutation.calibration.diagnose_o1`, com saída
 como resultado central, §8 (Discussion) como implicação para a prática de
 avaliação de RAG, §10 (Threats) para a validade de constructo.
 
+### 4.8 O juiz lê a referência como teto, não como piso
+
+Apareceu no piloto (§3.6). O prompt do O4 pedia que a resposta não tivesse
+"afirmação não sustentada", e o juiz leu *não sustentada* como *ausente da
+referência*: uma resposta correta e mais detalhada que a referência — os mesmos
+três percentuais, cada um descrito pela causa em vez do nome do mutador —
+reprovava com "adiciona informações".
+
+O ponto é de desenho, não de prompt: o juiz recebe pergunta, referência e
+resposta, e **não vê o documento**. Ele não tem como saber se um detalhe a mais
+é verdadeiro. O que ele pode julgar é contradição. Um juiz de referência tem,
+portanto, um viés estrutural contra respostas *melhores* que a referência — e
+esse viés só aparece quando o SUT é bom. O prompt agora declara que a
+referência é o mínimo; os controles depois da mudança (número errado reprova,
+mutador trocado reprova, resposta curta correta passa) estão em §3.6.
+
+**Onde entra:** §5.4 (desenho do O4, com a instrução explícita), §7.2 (é um
+viés de oráculo medido *antes* da campanha, como o do O1), §9.
+
+### 4.9 A métrica de fidelidade do RAGAS não vê alucinação sobre tópico ausente
+
+O O3 é o oráculo que o protocolo nomeia e o que a literatura usa como padrão.
+Com os juízes locais disponíveis ele não funciona, e o motivo tem duas camadas
+(§3.6):
+
+1. **Implementação.** `ragas` exige que o juiz devolva JSON num formato
+   específico; gemma3:4b falha em 6 de 9 avaliações. `deepeval` tolera a
+   saída, mas com 4B extrai zero afirmações e devolve faithfulness = 0 para
+   resposta ancorada e = 1 para alucinação — verdade vazia.
+2. **Definição.** Com juiz de 8B (qwen3, 4–9 min por avaliação) a alucinação de
+   c16 — `"a WCAG 2.2 define 14 critérios"` com contexto que não menciona WCAG —
+   continua com faithfulness **1,0**. A métrica do `deepeval` conta afirmações
+   que *não contradizem* o contexto; inventar sobre um tópico ausente não
+   contradiz nada. O `ragas` é mais estrito (a afirmação precisa ser
+   *inferível*), mas é o que não parseia.
+
+Isso importa para o artigo além da decisão operacional: **o oráculo padrão da
+área é, por definição, cego ao defeito que o operador P2 injeta** (abstenção
+removida). Se O3 ficar, ele entra como oráculo com ponto cego declarado; se
+sair, a saída é a contingência do §9 e o motivo é documentado. Ver §6.
+
+**Onde entra:** §5.3, §7.2 (viés por construção), §8, §9 (contingência
+exercida).
+
+### 4.10 A classe de abstenção pressupõe um baseline que sabe se abster
+
+c16 (WCAG, fora do corpus) recebeu resposta com número inventado no sistema
+**não-mutado**, com contexto que não menciona o tópico. Não é defeito da suíte:
+é o SUT violando a própria regra de ancoragem. Pelo §7.1 o caso sai de S para
+todos os oráculos.
+
+A consequência é sobre o desenho do estudo, não sobre um caso: os operadores de
+prompt que removem abstenção (P2) só são observáveis em casos onde o baseline
+se abstém. Se o baseline já alucina, **P2 sobrevive por construção, e o
+sobrevivente parece lacuna da suíte quando é defeito do sistema**. O conjunto
+avaliável S protege o resultado, mas esvazia a classe; a alternativa — afastar
+as perguntas do corpus até o SUT se abster — mede menos o que um usuário real
+perguntaria. Decisão pendente (§6).
+
+**Onde entra:** §6.1 (por que a classe existe e o que ela pressupõe), §7.1 (S
+por oráculo, com o motivo de cada exclusão), §8, §9.
+
+### 4.11 O custo da campanha é 3× o estimado, e a causa é o raciocínio do modelo
+
+27 s por invocação com 812 tokens de saída em média, quando a resposta útil tem
+~150. O resto é o modo de raciocínio do qwen3:8b antes de responder. Projeção:
+22,6 h de parede e ~1,1 kWh contra 8,5 h no protocolo. O custo foi medido por
+NVML por invocação (GPU-s e Wh), então a RQ3 já tem a linha de base do SUT.
+
+Vale como observação para a RQ3: em um SUT com modelo de raciocínio, o custo do
+*sistema sob teste* domina o custo dos *oráculos* — inclusive do juiz. A
+proporção que o protocolo esperava (O4 caro, O1 barato) continua verdadeira
+entre oráculos, mas ambos são pequenos diante da geração.
+
+**Onde entra:** §6.5 (custo), §7.3 (RQ3), §9 (cronograma e regra de corte).
+
+### 4.12 Uma verificação que não pode falhar não verifica
+
+Duas sondas de fidelidade passavam pelo motivo errado (§3.5): R4 usava uma
+pergunta cuja similaridade já passava do piso, então baseline e mutante
+devolviam o mesmo; K3 contava chunks, que não mudam ao tirar a sobreposição.
+As duas foram trocadas por sondas que **falham no baseline e passam no
+mutante** — o critério que toda checagem de fidelidade deveria satisfazer, e
+que o protocolo pedia como "revisão manual de 100%" sem dizer como.
+
+**Onde entra:** §4 (fidelidade dos operadores, com a tabela do §3.5), §10
+(validade interna: a revisão manual virou executável e versionada).
+
 ---
 
 ## 5. Seções do artigo que já dão para escrever
+
+O que muda em relação à versão anterior deste documento: τ* está calibrado, o
+piloto rodou, e dois dos cinco oráculos (O1 e O3) já têm resultado sobre viés
+**antes** da campanha. Isso move o §7.2 de "bloqueado" para "parcial".
 
 ### Podem ser escritas agora, na íntegra
 
 **§3 Study Context.** Material completo: o SUT e sua configuração exata
 (`config/study.yaml`), o corpus caracterizado (8 documentos, 96 páginas, 184
 chunks, 1,9 chunk/página) com a justificativa da normalização (§4.6 e §3.1
-acima), e a suíte de 30 casos com as cotas por classe e a cobertura por operador.
+acima), e a suíte de 30 casos com as cotas por classe, a cobertura por operador
+e a verificação de que cada pergunta factual recupera o documento da sua
+evidência (§3.6).
 
 **§4 Mutation Operators for RAG.** Os 18 operadores estão no catálogo com camada,
-ponto de falha e patch, e `apply verify` demonstra aplicação e reversão sem
-resíduo. A subseção de equivalência ganha material novo: o achado §4.1
-(equivalência por estrutura do corpus) e a regra do conjunto avaliável.
+ponto de falha e patch; `apply verify` demonstra aplicação e reversão sem
+resíduo e `verify_mutants` demonstra que cada um injeta o defeito declarado,
+com a evidência observada por operador (tabela em §3.5). A subseção de
+equivalência ganha o achado §4.1 e a regra do conjunto avaliável; a de
+fidelidade ganha o §4.12.
+
+**§5 Oracles under Study.** O1–O5 implementados, com a formalização de O5 como
+conjunção. O τ* = 0,60 está calibrado e a calibração é resultado (§4.7). O
+desenho do O4 inclui a instrução "referência é o mínimo" com a justificativa do
+§4.8. O O3 é descrito com o ponto cego do §4.9 — a redação final depende da
+decisão de mantê-lo (§6).
 
 **§6 Study Design.** Todos os parâmetros estão fixados e versionados: baseline de
 30×10, campanha de 18×30×5, `stop on kill` desligado, temperatura 0,0 exceto P4,
 seed = índice da repetição. As regras estatísticas do §7.7 estão implementadas em
-`stats.py` e foram fixadas antes da coleta — o que é exatamente o que dá força ao
-pré-registro.
-
-**§5 Oracles under Study.** O1–O5 implementados, com a formalização de O5 como
-conjunção (e não como oráculos em paralelo). Falta só o valor de τ*; o desenho, a
-justificativa de custo (O3/O4 sobre a resposta modal) e a assimetria entre
-oráculos já estão descritos.
+`stats.py` e fixadas antes da coleta. O §6.3 (calibração) já tem os números
+finais: 247 pares, 111 EQUIV conferidos um a um, 4 rejeitados, AUC por tipo de
+erro em dois modelos de embedding. O §6.5 (custo) tem a medição por NVML e o
+custo real por invocação.
 
 ### Podem ser escritas agora, com lacuna declarada
 
 **§1 Introduction** e **§2.5 Gap.** Não dependem de resultado. O parágrafo de
-relação com o SAST 2026 já estava previsto no protocolo.
+relação com o SAST 2026 já estava previsto no protocolo. A introdução pode
+antecipar o §4.7 como motivação: o oráculo mais barato da prática não vê o
+defeito mais importante em RAG.
 
-**§9 Threats to Validity.** A maior parte já está escrita no protocolo, e ganha
-três ameaças novas e *empiricamente demonstradas*: §4.2 (corpus homogêneo derrota
-o piso), §4.4 (oráculo determinístico não validado contra o baseline) e §4.5
-(resposta de referência com justificativa do modelo). Ameaça demonstrada vale
-mais que ameaça antecipada.
+**§7.2 Results — RQ2 (oracle bias).** Parcial. O viés do O1 (inverte para
+número e condição, §4.7) e o ponto cego do O3 (§4.9) são resultados de
+calibração e piloto, independentes da campanha. O que falta é o κ entre
+oráculos e a comparação de taxas de morte por oráculo, que só a campanha dá.
+
+**§9 Threats to Validity.** A maior parte já está no protocolo e ganha ameaças
+*empiricamente demonstradas*, o que vale mais que ameaça antecipada: §4.2
+(corpus homogêneo derrota o piso), §4.4 (oráculo determinístico não validado
+contra o baseline), §4.5 (referência com justificativa do modelo), §4.8 (juiz
+sem acesso ao documento), §4.10 (classe de abstenção pressupõe baseline que se
+abstém), e a limitação de que τ* é limite superior pelos dois lados (§3.4).
 
 ### Dependem de leitura, não do estudo
 
 **§2.1–2.4** (RAG failure points, oracle problem, mutation testing para sistemas
 LLM, avaliação de assistentes). Bloqueadas pelo tempo de leitura, não pela
 execução. A semana 6 é quase toda de máquina rodando — é a janela natural para
-elas, como o próprio protocolo sugere.
+elas, como o próprio protocolo sugere. O §2.2 (oracle problem) tem agora dois
+exemplos próprios para ancorar a leitura: §4.7 e §4.9.
 
 ### Bloqueadas pela campanha
 
-**§7.1–7.4** (Results) e **§10** (Conclusion). Precisam de `runs.jsonl` e
-`verdicts.jsonl`. O `analyze.py` já gera as 10 tabelas e 4 figuras, e foi
-validado com dados sintéticos — quando a campanha rodar, a análise sai no mesmo
-dia.
+**§7.1, §7.3, §7.4** (Results — adequação por camada, custo, coerência) e
+**§10** (Conclusion). Precisam de `runs.jsonl` e `verdicts.jsonl` completos. O
+`analyze.py` já gera as 10 tabelas e 4 figuras e foi validado com dados
+sintéticos — quando a campanha rodar, a análise sai no mesmo dia.
 
 **§8 Discussion.** Parcial: as implicações para praticantes dos achados §4.1 a
-§4.4 já podem ser escritas; as que dependem de qual camada sobrevive mais, não.
+§4.12 já podem ser escritas; as que dependem de qual camada sobrevive mais, não.
 
-> **Recomendação de ordem:** escrever §3, §4 e §6 agora, enquanto as decisões
-> estão frescas. São as três seções onde a memória do que foi decidido e por quê
-> se perde mais rápido, e são justamente as que um revisor de IST lê com mais
-> atenção num artigo de método.
+> **Recomendação de ordem:** escrever §3, §4, §5 e §6 agora, enquanto as decisões
+> estão frescas — são as seções onde a memória do que foi decidido e por quê se
+> perde mais rápido, e as que um revisor de IST lê com mais atenção num artigo
+> de método. Em seguida o §7.2 parcial e o §9, que já têm os números. A
+> campanha da semana 6 pode rodar enquanto isso é escrito.
 
 ---
 
 ## 6. O que ainda falta
 
-### Bloqueadores reais
+### Decisões que bloqueiam a semana 6
+
+São decisões de desenho, não de código; o harness está pronto para qualquer
+uma das saídas.
+
+| Decisão | Opções | O que muda |
+|---|---|---|
+| **O3 (RAGAS)** — inviável com os juízes locais (§4.9) | (a) contingência do §9: campanha com O1, O2, O4, O5; (b) baixar llama3.1:8b e retestar `ragas` num novo piloto; (c) manter via `deepeval` e reportar como degenerado | (a) é a saída pré-registrada e o motivo está documentado; (b) custa ~5 GB e mais um piloto; (c) enfraquece a RQ2 porque a degeneração é da implementação, não do método |
+| **c16 e a classe de abstenção** — o baseline alucina (§4.10) | (a) aceitar: os casos saem de S e o artigo reporta como achado sobre o SUT; (b) afastar as cinco perguntas "fora do corpus" até o baseline se abster | (a) pode deixar P2 sem caso avaliável; (b) mede menos o que um usuário perguntaria. Aceitar exige rodar o baseline dos 5 casos antes para saber quantos sobram |
+| **Duração da campanha** — 22,6 h vs. 8,5 h estimadas (§4.11) | (a) três noites, harness retomável; (b) regra de corte do §9: 20 casos, ~15 h | (b) reduz o poder das comparações por classe (cotas caem de 5 para ~3) |
+
+### Bloqueadores para publicação (não para a campanha)
 
 | Item | Estado | Impacto |
 |---|---|---|
-| **Licenças do corpus** | 1 redistribuível, 2 bloqueados (ACM), 5 sem declaração | Bloqueia o Zenodo. Trocar documento depois da campanha significa refazer tudo |
-| **Codebook congelado** | `frozen_at: null` | Precisa ser fechado **antes** de ver qualquer resultado (§7.4) |
+| **Licenças do corpus** | 1 redistribuível, 2 bloqueados (ACM), 5 sem declaração | Bloqueia o Zenodo. Trocar documento **depois** da campanha significa refazer tudo — resolver antes da semana 6 ou aceitar publicar só o manifesto com hashes |
+| **Codebook congelado** | `frozen_at: null` | Precisa ser fechado **antes** de ver qualquer resultado da campanha (§7.4). É uma linha em `config/codebook.yaml`, mas é o compromisso do pré-registro |
 
 ### Revisões recomendadas antes da campanha
 
@@ -544,11 +674,15 @@ dia.
   próprio caso.
 - **caso c14** — membro mais fraco da classe `filtro_condicional`: o trecho é uma
   tabela de resultados e não enuncia condição.
+- **c07** — reprova no baseline com razão (pede *quais mutantes*, o SUT responde
+  com categorias). Sai de S por mérito; se a classe `multi_hop` ficar com poucos
+  avaliáveis, é a primeira pergunta a reformular.
 
-### Sem bloqueio
+### Depois da campanha
 
-Piloto de 2 mutantes (semana 5) e validação do O4. O código está pronto; falta
-executar.
+Classificação de coerência (§7.4, semana 7) com o codebook congelado; κ entre
+dois classificadores; RQ3 sobre os custos já medidos; escrita e submissão
+(semanas 8–13).
 
 ---
 
@@ -560,20 +694,40 @@ python -m venv tests/mutation/.venv && tests/mutation/.venv/Scripts/activate
 pip install -r tests/mutation/requirements.txt
 ollama pull qwen3:8b nomic-embed-text gemma3:4b all-minilm
 
-# corpus e índice
+# corpus e índice (semana 1)
 python -m tests.mutation.corpus.build_corpus --from data/source_pdfs --limit 8
 python -m tests.mutation.tools.audit_licenses --write
 python -m tests.mutation.tools.audit_roles --suggest
 python -m tests.mutation.tools.calibrate_retrieval_gate --index-only
 
-# portões
-python -m tests.mutation.suite.validate_suite
+# suíte (semana 2) — os rascunhos já foram promovidos; isto só confere
+python -m tests.mutation.suite.build_assertions
+python -m tests.mutation.suite.validate_suite --check-retrieval
+
+# calibração de τ* (semana 3) — pares e revisão estão versionados
+python -m tests.mutation.calibration.calibrate
+python -m tests.mutation.calibration.diagnose_o1
+
+# fidelidade dos mutantes (semana 4)
 python -m tests.mutation.operators.apply verify
+python -m tests.mutation.tools.verify_mutants
+
+# piloto (semana 5): 3 casos × (baseline + R1 + P2) × 2 repetições
+python -m tests.mutation.run_campaign --baseline --repetitions 2 --cases c01,c07,c16
+python -m tests.mutation.run_campaign --campaign --operators R1,P2 --repetitions 2 --cases c01,c07,c16
+python -m tests.mutation.evaluate --mutants baseline,R1,P2
 
 # análise sobre dados sintéticos (valida o caminho sem gastar GPU)
 python -m tests.mutation.tools.make_synthetic_results
 python -m tests.mutation.analyze --results-dir tests/mutation/results/synthetic
 ```
+
+Os arquivos que cada etapa produz e que estão versionados: `corpus/manifest.json`,
+`corpus/variants/variants.json`, `suite/golden.jsonl`, `suite/assertions.yaml`,
+`calibration/pairs.jsonl`, `calibration/tau.json`,
+`calibration/oracle_diagnostic.json`, `operators/fidelity_report.json`. Os
+resultados do piloto (`results/runs.jsonl`, `results/verdicts.jsonl`) não são
+versionados — são regenerados pelos comandos acima.
 
 Passo a passo completo em [tests/mutation/README.md](../tests/mutation/README.md).
 
@@ -594,3 +748,16 @@ Passo a passo completo em [tests/mutation/README.md](../tests/mutation/README.md
 | `1a8797c` | reconstruir o corpus passa a invalidar o índice |
 | `24c672a` | semana 2: 30 casos prontos e assertivas conferidas |
 | `0d4fec6` | casos "fora do corpus" que recuperavam o corpus; piso com margem |
+| `4b4fae1` | este relatório (primeira versão) |
+| `89a3f3a` | conjunto de calibração: exclui abstenções e equilibra as classes |
+| `0bb9376` | referências curtas demais para servir de alvo ao O1 |
+| `1cf45c1` | conferência visual dos 115 pares EQUIV concluída (§6.3) |
+| `589483f` | τ* calibrado — e a calibração é o primeiro resultado da RQ2 |
+| `48780f3` | ferramenta de diagnóstico do O1 e registro do achado (§4.7) |
+| `f4c2248` | O1 embeda em lote — medir o custo certo, não desempenho |
+| `a721190` | remove `scores.json` do versionamento |
+| `248cb27` | semana 4: fidelidade dos 18 mutantes verificada |
+| `e3fae9e` | semana 5: venv próprio, NVML na RQ3, casos do piloto |
+| `bf434a7` | piloto: perguntas que não recuperavam a evidência; juiz calibrado |
+| `40fb63e` | relatório: piloto da semana 5 (§3.6) |
+| `1d7bc66` | relatório: diagnóstico do O3 com juiz de 8B e decisão pendente |
