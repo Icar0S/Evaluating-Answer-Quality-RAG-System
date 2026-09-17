@@ -171,13 +171,70 @@ def check_baseline() -> list[str]:
     return problems
 
 
+def check_retrieval() -> list[str]:
+    """Cada pergunta factual recupera o documento onde sua evidência mora?
+
+    Descoberto no piloto: "Quantas classes foram selecionadas no total?" (c01)
+    recuperava quatro documentos e nenhum era o `primary`. Num corpus onde todo
+    artigo fala de "classes", pergunta genérica recupera o vizinho errado, o
+    caso reprova no baseline por falta de evidência e sai de S — e c01 é a
+    âncora de C2/C4.
+
+    Custa uma chamada de embedding por caso, sem geração. Roda contra o índice
+    do estudo sob a configuração do baseline, que é a que a campanha usa.
+    """
+    import json
+
+    from tests.mutation.runner.sut import ensure_index, load_study_config, sut_configuration
+
+    manifest = json.loads(paths.CORPUS_MANIFEST.read_text(encoding="utf-8"))
+    roles = manifest["roles"]
+
+    def expected_documents(case) -> set[str]:
+        if case.evidence_role in ("primary", "secondary"):
+            return {roles[case.evidence_role]}
+        if case.evidence_role == "recent":
+            value = roles["recent"]
+            return set(value if isinstance(value, list) else [value])
+        # `any`: a dica de evidência nomeia o documento
+        return {d["document"] for d in manifest["documents"] if d["document"][:-4] in case.evidence_hint}
+
+    problems: list[str] = []
+    study = load_study_config()
+    with sut_configuration(study.baseline_overrides) as resolved:
+        ensure_index(resolved)
+        from app.rag import retrieval
+
+        for case in load_cases():
+            if case.expected_behavior not in ("answer", "cite") or case.is_draft:
+                continue
+            wanted = expected_documents(case)
+            if not wanted:
+                continue
+            chunks, _ = retrieval.retrieve(case.question)
+            got = {c["document"] for c in chunks}
+            if not (wanted & got):
+                problems.append(
+                    f"{case.case_id}: a pergunta não recupera {sorted(wanted)} — veio "
+                    f"{sorted(got) or 'nada'}. Reescreva a pergunta com termos específicos do documento."
+                )
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Valida a suíte de casos do estudo de mutação.")
     parser.add_argument("--allow-draft", action="store_true", help="tolera casos ainda em rascunho")
     parser.add_argument("--check-baseline", action="store_true", help="confere o comportamento no baseline")
+    parser.add_argument(
+        "--check-retrieval",
+        action="store_true",
+        help="cada pergunta factual recupera o documento da sua evidência? (só embeddings)",
+    )
     args = parser.parse_args(argv)
 
     problems = validate(allow_draft=args.allow_draft)
+    if args.check_retrieval:
+        problems.extend(check_retrieval())
     if args.check_baseline:
         problems.extend(check_baseline())
 

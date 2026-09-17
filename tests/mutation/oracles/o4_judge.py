@@ -4,6 +4,15 @@ Custo alto, roda só sobre a resposta modal das N execuções. Essa assimetria �
 deliberada e é *parte do resultado da RQ3*, não um atalho escondido: reduz as
 chamadas de juiz de 13.500 para 2.700 e o artigo reporta o número.
 
+Calibração feita no piloto (semana 5), antes da campanha: a primeira versão do
+prompt dizia "sem acrescentar afirmação não sustentada", e o juiz lia "não
+sustentada" como "ausente da referência". Uma resposta correta e mais detalhada
+que a referência — os mesmos três percentuais, cada um descrito pela causa em
+vez do nome do mutador — reprovava com "adiciona informações". O juiz não vê o
+documento, então não tem como saber se o detalhe é verdadeiro; o que ele pode
+julgar é contradição. O prompt agora diz isso explicitamente: a referência é o
+mínimo, não o máximo.
+
 Duas mitigações, e o que sobra delas:
 - família distinta da do SUT (qwen3 gera, gemma3 julga) contra viés de
   autopreferência;
@@ -56,9 +65,13 @@ SYSTEM_PROMPT = """Você avalia respostas de um assistente de perguntas e respos
 
 Receberá a PERGUNTA, a RESPOSTA DE REFERÊNCIA (correta, escrita por um especialista) e a RESPOSTA SOB AVALIAÇÃO.
 
+A REFERÊNCIA é o MÍNIMO que uma resposta correta precisa conter, não o máximo. Você não tem acesso ao documento de origem, então NÃO pode julgar se um detalhe a mais é verdadeiro — só pode julgar se ele CONTRADIZ a referência.
+
 Decida se a RESPOSTA SOB AVALIAÇÃO é aceitável:
-- "pass": transmite a mesma informação essencial da referência, sem contradizê-la e sem acrescentar afirmação não sustentada. Diferenças de redação, ordem ou detalhe não essencial não reprovam.
-- "fail": omite informação essencial, contradiz a referência, inventa dado, responde outra pergunta, ou deixa de fazer o que a referência faz (por exemplo: a referência se abstém e ela responde, ou a referência cita a fonte e ela não cita).
+- "pass": contém a informação essencial da referência (os mesmos valores, entidades e condições) sem contradizê-la. Diferenças de redação, de ordem, de nível de detalhe ou de enquadramento NÃO reprovam. Uma resposta mais longa ou mais explicativa que a referência é aceitável desde que os fatos da referência estejam lá e nada os contradiga.
+- "fail": omite ou altera um valor, entidade ou condição essencial da referência; afirma algo que CONTRADIZ a referência; responde outra pergunta; ou deixa de fazer o que a referência faz (a referência se abstém e ela responde; a referência cita a fonte e ela não cita).
+
+Não use "unsupported_claim" para detalhe adicional que apenas não aparece na referência — reserve para afirmação que a contradiga.
 
 Escolha também a causa predominante, entre: missing_info, wrong_value, unsupported_claim, no_abstention, no_citation, off_topic, none (use "none" quando o veredito for "pass").
 
