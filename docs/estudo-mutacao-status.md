@@ -2,7 +2,7 @@
 
 **Artigo:** *Mutation-Based Adequacy Assessment of Test Suites for Retrieval-Augmented Assistants*
 **Destino:** Information and Software Technology, special issue VSI:EQUISA · submissão 13/12/2026
-**Branch:** `journal-ist` · **Última atualização:** 16/09/2026 (semana 4 concluída)
+**Branch:** `journal-ist` · **Última atualização:** 16/09/2026 (semana 5 em curso — piloto executado)
 
 Este documento registra o que foi construído e executado até aqui, as decisões de
 projeto com suas razões, e o que já dá para escrever do artigo. Ele existe porque
@@ -20,7 +20,7 @@ justificar para um revisor.
 | 2 | 30 casos + `golden.jsonl` + `assertions.yaml` | **concluída** |
 | 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | **concluída** — τ* = 0,60, e a calibração virou resultado (§4.7) |
 | 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída** — 18/18 revertem sem resíduo E injetam o defeito declarado (§3.5) |
-| 5 | O3, O4, O5 prontos; `run_campaign.py` validado | código pronto, piloto não executado |
+| 5 | O3, O4, O5 prontos; `run_campaign.py` validado | **piloto executado** — O4 estável; O3 inviável com juiz de 4B (§3.6) |
 | 6 | Baseline (300 inv.) + campanha (2.700 inv.) | não iniciada |
 | 7–13 | Coerência, RQ3, escrita, submissão | não iniciadas |
 
@@ -34,6 +34,7 @@ exigia os casos prontos e os casos ficaram prontos antes do previsto.
 validate_suite (sem --allow-draft)   VERDE — 30 casos, 0 rascunhos
 apply verify                         VERDE — 18/18 operadores sem resíduo
 verify_mutants (fidelidade)          VERDE — 18/18 injetam o defeito declarado
+validate_suite --check-retrieval     VERDE — 19/19 factuais recuperam o documento da evidência
 assertivas vs. própria referência    VERDE — nenhuma se auto-reprova
 tests/api (regressão do SUT)         VERDE — 18 testes
 ```
@@ -203,6 +204,57 @@ ponto do pipeline que ele deveria alterar, e grava `operators/fidelity_report.js
 | P2 | regra de abstenção ausente, ancoragem preservada |
 | P3 | regra de citação ausente, ancoragem preservada |
 | P4 | `temperature: 0.8` nas opções enviadas ao Ollama |
+
+### 3.6 Piloto (semana 5)
+
+Baseline + R1 + P2 sobre três casos (c01 factual/primary, c07 distribuído, c16
+abstenção), 2 execuções cada: 18 invocações, 45 vereditos, cinco oráculos
+ativos. O caminho `run_campaign → evaluate` funciona de ponta a ponta com custo
+medido por NVML (GPU-s e Wh por invocação). Quatro achados:
+
+**Perguntas que não recuperam a evidência.** `"Quantas classes foram
+selecionadas no total?"` (c01) trouxe quatro documentos e nenhum era o `primary`.
+Num corpus onde todo artigo fala de classes, pergunta genérica recupera o
+vizinho errado; o caso reprovaria no baseline e sairia de S — e é a âncora de
+C2/C4. `validate_suite --check-retrieval` confere isso para cada caso factual
+(uma chamada de embedding por caso) e achou mais dois. Os três foram reescritos
+com termos que só o documento tem; **19/19 recuperam**.
+
+**O juiz tratava a referência como máximo.** O4 reprovava o baseline de c07 por
+"adiciona informações não presentes na referência". O juiz não vê o documento,
+então não tem como saber se um detalhe a mais é verdadeiro — só pode julgar
+contradição. O prompt agora diz que a referência é o mínimo. Controles depois
+da mudança: número errado e mutador trocado continuam reprovando, resposta curta
+correta passa. c07 continua reprovando, e relendo, com razão: a pergunta pede
+*quais mutantes* e o SUT respondeu com categorias de fraqueza sem nomear nenhum.
+
+**O SUT alucina fora do corpus.** c16 (WCAG, deveria se abster) recebeu
+`"A WCAG 2.2 define 14 critérios de sucesso no nível AA"` com contexto que não
+menciona WCAG. Não é defeito da suíte — é o sistema não-mutado violando a
+própria regra de ancoragem. Pelo §7.1 o caso sai de S. Se os cinco "fora do
+corpus" reprovarem no baseline, P2 fica sem caso avaliável não porque a suíte é
+fraca, mas porque **a abstenção já está quebrada antes de qualquer mutação**.
+Decisão pendente: aceitar e reportar como achado sobre o SUT, ou afastar as
+perguntas do corpus (o que testaria menos o que um usuário real perguntaria).
+
+**O3 é inviável com juiz de 4B.** `ragas` não parseia a saída do gemma3:4b em 6
+de 9 avaliações. `deepeval` avalia tudo, mas dá faithfulness **0,0** para a
+resposta ancorada de c07 e **1,0** para a alucinação de c16 — sintoma de zero
+afirmações extraídas, que a métrica lê como verdade vazia. O problema não é o
+backend: métrica RAGAS exige extrair afirmações e verificar cada uma contra o
+contexto, e um modelo de 4B não sustenta isso. Diagnóstico em curso com juiz de
+8B para separar "tamanho" de "outra causa".
+
+**Custo real.** 27 s por invocação no baseline, com 812 tokens de saída em média
+— a maioria é raciocínio do qwen3 antes da resposta. Projeção da campanha
+completa: **22,6 h** de parede e ~1,1 kWh, contra 8,5 h estimadas no protocolo.
+Com a regra de corte do §9 (20 casos): 15 h. O harness é retomável, então três
+noites resolvem; mas é decisão de cronograma.
+
+**O4 é estável.** 5/5 de concordância em todos os controles e em todos os pares
+do piloto, a temperatura 0. O ponto de decisão da semana 5 (§9) está respondido:
+o juiz fica, e é ele que pega o que o O1 não vê — número trocado sai como
+`fail / wrong_value`.
 
 Duas sondas precisaram ser endurecidas depois da primeira rodada, e o motivo é
 o mesmo achado de sempre — checagem que passa pelo motivo errado é pior que
