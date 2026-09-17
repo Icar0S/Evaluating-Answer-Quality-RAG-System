@@ -242,8 +242,25 @@ de 9 avaliações. `deepeval` avalia tudo, mas dá faithfulness **0,0** para a
 resposta ancorada de c07 e **1,0** para a alucinação de c16 — sintoma de zero
 afirmações extraídas, que a métrica lê como verdade vazia. O problema não é o
 backend: métrica RAGAS exige extrair afirmações e verificar cada uma contra o
-contexto, e um modelo de 4B não sustenta isso. Diagnóstico em curso com juiz de
-8B para separar "tamanho" de "outra causa".
+contexto, e um modelo de 4B não sustenta isso.
+
+Diagnóstico com juiz de 8B (qwen3, só para isolar a causa): faithfulness
+**1,0 para a alucinação de c16** de novo, e 4 a 9 minutos por avaliação. Não é
+tamanho. É a definição da métrica no `deepeval` — "afirmações que não
+*contradizem* o contexto" — pela qual inventar algo sobre um tópico ausente
+não conta como infidelidade. O `ragas` é mais estrito (a afirmação precisa ser
+*inferível* do contexto), mas não parseia a saída de nenhum juiz local
+disponível.
+
+**Decisão pendente sobre O3**, entre três opções:
+
+1. Aplicar a contingência do §9 e rodar com quatro oráculos (O1, O2, O4, O5). O
+   protocolo já previa essa saída para O4; o caso é simétrico.
+2. Baixar um juiz de outra família sem modo de raciocínio (ex.: llama3.1:8b) e
+   retestar o `ragas`. Custa um download de ~5 GB e um novo piloto.
+3. Manter O3 via `deepeval` e reportá-lo como degenerado. Diferente do O1, a
+   degeneração aqui é da implementação disponível, não do método — o que
+   enfraquece o que se pode afirmar.
 
 **Custo real.** 27 s por invocação no baseline, com 812 tokens de saída em média
 — a maioria é raciocínio do qwen3 antes da resposta. Projeção da campanha
