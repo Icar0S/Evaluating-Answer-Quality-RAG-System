@@ -21,6 +21,10 @@ PyMuPDF==1.25.1
 tiktoken==0.8.0
 
 # --- harness, estatística e figuras ---
+# nvidia-ml-py: GPU-segundo e Wh da RQ3 são MEDIDOS por NVML (runner/cost.py), não
+# estimados por TDP. Sem o pacote os dois campos saem null — e a RQ3 pede
+# explicitamente "tempo de parede, tokens, GPU-segundo e energia".
+nvidia-ml-py==12.560.30
 PyYAML==6.0.2
 numpy==2.2.1
 scipy==1.15.1

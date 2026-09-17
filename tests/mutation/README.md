@@ -227,11 +227,18 @@ python -m tests.mutation.run_campaign --campaign --exclude-cuttable
 ### Semana 5 — oráculos e piloto
 
 ```bash
-# Piloto em 2 mutantes, poucos casos — valida o caminho inteiro:
-python -m tests.mutation.run_campaign --baseline --repetitions 2 --cases c16,c21,c24
-python -m tests.mutation.run_campaign --campaign --operators R1,P2 --repetitions 2 --cases c16,c21,c24
+# Piloto em 2 mutantes, 3 casos — valida o caminho inteiro:
+python -m tests.mutation.run_campaign --baseline --repetitions 2 --cases c01,c07,c16
+python -m tests.mutation.run_campaign --campaign --operators R1,P2 --repetitions 2 --cases c01,c07,c16
 python -m tests.mutation.evaluate --mutants baseline,R1,P2
 ```
+
+A escolha dos casos não é arbitrária. Dois factuais (c01, c07) recuperam
+contexto e exercitam os cinco oráculos — um caso de abstenção não tem contexto e
+deixa O3 sem denominador. E cada mutante tem um caso que deveria matá-lo: R1
+(top-k = 1) mira c07, que precisa de dois trechos; P2 (sem instrução de
+abstenção) mira c16, que deve se abster. Se nenhuma dessas mortes acontecer no
+piloto, o problema é do harness, não da suíte.
 
 Valide a análise **antes** da campanha, com dados falsos, para não descobrir um
 caso de borda depois de queimar a noite de GPU:
