@@ -74,6 +74,7 @@ tests/mutation/
 ├── oracles/                # o1_cosine, o2_assertions, o3_ragas, o4_judge, o5_conjunctive
 ├── runner/                 # ponte com o SUT, custo (GPU/Wh), JSONL, caminhos
 ├── tools/
+│   ├── verify_mutants.py             # cada mutante injeta o defeito declarado?
 │   ├── audit_roles.py                # papéis do corpus servem aos operadores C1-C4 e E2?
 │   ├── audit_licenses.py             # o corpus pode ir para o Zenodo?
 │   ├── calibrate_retrieval_gate.py   # calibra o piso de similaridade do baseline
@@ -202,15 +203,21 @@ paráfrases antes de seguir.
 ```bash
 python -m tests.mutation.operators.apply list
 python -m tests.mutation.operators.apply verify
+python -m tests.mutation.tools.verify_mutants
 ```
 
 `verify` aplica e reverte os 18 operadores conferindo que `work/` volta ao estado
-original byte a byte. Aplicar é sempre "reconstruir do zero e então mutar", nunca
+original byte a byte. `verify_mutants` faz a pergunta seguinte, que o `verify`
+não responde: **o mutante é o que o catálogo diz?** Para cada operador, aplica,
+observa o efeito no ponto do pipeline que ele deveria alterar (arquivos,
+contagem de chunks, sobreposição na fronteira, dimensão do embedding, chunks
+devolvidos, system prompt) e grava `operators/fidelity_report.json`. É a
+"revisão manual de 100% dos 18 mutantes" do §10, em forma executável. Aplicar é sempre "reconstruir do zero e então mutar", nunca
 "desfazer a operação inversa" — é o que torna a chamada idempotente e elimina a
 classe de falha mais cara de diagnosticar: o mutante que continuou aplicado
 depois do revert.
 
-**Portão (GO/NO-GO do protocolo):** `verify` verde. Se algum operador não passar,
+**Portão (GO/NO-GO do protocolo):** `verify` e `verify_mutants` verdes. Se algum operador não passar,
 a regra de corte manda remover os 6 marcados `cuttable: true` e rodar com 12:
 
 ```bash

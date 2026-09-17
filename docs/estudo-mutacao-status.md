@@ -2,7 +2,7 @@
 
 **Artigo:** *Mutation-Based Adequacy Assessment of Test Suites for Retrieval-Augmented Assistants*
 **Destino:** Information and Software Technology, special issue VSI:EQUISA · submissão 13/12/2026
-**Branch:** `journal-ist` · **Última atualização:** 16/09/2026 (semana 3 concluída)
+**Branch:** `journal-ist` · **Última atualização:** 16/09/2026 (semana 4 concluída)
 
 Este documento registra o que foi construído e executado até aqui, as decisões de
 projeto com suas razões, e o que já dá para escrever do artigo. Ele existe porque
@@ -19,7 +19,7 @@ justificar para um revisor.
 | 1 | Corpus escolhido e versionado; esqueleto de `tests/mutation/` | **concluída** |
 | 2 | 30 casos + `golden.jsonl` + `assertions.yaml` | **concluída** |
 | 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | **concluída** — τ* = 0,60, e a calibração virou resultado (§4.7) |
-| 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída antecipadamente** |
+| 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída** — 18/18 revertem sem resíduo E injetam o defeito declarado (§3.5) |
 | 5 | O3, O4, O5 prontos; `run_campaign.py` validado | código pronto, piloto não executado |
 | 6 | Baseline (300 inv.) + campanha (2.700 inv.) | não iniciada |
 | 7–13 | Coerência, RQ3, escrita, submissão | não iniciadas |
@@ -33,6 +33,7 @@ exigia os casos prontos e os casos ficaram prontos antes do previsto.
 ```
 validate_suite (sem --allow-draft)   VERDE — 30 casos, 0 rascunhos
 apply verify                         VERDE — 18/18 operadores sem resíduo
+verify_mutants (fidelidade)          VERDE — 18/18 injetam o defeito declarado
 assertivas vs. própria referência    VERDE — nenhuma se auto-reprova
 tests/api (regressão do SUT)         VERDE — 18 testes
 ```
@@ -173,6 +174,47 @@ degeneração (`"O Pitest (Pitest) foi adotado"`) e de relação alterada
 (`"estável entre sementes"` virando `"estável quando comparado com sementes"`).
 
 τ* = 0,60, e o resultado da calibração virou achado — ver §4.7.
+
+### 3.5 Fidelidade dos mutantes (semana 4)
+
+`apply verify` prova que os 18 operadores aplicam e revertem sem resíduo. Não
+prova que o mutante **é** o que o catálogo diz. O §10 (validade interna) pede
+revisão manual de 100% dos 18 antes da campanha; `tools/verify_mutants.py` é
+essa revisão em forma executável — aplica cada operador, observa o efeito no
+ponto do pipeline que ele deveria alterar, e grava `operators/fidelity_report.json`.
+
+| Op. | Evidência observada |
+|---|---|
+| C1 | `primary` ausente de `work/corpus` e de `work/index_src`; 7 documentos restantes |
+| C2 | 40/40 substituições da variante `prev` visíveis no texto; índice recebe a variante |
+| C3 | `secondary` 9 → 6 páginas, no corpus e no índice |
+| C4 | `__dup` presente nos dois diretórios, original preservado, conteúdo divergente |
+| K1 | chunk 400 → 790 chunks (baseline 184) |
+| K2 | chunk 3000 → 96 chunks = 1 por página |
+| K3 | sobreposição na fronteira: 913 caracteres no baseline, **0** no mutante |
+| K4 | tamanho dos 3 primeiros chunks: [6206, 4512, 6316] → [3131, 6333, 2630] |
+| E1 | dimensão do vetor 768 → 384 |
+| E2 | os 2 `recent` presentes no corpus e **ausentes** do índice |
+| R1 | 1 chunk devolvido |
+| R2 | 12 chunks devolvidos |
+| R3 | MMR desligado |
+| R4 | pergunta abaixo do piso: baseline devolve **0** chunks, mutante devolve 4 (mín. 0,3995) |
+| P1 | regra de ancoragem ausente, abstenção preservada |
+| P2 | regra de abstenção ausente, ancoragem preservada |
+| P3 | regra de citação ausente, ancoragem preservada |
+| P4 | `temperature: 0.8` nas opções enviadas ao Ollama |
+
+Duas sondas precisaram ser endurecidas depois da primeira rodada, e o motivo é
+o mesmo achado de sempre — checagem que passa pelo motivo errado é pior que
+nenhuma:
+
+- **R4** usava a primeira pergunta "fora do corpus" da lista, cujo melhor chunk
+  (0,492) já passa do piso de 0,428: baseline e mutante devolviam 4 chunks e a
+  checagem passava sem observar nada. A sonda agora é a pergunta negativa de
+  menor similaridade (0,418), onde o baseline devolve zero.
+- **K3** era conferido por contagem de chunks, que não muda ao tirar a
+  sobreposição — o que muda é o conteúdo. Agora mede quantos caracteres do fim
+  do 1º chunk reaparecem no início do 2º.
 
 Limitação a declarar, espelho da que o protocolo já previa: as paráfrases saíram
 conservadoras (troca de verbo e conectivo, mesma estrutura). Somada aos erros
@@ -433,7 +475,6 @@ dia.
   próprio caso.
 - **caso c14** — membro mais fraco da classe `filtro_condicional`: o trecho é uma
   tabela de resultados e não enuncia condição.
-- **revisão manual dos 18 mutantes** antes da campanha (§10, validade interna).
 
 ### Sem bloqueio
 
