@@ -38,6 +38,9 @@ class Case:
     evidence_hint: str
     targets: list[str]
     notes: str = ""
+    # Lacuna conhecida e aceita antes da campanha (ex.: "retrieval-page"). O portão
+    # de recuperação a reporta como aviso, não como erro; o caso sai de S pelo §7.1.
+    accepted_gap: str = ""
 
     @property
     def is_draft(self) -> bool:
@@ -60,6 +63,7 @@ def load_cases(path: Path | None = None) -> list[Case]:
             evidence_hint=record.get("evidence_hint", ""),
             targets=list(record.get("targets", [])),
             notes=record.get("notes", ""),
+            accepted_gap=record.get("accepted_gap", ""),
         )
         for record in records
     ]

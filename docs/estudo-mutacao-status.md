@@ -348,6 +348,42 @@ na primeira invocação após carregar o modelo, não se distribui pelas
 repetições. Atil et al. reportam variação sob temperatura 0; aqui ela tem um
 padrão.
 
+**Baseline v1 (300 invocações, 21/09 17:21–19:41).** 0 erros; 28 s e 875
+tokens de saída por invocação (mediana 26 s); 22,8 GPU-s e 0,475 Wh por
+invocação, 142,6 Wh no total. Conjunto avaliável por oráculo, **antes** de
+qualquer ajuste: |S| = O1 23, O4 11, O2 6, O5 6.
+
+Seis casos sob o oráculo primário não são um resultado, são um alarme. A
+leitura dos vereditos do O2 separa as 24 reprovações em quatro causas:
+
+| Causa | Casos | Natureza |
+|---|---|---|
+| Página da evidência fora do top-4 (documento certo, página errada) | c03, c04, c05, c06, c07, c09, c10, c11, c12, c15 | formulação da pergunta — o portão da semana 5 só conferia o documento |
+| Evidência no contexto e o modelo não extrai (FP4) | c01, c08, c14 | SUT: "o texto não menciona" com "16 Java classes from the Defects4J" no contexto; c08 inverte a direção do swing; c14 lê as linhas erradas da tabela |
+| Não abstém / não recusa / não pede esclarecimento | c16–c20, c23, c24–c26 | SUT: responde por conhecimento paramétrico; c23 responde sobre o próprio system prompt |
+| Não cita documento e página | c27–c30 | SUT: a regra de citação está no prompt e o modelo não a segue (c24 chegou a copiar o placeholder "[documento, pág. 6]") |
+
+O diagnóstico de recuperação (só embeddings) mostra que não é configuração:
+com top-k = 12 a página da evidência entra em 15/19; com k = 4 e MMR desligado,
+9/19. É a formulação. Um teste que reprova no programa original é corrigido
+antes da análise de mutação — sempre — e a correção legítima aqui é a mesma da
+semana 5, um nível abaixo: **8 perguntas reescritas com termos do trecho da
+evidência** (c02, c03, c06, c07, c09, c10, c11, c12), verificadas por um portão
+que agora confere a **página**, não só o documento. Três não têm reformulação
+natural que vença as páginas vizinhas do mesmo documento (c04, c05, c15):
+ficam como estão, marcadas `accepted_gap: retrieval-page`, e saem de S pelo
+§7.1. As reprovações por extração (c01, c08, c14) e por comportamento
+(abstenção, recusa, esclarecimento, citação) são o SUT e ficam como estão.
+
+Os runs v1 dos 8 casos foram arquivados em `results/pilot/runs_baseline_v1.jsonl`
+e refeitos com as perguntas novas (80 invocações). Tudo antes da primeira
+invocação de mutante.
+
+**Para o artigo (§6.7 desvios, §7.1, §8):** o baseline reprova em 24/30 sob o
+oráculo determinístico e em 7/30 sob o cosseno — a mesma suíte, os mesmos 300
+runs. Antes de qualquer mutante, o swing entre oráculos já é de 17 casos, e a
+direção é a que a calibração previa: O1 aprova respostas erradas.
+
 ---
 
 ## 4. Achados metodológicos — material para o artigo

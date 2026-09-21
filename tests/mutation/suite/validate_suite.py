@@ -199,6 +199,15 @@ def check_retrieval() -> list[str]:
         # `any`: a dica de evidência nomeia o documento
         return {d["document"] for d in manifest["documents"] if d["document"][:-4] in case.evidence_hint}
 
+    # Descoberto na semana 6, no baseline: conferir o documento não basta. Em 10
+    # dos 19 casos factuais o documento certo vinha no top-4 e a PÁGINA da
+    # evidência não — e o modelo respondia "o texto não menciona" com o fato a
+    # duas páginas de distância. Quando a dica de evidência nomeia páginas
+    # ("doc pág. N"), a checagem passa a exigir que ao menos uma delas venha.
+    import re
+
+    hint_re = re.compile(r"([a-z0-9_]+)\s+p[áa]g\.\s*(\d+)", re.I)
+
     problems: list[str] = []
     study = load_study_config()
     with sut_configuration(study.baseline_overrides) as resolved:
@@ -218,6 +227,26 @@ def check_retrieval() -> list[str]:
                     f"{case.case_id}: a pergunta não recupera {sorted(wanted)} — veio "
                     f"{sorted(got) or 'nada'}. Reescreva a pergunta com termos específicos do documento."
                 )
+                continue
+            pages = [(doc, int(page)) for doc, page in hint_re.findall(case.evidence_hint)]
+            if not pages:
+                continue
+            ids = [c["chunk_id"] for c in chunks]
+            hit = [f"{doc} p{page}" for doc, page in pages
+                   if any(cid.startswith(f"{doc}::p{page}::") for cid in ids)]
+            if not hit and case.accepted_gap:
+                logger.warning("%s: lacuna aceita (%s) — nenhuma página da evidência no top-%d; o caso sai de S.",
+                               case.case_id, case.accepted_gap, len(ids))
+            elif not hit:
+                problems.append(
+                    f"{case.case_id}: o documento vem, mas nenhuma página da evidência "
+                    f"({', '.join(f'{d} p{p}' for d, p in pages)}) entra no top-{len(ids)} — "
+                    f"veio {[i.split('::', 1)[1] for i in ids if i.startswith(pages[0][0])] or 'outras páginas'}. "
+                    f"Reescreva a pergunta com termos do trecho da evidência."
+                )
+            elif len(hit) < len(pages):
+                logger.warning("%s: só %s das páginas da evidência entram no top-k (%s).",
+                               case.case_id, len(hit), ", ".join(hit))
     return problems
 
 

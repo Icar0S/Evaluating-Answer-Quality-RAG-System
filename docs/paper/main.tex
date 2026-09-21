@@ -1360,6 +1360,25 @@ found two more, and the three questions were rewritten. Three out-of-corpus
 questions were also replaced, for the reason given in
 Section~\ref{sec:instrumentation}.
 
+\emph{Page-level retrieval check.} The first full baseline run (300
+invocations) failed 24 of the 30 cases under the deterministic oracle, and
+reading the verdicts separated four causes: in ten factual cases the right
+document was retrieved but not the page holding the evidence, and the model
+answered ``the text does not mention''; in three the evidence was in the
+context and the model did not extract it (c01, c08, c14); the abstention,
+refusal, clarification and traceability classes failed because the assistant
+does not follow those instructions; and the rest passed. The first cause is a
+property of the question, not of the system --- with $k = 12$ the page still
+enters the top-$k$ in only 15 of 19 cases, and with re-ranking off in 9 --- so
+the retrieval check was extended from document to page and eight questions
+were rewritten with terms of the evidence passage (c02, c03, c06, c07, c09,
+c10, c11, c12); the 80 baseline runs of those cases were discarded and
+repeated. Three cases (c04, c05, c15) have no natural formulation that beats
+neighbouring pages of the same document; they are kept as they are, marked as
+an accepted gap, and leave $\Sset_o$ by Eq.~\eqref{eq:evaluable}. The other
+causes are the system under test and were not touched. All of this preceded
+the first mutant invocation.
+
 \emph{Judge instruction.} The reference-as-minimum instruction of
 Section~\ref{sec:o4} was added, with the controls reported there. The judge
 was otherwise stable: five out of five judgements agreed on every pair and
@@ -1419,6 +1438,17 @@ baseline e o de casos estavelmente reprovados, separados. Texto: quanto da
 suite cada oraculo consegue medir; se algum oraculo perde uma classe inteira
 (esperado: a classe ``fora do corpus'' sob todos os oraculos se o baseline
 alucinar, cf. Secao~\ref{sec:pilot}).}
+
+The unit cost of the baseline is 28\,s of wall-clock time, 875 completion
+tokens, 22.8 GPU-seconds and 0.475\,Wh per invocation (300 invocations,
+2.33\,h, 142.6\,Wh, no errors). Before the page-level rewrite of
+Section~\ref{sec:pilot}, the evaluable sets were $|\Sset_{O1}| = 23$,
+$|\Sset_{O4}| = 11$ and $|\Sset_{O2}| = |\Sset_{O5}| = 6$: on the same 300
+runs, the deterministic oracle failed 24 cases and the similarity oracle 7.
+That 17-case gap, measured before any mutant exists, is the calibration result
+of Section~\ref{sec:calibration} in the field --- O1 accepts answers that
+state the wrong value or no value at all. \todo{|S| por oraculo depois da
+reescrita (T0), com instaveis e estavelmente reprovados separados.}
 
 Two facts about the evaluable set are already known from the pilot and are
 confirmed or revised here. First, the case on which the unmutated system
