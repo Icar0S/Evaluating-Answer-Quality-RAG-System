@@ -89,7 +89,15 @@ execution:
   l3_case_sample: 10              # L3 roda sobre subconjunto de 10 casos
 
 oracles:
-  enabled: [O1, O2, O3, O4, O5]
+  # Contingência do §9 exercida em 21/09/2026, antes da campanha: O3 fica fora
+  # da campanha. Motivo (relatório §4.9): com os juízes locais disponíveis o
+  # backend `ragas` não parseia a saída (6/9 falhas com gemma3:4b) e o
+  # `deepeval` devolve faithfulness=1,0 para alucinação sobre tópico ausente —
+  # inclusive com juiz de 8B, porque a métrica conta afirmações que não
+  # CONTRADIZEM o contexto. Como executar ≠ julgar, o log da campanha permanece
+  # íntegro e O3 pode ser rejulgado sobre ele se um juiz viável aparecer:
+  # basta reativar aqui e rodar evaluate.py --oracles O3.
+  enabled: [O1, O2, O4, O5]
 
   O1:
     # Preenchido por calibration/calibrate.py (τ* por F1 máximo, IC bootstrap 95%).

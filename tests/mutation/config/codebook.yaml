@@ -5,8 +5,8 @@
 # necessário depois da coleta, ele entra como OTHER e a necessidade vira texto na
 # seção de ameaças — não se reescreve o codebook durante a classificação.
 
-frozen_at: null          # preencher com a data (YYYY-MM-DD) ao fechar, na semana 6
-frozen_by: null
+frozen_at: 2026-09-21          # congelado antes da primeira invocação da campanha
+frozen_by: Ícaro S. de Oliveira
 
 codes:
   - code: RET-MISS

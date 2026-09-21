@@ -1,0 +1,1756 @@
+%% =====================================================================
+%%  Mutation-Based Adequacy Assessment of Test Suites for
+%%  Retrieval-Augmented Assistants
+%%
+%%  Information and Software Technology -- VSI:EQUISA
+%%  Elsevier CAS double-column template (cas-dc), numeric references.
+%%
+%%  Convencoes de rascunho (remover antes da submissao):
+%%    \todo{...}  vermelho, negrito  -- conteudo que falta (numero, figura, decisao)
+%%    \nota{...}  azul, italico      -- observacao de revisao para os autores
+%%
+%%  Status do texto (21/09/2026):
+%%    Secoes 1-6, 9   escritas; numeros pre-campanha sao finais.
+%%    Secao 7         estrutura + resultados pre-campanha (RQ2 parcial);
+%%                    tabelas T0-T5 e figuras F1-F4 saem de analyze.py.
+%%    Secao 8, 10     escritas na parte que nao depende da campanha.
+%% =====================================================================
+
+\documentclass[a4paper,fleqn]{cas-dc}
+
+% Se o frontmatter passar de uma pagina, troque pela linha abaixo.
+%\documentclass[a4paper,fleqn,longmktitle]{cas-dc}
+
+\usepackage[numbers]{natbib}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{url}
+
+% --- marcadores de rascunho ------------------------------------------
+\newcommand{\todo}[1]{{\color{red}\bfseries [TODO: #1]}}
+\newcommand{\nota}[1]{{\color{blue}\itshape [#1]}}
+
+% --- notacao ------------------------------------------------------------
+\newcommand{\Sset}{\mathcal{S}}
+\newcommand{\Cset}{\mathcal{C}}
+\newcommand{\kr}{\mathrm{kr}}
+\newcommand{\MS}{\mathrm{MS}}
+\newcommand{\pass}{\mathrm{pass}}
+\newcommand{\fail}{\mathrm{fail}}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\begin{document}
+\let\WriteBookmarks\relax
+\def\floatpagepagefraction{1}
+\def\textpagefraction{.001}
+
+\shorttitle{Mutation-based adequacy for RAG test suites}
+\shortauthors{{\'I}. S. de Oliveira et al.}
+
+\title[mode = title]{Mutation-Based Adequacy Assessment of Test Suites for Retrieval-Augmented Assistants}
+
+\nota{Autoria a confirmar. O SUT deste artigo e um sistema open-source de
+autoria individual; se a contribuicao dos coautores for concentrada em revisao
+e supervisao, isso precisa aparecer com precisao no CRediT, e nao ser diluido.}
+
+\author[1]{{\'I}caro S. de Oliveira}
+\cormark[1]
+\ead{icaro.santos@aluno.uece.br}
+\credit{Conceptualization, Methodology, Software, Investigation, Data curation, Formal analysis, Writing -- original draft}
+
+\author[1]{Ismayle S. Santos}
+\ead{ismayle.santos@uece.br}
+\credit{Supervision, Methodology, Writing -- review \& editing}
+
+\affiliation[1]{organization={State University of Cear{\'a} (UECE)},
+                city={Fortaleza},
+                state={CE},
+                country={Brazil}}
+
+\cortext[cor1]{Corresponding author}
+
+% ---------------------------------------------------------------------
+\begin{abstract}
+\textbf{Context.} Intelligent software assistants built on retrieval-augmented
+generation (RAG) reached production before a practice of testing them matured.
+The suites written for them pair questions with reference answers and judge the
+generated text, whereas the documented failure points of RAG concentrate in the
+data and retrieval stages that precede generation.
+\textbf{Objectives.} To determine which layers of a RAG pipeline produce defects
+that a representative test suite fails to detect, how much the reported
+adequacy depends on the oracle that produced it, and what each level of rigour
+costs.
+\textbf{Methods.} We derive a catalogue of 18 mutation operators spanning
+corpus, chunking, indexing, retrieval and prompt from documented RAG failure
+points, each with an executable fidelity check, and apply it to an open-source
+software-engineering RAG assistant with a 30-case suite built by
+equivalence-class partitioning. Five oracles of different natures --- cosine
+similarity, deterministic assertions, a RAGAS metric bundle, an LLM judge and
+their conjunction --- read the same execution log of about 3,000 invocations.
+Non-determinism is discounted by restricting every denominator to the cases that
+are stable in the unmutated baseline, and cost is measured per invocation in
+wall-clock time, tokens, GPU-seconds and energy.
+\textbf{Results.} \todo{3--4 frases COM OS NUMEROS: escore de mutacao por
+camada, swing entre oraculos, fracao de mortes coerentes e custo por mutante
+morto em cada nivel de rigor.} Two oracle biases were established before the
+campaign: on this corpus the cosine-similarity oracle ranks injected numeric
+errors and inverted conditions \emph{above} correct paraphrases (AUC 0.25 and
+0.09), and the faithfulness metric of the RAGAS bundle scores a fabricated
+figure about an absent topic as fully faithful.
+\textbf{Conclusion.} \todo{2 frases. O que o leitor leva para casa.} An
+adequacy score for a RAG assistant is a property of the pair (suite, oracle),
+and must be reported as such.
+\end{abstract}
+
+\begin{highlights}
+\item \todo{ate 85 caracteres -- o achado da RQ1}
+\item Cosine similarity ranks injected numeric errors above correct paraphrases (AUC 0.25)
+\item \todo{ate 85 caracteres -- o custo por mutante morto}
+\end{highlights}
+
+\begin{keywords}
+mutation testing \sep test adequacy \sep test oracles \sep retrieval-augmented generation \sep intelligent software assistants \sep empirical software engineering
+\end{keywords}
+
+\maketitle
+
+% =====================================================================
+\section{Introduction}
+\label{sec:intro}
+
+Intelligent software assistants have moved out of the prototype stage and into
+the daily practice of software engineering. Engineers now consult them to locate
+a rule in a specification, explain the behaviour of a framework, draft a test
+case or justify a design decision. Most of these assistants are built on
+retrieval-augmented generation (RAG)~\cite{lewis2020rag}: instead of answering
+from what the model memorised during training, the system retrieves passages
+from a controlled corpus and conditions the answer on them. The architecture is
+attractive precisely because it promises grounding --- answers traceable to
+documents the organisation owns and can update --- and it has become the
+default way of putting a language model to work over proprietary or fast-moving
+knowledge.
+
+That promise carries an obligation. An assistant that answers questions about
+an interface contract, a regulatory constraint or a test procedure is part of
+the engineering process, and a wrong answer does not stop at the screen: it
+propagates into the artefacts engineers produce from it. These systems
+nevertheless reached production faster than the practice of testing them
+matured.
+
+Where testing does exist, it has a recognisable shape. A suite pairs questions
+with reference answers, runs them against the deployed system, and derives a
+verdict by comparing each generated answer to its reference, sometimes
+reinforced by textual assertions or by a second model acting as a judge. This is
+the shape reported in industrial experiences with deployed assistants, including
+our own~\cite{oliveira2026sast}, and it is the shape a practitioner naturally
+reaches for, because the answer is what the user sees.
+
+The difficulty is that the answer is not where most failures originate. Barnett
+et al.~\cite{barnett2024seven} catalogue seven failure points observed when
+engineering RAG systems, and four of the seven occur before a single token is
+generated: content missing from the corpus, the relevant passage never
+retrieved, the passage retrieved but crowded out of the context window, the
+passage present but not extracted. A suite that inspects only the final answer
+observes a five-stage pipeline through its narrowest aperture. Whether it
+detects what happens upstream is an open question --- and one that, to our
+knowledge, no study has posed.
+
+Posing it means asking whether a given suite is \emph{adequate}. For
+deterministic software the standard instrument is mutation
+testing~\cite{demillo1978hints,jia2011analysis}: inject small faults into the
+system, run the suite against each faulty version, and measure how many are
+detected. Transposing that instrument to a RAG assistant meets two obstacles.
+
+The first is that existing adaptations do not reach the layer where the failures
+are. Mutation has been applied to the system prompt of an LLM-based
+chatbot~\cite{braga2026mutation} and used to assess the adequacy of
+LLM-generated unit tests~\cite{cabral2026prompt}; metamorphic testing has been
+applied to the prompt that triggers tool-calling agents~\cite{amorim2026trigger}.
+Each perturbs the instruction given to the model, or the code the model writes.
+None perturbs the corpus, the chunking strategy, the index or the retrieval
+parameters --- that is, none perturbs the retrieval pipeline that distinguishes
+a RAG system from a chatbot.
+
+The second obstacle is that mutation score rests on an assumption that RAG
+violates. A mutant is said to be killed when the suite fails on it, and the score
+is only meaningful if the failure is attributable to the injected fault. A RAG
+assistant returns different answers to the same question across runs, so a test
+may fail for reasons that have nothing to do with the mutation. The classical
+remedy --- identifying equivalent mutants by checking whether the mutant behaves
+exactly like the original --- is unavailable here, because the original is
+itself unstable. Any adequacy measure for these systems must therefore separate
+the effect of the injected fault from the noise of the system under test, and
+must do so before, not after, reporting a score.
+
+A third obstacle emerged while we were building the instruments for this study,
+and it changes what an adequacy score can mean. The verdict that decides whether
+a mutant was killed is produced by an oracle, and oracles for natural-language
+answers disagree with one another. Calibrating the cheapest and most widely
+deployed of them --- cosine similarity between the generated answer and its
+reference --- we found that on our corpus no threshold separates a correct
+paraphrase from an injected factual error (AUC $=0.485$, below chance). The
+effect is not noise but inversion: a sentence whose meaning had been reversed
+scored 0.9912 against the reference, while a faithful paraphrase of that same
+reference scored 0.9907, and a version differing only in one numeric value
+scored 0.9184. Broken down by fault type, the oracle ranks injected errors
+\emph{above} correct paraphrases for inverted conditions (AUC $=0.091$) and
+swapped numbers (AUC $=0.248$), and the pattern replicates across two embedding
+models from different families. The reason is structural: an injected error is
+the reference with one token changed, and so remains textually almost
+identical, whereas a legitimate paraphrase is a rewrite. Cosine similarity
+measures surface proximity, not semantic equivalence, and therefore prefers the
+minimal corruption to the honest rewording. A second oracle showed a
+complementary blind spot: the faithfulness metric of the standard RAGAS
+bundle~\cite{es2024ragas} scored 1.0 for an answer that fabricated a figure
+about a topic entirely absent from the retrieved context, because a claim about
+an absent topic contradicts nothing.
+
+These are not incidental measurement problems. They mean that an adequacy score
+reported without naming the oracle that produced it is not interpretable, in the
+same way that a repair-effectiveness score depends on the validator that judged
+the patches~\cite{bonfim2026evaluator}. This study therefore reports adequacy
+per oracle rather than as a single number.
+
+This paper addresses the three obstacles in turn. Against the first, we derive
+a catalogue of mutation operators that spans the whole RAG pipeline --- corpus,
+chunking, indexing, retrieval and prompt --- from documented failure points
+rather than from intuition, and we verify each operator against a probe that
+fails on the unmutated system and passes on the mutant, so that an operator
+cannot appear to work for the wrong reason. Against the second, we restrict
+every measurement to the subset of test cases whose verdict is stable across
+repeated runs of the unmutated system, and report the residual instability
+alongside the score. Against the third, we evaluate the same execution log with
+five oracles of different natures and report the spread between them.
+
+The system under test is an open-source RAG assistant whose own domain is the
+testing of LLM- and RAG-based systems. The choice is deliberate on two counts:
+it is an assistant of the software engineering lifecycle, which is the class of
+system this special issue concerns, and it is public in its entirety, corpus
+included, so that the study can be replicated rather than merely described. We
+ask three questions: which layers of the pipeline produce defects the suite
+fails to detect (RQ1), how much the reported adequacy depends on the oracle
+applied to identical artefacts (RQ2), and what each level of rigour costs, in
+wall-clock time, tokens, GPU-seconds and energy (RQ3).
+
+In earlier work we reported an experience with testing a deployed
+retrieval-augmented assistant in the public sector~\cite{oliveira2026sast}. That
+short report described a test architecture for one industrial system and did
+not assess the adequacy of the resulting suite. The present study asks a
+different question over a different system: what such suites fail to detect,
+and how to find out.
+
+This paper makes the following contributions:
+\begin{enumerate}
+\item[(1)] A catalogue of \textbf{18 mutation operators for RAG pipelines}
+  spanning corpus, chunking, indexing, retrieval and prompt, each derived from a
+  documented RAG failure point and each accompanied by an executable fidelity
+  check that fails on the baseline and passes on the mutant
+  (Section~\ref{sec:operators}).
+\item[(2)] An \textbf{adequacy protocol under non-determinism} that separates
+  the effect of an injected defect from the intrinsic instability of the system
+  under test, by restricting every denominator to the cases that are stable in
+  the unmutated baseline (Sections~\ref{sec:equivalence}
+  and~\ref{sec:design}).
+\item[(3)] A \textbf{quantification of oracle bias} in RAG evaluation: five
+  oracles applied to identical artefacts, with the adequacy score reported per
+  oracle and two of the biases established before the campaign rather than
+  inferred from it (Sections~\ref{sec:oracles} and~\ref{sec:rq2}).
+\item[(4)] A \textbf{cost characterisation per level of rigour} --- wall-clock
+  time, tokens, GPU-seconds and estimated energy --- normalised by mutants
+  killed (Section~\ref{sec:rq3}).
+\item[(5)] A \textbf{complete replication package} that runs on consumer
+  hardware with open-weight local models, released under an open-source
+  license, comprising the system under test, the corpus, the suite, the
+  operators, the raw execution log and the analysis scripts (see the Data
+  availability statement).
+\end{enumerate}
+
+The remainder of the paper is organised as follows.
+Section~\ref{sec:background} reviews RAG failure points, the oracle problem in
+LLM-based software, mutation testing for such systems and the evaluation of
+intelligent assistants, and states the gap. Section~\ref{sec:context} describes
+the system under test, its corpus and the test suite.
+Section~\ref{sec:operators} presents the operator catalogue and the treatment of
+equivalence. Section~\ref{sec:oracles} describes the five oracles and the
+calibration of the similarity threshold. Section~\ref{sec:design} sets out the
+study design and the analysis procedure. Section~\ref{sec:results} reports the
+results, Section~\ref{sec:discussion} discusses their implications and
+Section~\ref{sec:threats} the threats to validity.
+Section~\ref{sec:conclusion} concludes.
+
+% =====================================================================
+\section{Background and Related Work}
+\label{sec:background}
+
+\subsection{Retrieval-augmented generation and its failure points}
+\label{sec:rag}
+
+Retrieval-augmented generation~\cite{lewis2020rag} separates what a system
+knows from what its model memorised. A corpus of documents is segmented into
+chunks, each chunk is embedded into a vector space, and at query time the
+chunks closest to the embedded question are placed in the prompt that
+conditions generation. The pipeline therefore has five distinguishable stages
+--- corpus ingestion, chunking, indexing, retrieval and generation --- and a
+defect can be introduced at any of them without producing an error at any
+other.
+
+Barnett et al.~\cite{barnett2024seven} report seven failure points observed
+while engineering RAG systems in practice. Four of them arise before the model
+writes anything: the answer is simply absent from the corpus (FP1); the passage
+that contains it exists but is not ranked highly enough to be retrieved (FP2);
+it is retrieved but does not survive consolidation into the context window
+(FP3); or it reaches the context and is not extracted from it (FP4). The
+remaining three concern the generated text itself: wrong output format (FP5),
+an answer at the wrong level of specificity (FP6), and an incomplete answer
+(FP7).
+
+This distribution has a practical consequence that motivates the present study.
+A test suite for a RAG assistant is typically written as a set of questions
+paired with reference answers, and its verdict is derived from the generated
+text. Such a suite observes FP5 to FP7 directly, because they are properties of
+that text. It observes FP1 to FP4 only when they happen to change the answer in
+a way the oracle notices --- and a retrieval fault often changes the answer
+subtly, by removing a qualifier or a figure, rather than visibly. Industrial
+reports of testing data-intensive and assistant systems describe suites of
+exactly this shape~\cite{cavalcante2025bigdata,oliveira2026sast}, which suggests
+the asymmetry is not an artefact of one project.
+
+\subsection{The oracle problem in LLM-based software}
+\label{sec:oracleproblem}
+
+Deciding whether an output is correct is the oracle problem, and
+natural-language answers make it acute: there is no single correct string, many
+formulations are equally valid, and the same input does not yield the same
+output twice. The last point holds even under configurations that are
+nominally deterministic. Atil et al.~\cite{atil2025nondeterminism} show that
+temperature zero and a fixed seed do not eliminate variation across runs, which
+means that a failing test is not, by itself, evidence of a defect.
+
+Dobslaw et al.~\cite{dobslaw2026challenges} organise the challenges of testing
+LLM-based software into a faceted taxonomy, and surveys of the
+field~\cite{wang2024testing} map the techniques that have been brought to bear.
+Two gaps in that literature bear directly on this study. The first is
+granularity: the taxonomy treats the LLM-based system as the unit under test,
+without sub-faceting the retrieval layer, so the dimensions that a RAG
+practitioner actually configures --- corpus version, chunk size, embedding
+model, top-$k$, relevance floor --- do not appear as facets to control. The
+second is cost: the taxonomy enumerates what can be tested and how, but not
+what the testing costs in time, money or energy, even though repeated execution
+is the only available answer to non-determinism and repetition is precisely
+what costs.
+\nota{Confira a caracterizacao da taxonomia. Se ela tratar custo em algum
+lugar, a frase acima precisa ser suavizada -- lacuna mal caracterizada e o tipo
+de afirmacao que o revisor checa primeiro.}
+
+In practice, four families of oracle are used. Cosine similarity between the
+embedding of the answer and that of a reference answer is the cheapest and the
+most common; it requires one embedding call and no model inference.
+Deterministic assertions over the answer text --- presence or absence of a
+term, a regular expression, a citation marker --- are cheaper still, but cover
+only what can be stated as a surface property. Reference-free metric bundles
+such as RAGAS~\cite{es2024ragas} decompose the answer into claims and check each
+against the retrieved context, and have become the de facto standard for RAG
+evaluation. Finally, a second model can be used as a judge~\cite{zheng2023judging},
+at the cost of importing that model's own inconsistency and its documented
+preference for text produced by models of its own
+family~\cite{panickssery2024llm}.
+
+Each of these carries assumptions that are rarely stated. The similarity oracle
+assumes that semantic equivalence is well approximated by proximity in
+embedding space, an assumption that adjacent evidence already puts in doubt:
+LLM-based representations capture surface regularities of code far better than
+they capture its semantics~\cite{infsof2025codesemantics}. The metric bundles
+assume that their notion of faithfulness --- whether claims contradict the
+context, or whether they are inferable from it --- matches the notion of
+correctness the tester has in mind. Section~\ref{sec:calibration} reports what
+happens when these assumptions are examined instead of inherited.
+
+\subsection{Mutation testing for LLM-based systems}
+\label{sec:mutation}
+
+Mutation testing answers a question that coverage does not: given a suite that
+passes, would it notice if the system were wrong? Small faults are injected
+into the system, the suite is run against each faulty version, and the
+proportion detected --- the mutation score --- estimates the suite's
+fault-detection ability~\cite{demillo1978hints}. The technique rests on two
+assumptions~\cite{jia2011analysis}: that a killed mutant was killed by the
+injected fault, and that mutants which no suite can kill are equivalent to the
+original and can be identified by comparing behaviours. Both assumptions are
+stable in deterministic software and neither survives contact with a RAG
+assistant.
+
+Three recent studies transpose fault injection to LLM-based systems, and
+together they delimit what is missing. Braga and Paiva~\cite{braga2026mutation}
+apply mutation operators to the system prompt of an LLM-based chatbot and
+report the consequence of the first assumption failing: a raw mutation score of
+0.86 falls to 0.38 once each kill is inspected and only those attributable to
+the injected defect are counted. Their system under test has no retrieval layer,
+and their campaign stops at the first killing test case, which hides the
+remaining causes of death. Cabral et al.~\cite{cabral2026prompt} use mutation to
+assess unit tests generated by LLMs under five prompting strategies, repeating
+each generation five times to absorb non-determinism and diagnosing surviving
+mutants to derive recommendations; there, however, the system under test is
+deterministic Java code and only the test generator is stochastic. Amorim et
+al.~\cite{amorim2026trigger} take a different route to the same obstacle:
+rather than injecting faults, they apply metamorphic relations to the prompt of
+tool-calling agents, and introduce an identity relation whose sole purpose is
+to measure how much the agent varies without any transformation, so that this
+intrinsic instability can be discounted before any violation is attributed to
+a transformation.
+
+The three converge on the prompt and on the code. None perturbs the corpus, the
+chunking strategy, the index or the retrieval parameters --- that is, none
+perturbs the stages where Section~\ref{sec:rag} locates four of the seven
+documented failure points.
+
+\subsection{Evaluating intelligent software assistants}
+\label{sec:assistants}
+
+Assistants built on language models are now studied as software artefacts in
+their own right. Within this journal, Muttillo et al.~\cite{muttillo2025modeling}
+address intelligent modeling assistants and the difficulty of obtaining the
+data needed to evaluate them, and work on requirements engineering with LLMs
+frames correctness and trustworthiness of generated artefacts as the central
+concern~\cite{infsof2025reroadmap}; LLMs have likewise been applied to testing
+artefacts themselves, such as the prioritisation of crowdsourced test
+reports~\cite{ling2025crowdsourced}. What this line of work establishes is the
+object; what it leaves open is how the verdict about that object is reached.
+
+Three results sharpen that question. Bonfim and
+Teixeira~\cite{bonfim2026evaluator} hold the artefacts fixed --- the same 300
+program-repair patches --- and vary only the validator, obtaining a swing of
+roughly twenty percentage points in reported effectiveness; the reported
+quality of a system is therefore partly a property of the instrument that
+measured it. Lima et al.~\cite{lima2026limits} report a delimiting result in
+which LLM-based test prioritisation does not outperform lightweight lexical
+baselines, and treat cost as a first-class outcome rather than a footnote, a
+stance also taken by benchmark tooling for context-provisioning
+strategies~\cite{vasconcelos2026llmcontextbench}. Verg\'ilio et
+al.~\cite{vergilio2026rag} show that RAG gains measured on curated snippets do
+not transfer to repository scale, where cost and maintainability become
+binding.
+
+Two observations from industrial practice complete the picture. Fran\c{c}a et
+al.~\cite{franca2026genai} report that a RAG-based assistant identified seven
+test scenarios for a flow in which human analysts identified forty-eight, and
+attribute the gap to knowledge that exists in conversations and is never
+written down --- a limit that no amount of retrieval tuning removes. And our own
+experience with a deployed assistant in the public
+sector~\cite{oliveira2026sast} produced a regression whose cause was an updated
+regulatory document that remained indexed in its previous version: a corpus
+fault, invisible to error monitoring, detected only because the answers
+changed.
+
+\subsection{Gap addressed by this study}
+\label{sec:gap}
+
+Taken together: the documented failure points of RAG concentrate in retrieval
+and data; the suites written for these systems inspect the generated answer;
+mutation testing, the standard instrument for asking whether a suite is
+adequate, has been transposed to the prompt and to generated code but not to
+the retrieval pipeline; the assumption that a kill is attributable to the
+injected fault does not hold under non-determinism, and the classical route to
+identifying equivalent mutants is unavailable because the unmutated system is
+itself unstable; and the verdict that decides a kill comes from an oracle whose
+assumptions are usually inherited rather than tested, even though changing the
+oracle is known to change the reported score.
+
+\emph{No study has yet asked which layers of a RAG pipeline produce defects
+that its test suite fails to detect, nor how much of the answer depends on the
+oracle used to obtain it.}
+
+% =====================================================================
+\section{Approach and Study Context}
+\label{sec:context}
+
+\subsection{Overview}
+\label{sec:overview}
+
+The study proceeds in four stages. A suite of test cases is executed $N_b$
+times against the unmutated assistant, which establishes which cases behave
+stably enough to be measured at all. Each of 18 mutation operators is then
+applied in turn, and the suite is executed $N_m$ times against each resulting
+mutant. Every invocation is appended to a structured log. Only afterwards are
+verdicts produced: five oracles read that log and decide, independently of one
+another, whether each case passed. Adequacy, oracle disagreement and cost are
+all computed from the resulting verdicts.
+
+\begin{figure}
+\centering
+\rule{\linewidth}{0pt}
+\todo{Figura 1 -- desenhar o fluxo acima. Deixar visivel onde entra o conjunto
+avaliavel e o ponto em que executar se separa de julgar.}
+\caption{Overview of the study. Execution (baseline and 18 mutants) produces
+one log; the five oracles read the log afterwards; the evaluable set is derived
+from the baseline alone and restricts every denominator.}
+\label{fig:overview}
+\end{figure}
+
+Three separations in the study infrastructure are worth stating, because each
+rules out a class of error rather than merely organising code. \emph{Execution
+is separated from judgement}: the campaign produces only the log of
+invocations, and oracles are applied to that log afterwards. Recalibrating a
+threshold, replacing an oracle implementation or re-running the judge therefore
+costs no further GPU time, and the question ``what would a single-run protocol
+have detected?'' can be answered without executing the assistant again.
+\emph{The corpus is separated from the index}: the harness keeps what the
+corpus contains and what was actually indexed in distinct locations, which
+normally hold the same content --- operator E2 is the only thing that makes
+them diverge, and that divergence is exactly the defect it injects.
+\emph{Measurement is separated from decision}: the audit tools that check the
+corpus, the operators and the suite report evidence and fail only on
+unambiguous violations, leaving judgement calls to the researcher.
+
+\subsection{The assistant under study}
+\label{sec:sut}
+
+The system under test is an open-source retrieval-augmented assistant whose
+subject matter is the testing of LLM- and RAG-based systems. It is a public
+reference implementation of the test architecture we reported for a deployed
+public-sector assistant~\cite{oliveira2026sast}; the original system's corpus
+and reference dataset contain operational information of the partner
+organisation and cannot be released, which is what motivated building an
+equivalent system that can. The choice therefore serves two purposes at once.
+The assistant belongs to the software engineering lifecycle, which places it
+within the class of system this study concerns; and it is public in its
+entirety, which makes the replication package executable rather than
+descriptive.
+
+The pipeline runs entirely on local, open-weight models. Generation uses
+\code{qwen3:8b} and embedding uses \code{nomic-embed-text}, both served through
+Ollama; the vector store is ChromaDB; the backend is a FastAPI application
+exposing endpoints for querying (\code{/chat}), re-ingesting the corpus
+(\code{/ingest}) and reporting runtime metrics (\code{/metrics}). Every
+interaction is appended to a structured log with the question, the retrieved
+chunks, the answer and per-invocation metrics. The hardware is a consumer
+laptop GPU (NVIDIA GeForce RTX~4060 Laptop, 8\,GB of VRAM).
+
+Table~\ref{tab:versions} pins the versions under which every invocation of the
+study ran. Open weights are identified by the Ollama digest rather than by tag,
+because a tag can be re-pointed and a digest cannot.
+
+\begin{table}[width=\linewidth,cols=3,pos=h]
+\caption{Software and model versions of the study. Models are identified by
+Ollama digest prefix.}
+\label{tab:versions}
+\begin{tabular*}{\tblwidth}{@{} LLL @{}}
+\toprule
+Component & Role & Version / digest \\
+\midrule
+\code{qwen3:8b}           & generation (SUT)          & \code{500a1f067a9f} \\
+\code{nomic-embed-text}   & embedding (SUT and O1)    & \code{0a109f422b47} \\
+\code{gemma3:4b}          & judge (O4), paraphraser   & \code{a2af6cc3eb7f} \\
+\code{all-minilm}         & embedding (operator E1)   & \code{1b226e2802db} \\
+Ollama                    & model server              & 0.34.0 \\
+ChromaDB                  & vector store              & 1.5.9 \\
+FastAPI                   & backend                   & 0.115.6 \\
+Python                    & SUT and harness           & 3.12.7 \\
+System under test         & git commit                & \todo{hash do commit da campanha} \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+Running locally is a methodological choice rather than a constraint of budget.
+Commercial endpoints are revised without notice, which makes a campaign of
+thousands of invocations unreproducible after the fact; open weights pinned by
+digest do not have that problem. The cost is model capacity, and we return to
+it when discussing external validity.
+
+The assistant already carried three test suites before this study: an API
+suite, an end-to-end browser suite, and an answer-quality suite built on a
+metric bundle of the kind described in Section~\ref{sec:o3}. None of them is
+the object of this study. The suite under assessment here
+(Section~\ref{sec:suite}) was built specifically for it, so that the classes of
+question it covers could be controlled.
+
+\subsection{Knowledge corpus}
+\label{sec:corpus}
+
+The corpus comprises 8 documents, 96 pages and approximately 164,000 tokens of
+research literature on software testing. Two preparation decisions shape what
+the study can observe, and both are consequences of how the assistant ingests
+documents.
+
+First, \emph{every} document is re-rendered from its extracted text, not only
+the ones that operators modify. Were only mutated documents re-rendered, the
+difference in extraction between an original and its mutated counterpart would
+enter the results alongside the injected defect, and the two would be
+indistinguishable.
+
+Second, the re-rendering repaginates at a budget of roughly 1,800 tokens per
+page. The assistant segments chunks at page boundaries, and a two-column
+research paper yields pages of about 500 tokens; at the configured chunk size a
+single chunk would then swallow an entire page, and the four chunking operators
+would be inert by construction --- they would produce no observable change, and
+the suite would appear to miss defects that the design never allowed it to see.
+After repagination the index holds 184 chunks for 96 pages, or 1.9 chunks per
+page, and the chunking operators have an effect that can be measured.
+
+Text normalisation proved to matter more than expected. The Base-14 fonts used
+by the source PDFs encode only Latin-1, so 1,372 symbols were extracted as
+question marks, 677 of them in a single document --- and statistical notation
+is precisely what the factual test cases quote. Unicode normalisation combined
+with a substitution table for Greek letters and mathematical operators, applied
+per character, recovered 93\% of them.
+
+Three roles were assigned to documents so that the corpus-level operators have
+targets: a \emph{primary} document dense in factual values (275 numeric or
+named facts), from which the perturbed variants are derived; a \emph{secondary}
+document whose final third is prose rather than bibliography, so that
+truncation removes content the suite can ask about; and two \emph{recent}
+documents, used by the operator that leaves the corpus and the index out of
+step. Two variants of the primary document were produced, one representing a
+superseded version and one introducing a conflicting value, each with 40
+substitutions distributed across its pages; citation markers and bibliographic
+entries were excluded from perturbation, because no test case asks about them.
+
+The corpus is composed of research papers on software testing, and some of them
+are related work of this very article. The overlap is a consequence of the
+assistant's domain rather than a choice, and it does not enter the results:
+every corpus-dependent test case asks about a factual value stated in a
+document --- a count, a percentage, a threshold --- and none asks about its
+thesis.
+\nota{A situacao de licenca do corpus ainda bloqueia o deposito no Zenodo
+(1 redistribuivel, 2 bloqueados pela ACM, 5 sem declaracao). Se nao for
+resolvida, o Data availability precisa dizer o que sera publicado no lugar
+(manifesto com hashes e script de reconstrucao) -- e trocar documento depois da
+campanha significa refaze-la.}
+
+\subsection{Test suite}
+\label{sec:suite}
+
+The suite contains 30 cases derived by equivalence-class partitioning over the
+corpus (Table~\ref{tab:classes}). The classes are not a descriptive
+convenience: they exist so that every layer of the pipeline has at least one
+case capable of exposing a fault in it. Without that guarantee the study would
+measure the suite rather than the pipeline, and a surviving mutant could not be
+distinguished from a gap in coverage that the design itself created.
+
+\begin{table}[width=\linewidth,cols=3,pos=h]
+\caption{Test suite: equivalence classes and the behaviour each class is
+designed to exercise.}
+\label{tab:classes}
+\begin{tabular*}{\tblwidth}{@{} LCL @{}}
+\toprule
+Class & Cases & Expected behaviour \\
+\midrule
+Direct fact        & 6  & Retrieve an explicit single value \\
+Distributed fact   & 5  & Combine evidence from two or more chunks \\
+Conditional filter & 4  & Answer depends on a stated condition \\
+Out of corpus      & 5  & Abstain \\
+Out of scope       & 3  & Refuse \\
+Ambiguous          & 3  & Ask for clarification \\
+Traceability       & 4  & Cite the source document \\
+\midrule
+Total              & 30 & \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+Each case declares the operators it is designed to be able to kill; the last
+column of Table~\ref{tab:operators} (Section~\ref{sec:catalogue}) reports how
+many cases target each operator. No operator is left without a case able to
+kill it, though the coverage is uneven: the operator that injects a conflicting
+duplicate (C4) is exercised by a single case, so any conclusion about it rests
+on that one observation, and we treat it accordingly in
+Section~\ref{sec:threats}.
+
+Each reference answer was checked against the passage in the index from which
+it derives. The 19 corpus-dependent cases were first drafted by the local model
+from the indexed chunks and then verified one by one against the source; in
+four rounds no number was invented, but the model regularly appended a
+justification of its own to a correct fact (``93.7, \emph{since its
+configuration optimises fidelity}'', where only the 93.7 is in the document).
+Because the reference answer is itself the oracle, such a claim would penalise
+a correct answer from the system; six references were rewritten to contain
+only the literal.
+
+Two further checks were added after early cases proved to fail for reasons
+unrelated to what they were meant to test. The first verifies, for every case
+that depends on the corpus, that the question actually retrieves the document
+holding its evidence: in a corpus where every document discusses testing, a
+generically worded question retrieves a topical neighbour instead, and the case
+would then fail against the unmutated system and drop out of the analysis
+silently. Three cases were rewritten with terms unique to their source
+document; all 19 corpus-dependent cases now retrieve it. The second runs the
+deterministic oracle against the reference answers themselves and discards any
+assertion that its own reference does not satisfy --- an assertion that fails
+on the baseline removes the case from the analysis just as quietly.
+
+\subsection{Instrumentation}
+\label{sec:instrumentation}
+
+Mutation operators for a RAG pipeline change configuration rather than source
+code, and several of the parameters they change did not exist as configurable
+values in the assistant. Adding them required 264 lines of change, each
+introduced with a default that preserves the previous behaviour: the system
+prompt is emitted byte for byte as before, and the pre-existing API suite of 18
+tests passes unchanged.
+
+The harness never rewrites a file under the application. It applies a
+configuration delta in memory and discards it when the mutant is reverted,
+which eliminates the most expensive failure mode of a mutation campaign --- a
+mutant that remained partially applied after its revert, silently contaminating
+every subsequent measurement. The campaign also uses its own virtual
+environment and its own vector index, so running it does not disturb the
+assistant's operational state.
+
+The study baseline is not the repository default, and each difference exists
+so that an operator has something to remove: chunks of 1,200 tokens with an
+overlap of 200 (repository: 800/120), because the chunking operators are
+defined as deltas from those values; maximal-marginal-relevance re-ranking on
+(repository: off), because R3 switches it off; a relevance floor above zero
+(repository: 0.0), because R4 removes it; the citation instruction on
+(repository: off), because P3 removes it; and temperature fixed at 0.0
+explicitly, because the protocol forbids amplifying non-determinism anywhere
+except in P4. The harness refuses to apply an operator whose override equals
+the baseline value, so a mutant equivalent by configuration cannot enter the
+campaign unnoticed.
+
+One baseline parameter had to be calibrated before the campaign could begin.
+The retrieval relevance floor was a configured but unenforced value; the
+operator that removes it can only have an effect if the baseline enforces one.
+Choosing that floor exposed an asymmetry worth stating, because the same
+reasoning governs the threshold calibrated in Section~\ref{sec:calibration}. A
+floor set too high rejects a question that should have been answered, the case
+then fails against the unmutated system, and it disappears from the denominator
+of every research question without any error being raised. A floor set too low
+merely lets an unanswerable question through, which the abstention instruction
+is supposed to catch and which is therefore visible in the results. The two
+errors do not cost the same, so the floor was placed with a margin of 0.02
+below the weakest legitimate case (0.428) even though a slightly higher value
+scored better on the criterion being optimised.
+
+The calibration also produced a measurement that the results must be read
+against. In its first version of the suite, 5 of the 8 negative cases (out of
+corpus or out of scope) scored \emph{above} any floor that preserved every
+positive case. The clearest was a question about the equivalent-mutant rate
+that PIT reports on Defects4J, which had the highest similarity of the whole
+suite (0.656) because the primary document is about PIT, Defects4J and
+surviving mutants: the value is absent, the topic is densely covered. That
+question and two others were replaced by questions further from the corpus,
+and \todo{N} of the 8 negatives still clear the floor. In a topically
+homogeneous corpus a global similarity floor does not separate ``covered'' from
+``not covered'', so the out-of-corpus class exercises the abstention
+instruction (P2) far more than the relevance floor (R4). We return to this in
+Sections~\ref{sec:rq2} and~\ref{sec:threats}.
+
+% =====================================================================
+\section{Mutation Operators for RAG Pipelines}
+\label{sec:operators}
+
+\subsection{Derivation}
+\label{sec:derivation}
+
+The catalogue was derived from the failure points of
+Section~\ref{sec:rag} rather than from what was convenient to perturb, under
+five rules.
+
+\emph{One defect per operator.} Each operator injects a single plausible fault
+at a single stage of the pipeline and is traced to one failure point. An
+operator that changed two things at once would produce kills that cannot be
+attributed.
+
+\emph{Each defect has a repair.} Two operators that look alike are kept apart
+when a practitioner would fix them differently. C1 removes a document from the
+corpus (repair: obtain the document again); E2 leaves the document in the
+corpus and out of the index (repair: re-run ingestion). The distinction is
+exactly the one that matters to whoever maintains the assistant.
+
+\emph{Configuration, not code.} RAG defects are, overwhelmingly, configuration
+and data defects: a chunk size chosen for another corpus, a re-indexing that
+did not run, a relevance floor that was never enforced. Every operator is
+therefore a delta over the assistant's configuration or over the files it
+ingests, never an edit to its source. This also keeps the operator set
+portable to any assistant that exposes the same parameters.
+
+\emph{Two operators replicate incidents.} C2 (a superseded version of a
+document remains indexed) and E2 (the corpus changed and the index did not) are
+the two failures we observed in operation with a deployed public-sector
+assistant~\cite{oliveira2026sast}. Their presence anchors the catalogue in what
+actually breaks, not only in what could.
+
+\emph{One control operator.} P4 raises the generation temperature from 0 to
+0.8. It is the only operator without a failure point: it injects no error of
+content, it injects instability. It exists to check the protocol itself --- if
+the evaluable-set rule of Section~\ref{sec:equivalence} does what it claims, P4
+should surface as a loss of stable verdicts rather than as coherent kills.
+
+\subsection{The catalogue}
+\label{sec:catalogue}
+
+Table~\ref{tab:operators} lists the 18 operators by layer, with the defect
+each injects, the failure point it is traced to, the configuration delta that
+implements it, and the number of test cases designed to be able to kill it.
+Five operators (C4, K4, E1, R3, P3) were pre-registered as \emph{cuttable}: if
+the campaign schedule did not hold, the study would run on the remaining 13,
+which are the ones with the tightest link to a documented failure point.
+\nota{O catalogo executavel e o protocolo dizem ``seis'' operadores
+cortaveis; as flags no arquivo marcam cinco. Alinhar antes de submeter.}
+
+\begin{table*}[width=\textwidth,cols=6,pos=t]
+\caption{Catalogue of mutation operators. FP = failure point of Barnett et
+al.~\cite{barnett2024seven}. ``Cases'' is the number of test cases of the suite
+designed to be able to kill the operator (a case may target several
+operators). $\dagger$ = cuttable under the pre-registered schedule rule;
+$\ddagger$ = replicates an incident observed in operation.}
+\label{tab:operators}
+\begin{tabular*}{\tblwidth}{@{} LLLCLC @{}}
+\toprule
+Op. & Layer & Defect injected & FP & Baseline $\rightarrow$ mutant & Cases \\
+\midrule
+C1 & Corpus    & Source document absent                    & FP1 & primary document removed from corpus and index & 4 \\
+C2$^\ddagger$ & Corpus & Superseded version remains indexed & FP1 & primary replaced by its \emph{prev} variant (40 substitutions) & 2 \\
+C3 & Corpus    & Extraction loses the end of a PDF         & FP1 & secondary document keeps 70\% of its pages (9 $\rightarrow$ 6) & 3 \\
+C4$^\dagger$ & Corpus & Conflicting duplicate               & FP4 & \emph{conflict} variant of the primary added under another name & 1 \\
+\midrule
+K1 & Chunking  & Local context lost                        & FP3 & chunk size 1,200 $\rightarrow$ 400 tokens & 5 \\
+K2 & Chunking  & Precision drop                            & FP2 & chunk size 1,200 $\rightarrow$ 3,000 tokens & 4 \\
+K3 & Chunking  & Concept split at a boundary               & FP3 & overlap 200 $\rightarrow$ 0 tokens & 3 \\
+K4$^\dagger$ & Chunking & Cut in the middle of a rule       & FP3 & boundaries shifted by $+600$ tokens, size and overlap kept & 5 \\
+\midrule
+E1$^\dagger$ & Index & Silent recall degradation           & FP2 & embedding model \code{nomic-embed-text} (768-d) $\rightarrow$ \code{all-minilm} (384-d) & 7 \\
+E2$^\ddagger$ & Index & Stale index                        & FP1 & the two \emph{recent} documents present in the corpus, absent from the index & 3 \\
+\midrule
+R1 & Retrieval & Required evidence not retrieved           & FP2 & top-$k$ 4 $\rightarrow$ 1 & 10 \\
+R2 & Retrieval & Context dilution                          & FP3 & top-$k$ 4 $\rightarrow$ 12 & 7 \\
+R3$^\dagger$ & Retrieval & Redundant chunks                & FP2 & maximal-marginal-relevance re-ranking off & 4 \\
+R4 & Retrieval & Irrelevant chunk instead of fallback      & FP1 & relevance floor 0.428 $\rightarrow$ 0 & 5 \\
+\midrule
+P1 & Prompt    & Parametric knowledge used                 & FP6 & grounding rule removed from the system prompt & 11 \\
+P2 & Prompt    & Fabricates instead of abstaining          & FP6 & abstention rule removed & 7 \\
+P3$^\dagger$ & Prompt & Traceability lost                  & FP5 & citation rule removed & 4 \\
+P4 & Prompt    & Variance increase (control)               & --- & temperature 0.0 $\rightarrow$ 0.8 & 5 \\
+\bottomrule
+\end{tabular*}
+\end{table*}
+
+Two design details of individual operators deserve a note. K4 keeps chunk size
+and overlap and moves only where the cuts fall; it is the control that
+separates ``chunk size matters'' from ``cut position matters''. E1 swaps the
+embedding model of the assistant but not that of the similarity oracle
+(Section~\ref{sec:o1}): if the instrument of measurement changed together with
+the system under test, the operator would be unobservable by construction.
+
+\subsection{Application, reversion and fidelity}
+\label{sec:fidelity}
+
+Applying an operator always starts from a pristine copy of the corpus and of
+the index sources, so that no operator can inherit the residue of another.
+Configuration operators are applied as an in-memory overlay on the assistant's
+settings; corpus operators are file operations on the working copy. A gate,
+run before the campaign, applies each operator, reverts it and compares the
+working copy against the pristine signature: all 18 revert without residue.
+
+Reverting without residue does not show that the mutant \emph{is} what the
+catalogue says. Mutation studies of deterministic code rarely need to ask, but
+a configuration delta can be accepted by the system and change nothing ---
+because the parameter is not enforced, because the corpus has no content at
+the point the operator hits, or because the baseline already had the value the
+operator sets. We therefore attached to every operator an executable fidelity
+check that observes the effect at the stage the operator is supposed to alter
+(Table~\ref{tab:fidelity}). The criterion is the one any fidelity check should
+satisfy: the probe must \emph{fail on the baseline and pass on the mutant}.
+
+\begin{table}[width=\linewidth,cols=2,pos=h]
+\caption{Fidelity evidence observed per operator before the campaign. Each
+probe fails on the unmutated system and passes on the mutant.}
+\label{tab:fidelity}
+\begin{tabular*}{\tblwidth}{@{} LL @{}}
+\toprule
+Op. & Evidence observed \\
+\midrule
+C1 & primary absent from corpus and index sources; 7 documents remain \\
+C2 & 40/40 substitutions of the \emph{prev} variant visible in the indexed text \\
+C3 & secondary 9 $\rightarrow$ 6 pages, in corpus and in index \\
+C4 & duplicate present, original preserved, contents diverge \\
+K1 & 184 $\rightarrow$ 790 chunks \\
+K2 & 184 $\rightarrow$ 96 chunks (one per page) \\
+K3 & characters shared across the first boundary: 913 $\rightarrow$ 0 \\
+K4 & first three chunk sizes [6206, 4512, 6316] $\rightarrow$ [3131, 6333, 2630] \\
+E1 & vector dimension 768 $\rightarrow$ 384 \\
+E2 & the 2 recent documents in the corpus and absent from the index \\
+R1 & 1 chunk returned \\
+R2 & 12 chunks returned \\
+R3 & re-ranking disabled in the retrieval configuration \\
+R4 & below-floor question: baseline returns 0 chunks, mutant returns 4 \\
+P1 & grounding rule absent, abstention rule preserved \\
+P2 & abstention rule absent, grounding rule preserved \\
+P3 & citation rule absent, grounding rule preserved \\
+P4 & \code{temperature: 0.8} in the options sent to the model server \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+Two probes had to be hardened after their first version, and the reason is the
+same in both: a check that passes for the wrong reason is worse than no check.
+The probe for R4 initially used the first out-of-corpus question of the suite,
+whose best chunk (0.492) already clears the floor of 0.428; baseline and mutant
+both returned four chunks and the check passed while observing nothing. It now
+uses the negative question of lowest similarity (0.418), on which the baseline
+returns nothing. The probe for K3 counted chunks, which do not change when the
+overlap is removed --- their content does; it now measures how many characters
+at the end of the first chunk reappear at the start of the second. The
+protocol asked for a manual review of all 18 mutants before the campaign; the
+fidelity checks are that review in executable, versioned form.
+
+\subsection{Equivalence under non-determinism: the evaluable set}
+\label{sec:equivalence}
+
+In deterministic software an equivalent mutant is one that no test can
+distinguish from the original, and it is detected by comparing behaviours. A
+RAG assistant offers no fixed behaviour to compare against: the original
+answers differently across runs, so ``behaves like the original'' has no single
+witness. We replace the notion with one that can be computed.
+
+Let $\Cset$ be the suite and $v_o(m, c, r) \in \{\pass, \fail\}$ the verdict of
+oracle $o$ on case $c$ in run $r$ against system $m$, where $m = b$ denotes the
+unmutated baseline. The \emph{evaluable set} of oracle $o$ is the set of cases
+on which the baseline is both stable and correct across its $N_b$ runs:
+\begin{equation}
+\label{eq:evaluable}
+\Sset_o = \bigl\{\, c \in \Cset \;:\; v_o(b, c, r) = \pass \ \text{for all}\ r = 1, \dots, N_b \,\bigr\}.
+\end{equation}
+Every denominator in the study is restricted to $\Sset_o$. A case that is
+unstable in the baseline would produce kills that cannot be attributed to any
+mutation; a case that fails stably in the baseline would fail on every mutant
+and inflate the kill rate without carrying information about the injected
+defect. The two exclusions are reported separately (Section~\ref{sec:evaluable}),
+because they mean different things: the first measures the intrinsic
+instability of the system, the second measures where the suite and the
+unmutated system already disagree. Requiring the stable verdict to be
+\emph{pass} is a refinement over the pre-registered protocol, which required
+stability only; the protocol's version can be recovered from the log.
+
+The evaluable set is per oracle, not global, because the same run can be
+stable under a deterministic assertion and unstable under a judge. This is what
+allows RQ2 to compare oracles on identical artefacts: each oracle is scored on
+its own stable ground.
+
+The set is also what separates a surviving mutant from a mutant that no case
+could have killed. Three sources of ``equivalence by construction'' were found
+and removed before the campaign, and each generalises beyond this study.
+\emph{By corpus structure}: C3 truncates the last 30\% of a document, and in a
+research paper the last third is almost always the reference list --- which no
+test case asks about. Of the eight documents, the first measurement found only
+one with prose in the region C3 deletes; the secondary role was assigned by
+measuring the density of facts per page rather than by choice. \emph{By
+baseline configuration}: R3, R4 and P3 remove something the repository default
+never had (Section~\ref{sec:instrumentation}). \emph{By ingestion}: the four
+chunking operators were inert on the original pagination
+(Section~\ref{sec:corpus}). The observability of a corpus-level operator
+depends on the internal structure of the document it acts on, and that
+dependency does not appear in a catalogue; a catalogue of RAG operators
+therefore has to travel with a criterion of corpus adequacy, or the study will
+report ``the suite does not detect'' where the truth is ``the design did not
+allow detection''.
+
+% =====================================================================
+\section{Oracles under Study}
+\label{sec:oracles}
+
+Every oracle is a function of the same four artefacts recorded in the log ---
+the question, its reference answer, the generated answer and the retrieved
+context --- and returns \pass{} or \fail{}. The oracles were chosen to span the
+four families of Section~\ref{sec:oracleproblem} and to be the ones a
+practitioner actually deploys, in the form in which they are deployed. Their
+cost is deliberately asymmetric: the two cheap oracles (O1, O2) and their
+conjunction (O5) are applied to every run, and the two expensive ones (O3, O4)
+are applied once per (mutant, case) pair to the \emph{modal} answer of its
+runs. The asymmetry reduces the number of judge evaluations from 13,500 to
+2,700; it is part of the cost result of RQ3, not a shortcut hidden from it.
+
+\subsection{O1 --- cosine similarity to the reference}
+\label{sec:o1}
+
+O1 passes when the cosine similarity between the embedding of the generated
+answer and the embedding of the reference answer is at least a threshold
+$\tau^\ast$, calibrated in Section~\ref{sec:calibration}. The embedding model
+is fixed to \code{nomic-embed-text} regardless of the configuration of the
+system under test; if the oracle followed the system's embedding model,
+operator E1 would change the measuring instrument together with the system it
+measures. O1 is the oracle of the answer-quality suites we have seen in
+practice, including our own~\cite{oliveira2026sast}, and it is included in
+that form.
+
+\subsection{O2 --- deterministic assertions}
+\label{sec:o2}
+
+O2 is a set of assertions over the answer text, and only over the answer text.
+The 30 cases carry 71 assertions of ten kinds: required terms
+(\code{contains\_all}, \code{contains\_any}), forbidden terms
+(\code{not\_contains}), a regular expression for a stated condition
+(\code{regex}), a length bound (\code{max\_words}), the presence or absence of
+the assistant's abstention phrase (\code{must\_abstain},
+\code{must\_not\_abstain}), the refusal and clarification behaviours
+(\code{must\_refuse}, \code{must\_ask\_clarification}) and, for the
+traceability class, a citation of the source document and page
+(\code{must\_cite\_document}, \code{must\_cite\_page}). O2 never asserts over
+the retrieved chunks. The restriction is deliberate: the hypothesis behind RQ1
+is that a typical suite tests the output and not the retrieval, and a suite
+already instrumented with retrieval assertions would answer RQ1 by
+construction.
+
+Every assertion was validated against its own reference answer before the
+campaign, and any assertion the reference does not satisfy was discarded
+(Section~\ref{sec:suite}). The check caught three cases in the ambiguous class
+whose references described a request for clarification instead of making one,
+and one false positive of the opposite kind, a condition pattern that matched
+inside an unrelated word until word boundaries were enforced. A hand-written
+oracle that approves by accident is as harmful as one that rejects by
+accident, and neither is visible unless the oracle is run against the baseline
+first.
+
+\subsection{O3 --- reference-free metric bundle}
+\label{sec:o3}
+
+O3 applies the three RAGAS metrics that a RAG evaluation typically reports
+--- faithfulness, answer relevancy and context precision~\cite{es2024ragas} ---
+each computed by a local judge model over the answer and the retrieved
+context, and passes when all three reach 0.7. The threshold and the
+conjunction were fixed in the protocol before any data existed, so that O3 is
+the metric bundle as a project would deploy it as a gate. Two implementations of
+the metrics were available, the reference implementation named in the protocol
+and a second library declared as the alternative; the choice between them was a
+pre-registered decision point of the pilot, with no automatic fallback, because
+an O3 that passes by failing to measure would contaminate RQ2 entirely. What
+the pilot found is reported in Section~\ref{sec:pilot}.
+
+\subsection{O4 --- LLM as a judge}
+\label{sec:o4}
+
+O4 asks a second model whether the generated answer is acceptable given the
+question and the reference answer. Three mitigations bound what the judge can
+be blamed for. The judge (\code{gemma3:4b}) is from a different model family
+than the generator (\code{qwen3:8b}), against the documented preference of
+evaluators for text of their own family~\cite{panickssery2024llm}. Each pair is
+judged five times at temperature 0 with seeds 1 to 5 and decided by simple
+majority, against the judge's own instability; at temperature 0 the five
+judgements measure the residual non-determinism of the runtime rather than
+sampling variance, and if the five always agree that is a datum about the
+judge, not a wasted budget. The judge answers in a constrained JSON schema with
+a verdict, a predominant cause from a fixed list and a two-sentence
+justification, so that its output can be parsed without interpretation. The
+bias that remains after the three mitigations is what RQ2 measures.
+
+One instruction in the judge's prompt was added after the pilot and is itself
+a finding. The judge does not see the source document; it sees the question,
+the reference and the answer. It therefore cannot know whether a detail absent
+from the reference is true, and can only judge whether the answer
+\emph{contradicts} the reference. The first version of the prompt asked for
+``no unsupported claim'', and the judge read \emph{unsupported} as \emph{absent
+from the reference}: a correct answer more detailed than its reference --- the
+same three percentages, each described by its cause rather than by the name of
+the mutator --- failed for ``adding information''. The prompt now states that
+the reference is the minimum an acceptable answer must contain, not the
+maximum. After the change, controls behaved as required: a swapped number and
+a swapped mutator still fail, a shorter correct answer passes. A reference-based
+judge carries a structural bias against answers \emph{better} than their
+reference, and that bias only becomes visible when the system under test is
+good.
+
+\subsection{O5 --- conjunction}
+\label{sec:o5}
+
+O5 is the conjunction of O1 and all assertions of O2:
+$\mathrm{O5}(c) = \mathrm{O1}(c) \wedge \bigwedge_i \mathrm{O2}_i(c)$. It is
+not ``oracles in parallel'': a deterministic violation fails the case whatever
+the similarity score, and a semantic miss fails it whatever the assertions
+say. O5 is the form a practitioner arrives at after the first false pass of a
+similarity oracle, and it is the primary oracle of the pre-registered analysis
+for RQ1; the other four are reported alongside it.
+
+\subsection{Calibration of the similarity threshold}
+\label{sec:calibration}
+
+A similarity threshold chosen by intuition is an undeclared oracle. The
+protocol therefore fixed a calibration procedure before any campaign data
+existed: build a labelled set of answer pairs, sweep $\tau \in [0.60, 0.95]$
+in steps of 0.01, and take the $\tau^\ast$ that maximises $F_1$ for the class
+of correct answers, with a bootstrap confidence interval.
+
+\paragraph{Pairs.} Each pair is a reference answer and a candidate. Candidates
+of class \textsc{equiv} are paraphrases of the reference produced by a model of
+a different family from the generator (\code{gemma3:4b}) and reviewed
+individually: all 115 paraphrases were read, 111 approved and 4 rejected, for
+degeneration (``Pitest (Pitest) was adopted'') or for an altered relation
+(``stable across seeds'' becoming ``stable when compared with seeds'').
+Candidates of class \textsc{erro} are the reference with one fact corrupted by
+a programmatic rule --- a number replaced by a plausible other value (five
+transformations), a named entity swapped for another entity of the corpus, or
+a stated condition inverted (29 flips such as \emph{at least}/\emph{at most},
+\emph{increases}/\emph{decreases}) --- so that what changed is known by
+construction. The eight cases whose reference is the fixed abstention or
+refusal phrase were excluded: there is no plausible wrong version of an
+abstention, and paraphrases of a fixed sentence would measure the oracle's
+ability to recognise that sentence rather than to judge an answer. The final
+set has 247 pairs (111 \textsc{equiv}, 136 \textsc{erro}) over 22 cases.
+
+\paragraph{Result.} The sweep returned $\tau^\ast = 0.60$, the minimum of the
+grid, with $F_1 = 0.62$, precision 0.45, recall 1.0 and accuracy 0.449 (95\%
+CI $[0.389, 0.510]$). The area under the ROC curve is 0.485. The maximum $F_1$
+is obtained by accepting everything: no threshold separates a correct
+paraphrase from an injected error. The mean similarity of the two classes is
+0.970 for \textsc{equiv} and 0.967 for \textsc{erro}.
+
+This is not a defect of measurement. Table~\ref{tab:controls} shows direct
+controls on a single reference: a negated sentence scores above a legitimate
+paraphrase, and a swapped number scores 0.918.
+
+\begin{table}[width=\linewidth,cols=2,pos=h]
+\caption{Cosine similarity of controlled candidates against one reference
+answer (\code{nomic-embed-text}).}
+\label{tab:controls}
+\begin{tabular*}{\tblwidth}{@{} LC @{}}
+\toprule
+Candidate & Similarity \\
+\midrule
+Identical                                  & 1.0000 \\
+Correct paraphrase                         & 0.9907 \\
+\textbf{Negated sentence} (opposite meaning) & \textbf{0.9912} \\
+\textbf{Number swapped} (56.58\% $\rightarrow$ 85.00\%) & \textbf{0.9184} \\
+Entity swapped                             & 0.8095 \\
+Unrelated topic                            & 0.5973 \\
+Same content, another language             & 0.4165 \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+The aggregate AUC hides two opposite regimes (Table~\ref{tab:auc}). For entity
+substitution the oracle works (AUC 0.81). For swapped numbers and inverted
+conditions it \emph{inverts}: the injected error scores higher than the
+correct paraphrase in 75\% and 91\% of comparisons respectively. The pattern
+replicates on a second embedding model of a different family and half the
+dimensionality (\code{all-minilm}), so the finding is about the method ---
+cosine similarity to a reference --- and not about the embedding model chosen
+for this study.
+
+\begin{table}[width=\linewidth,cols=5,pos=h]
+\caption{Similarity of injected errors by type, against the 111 correct
+paraphrases. AUC below 0.5 means the error is ranked above the correct
+paraphrase.}
+\label{tab:auc}
+\begin{tabular*}{\tblwidth}{@{} LCCCC @{}}
+\toprule
+Candidate class & $n$ & Mean & AUC (nomic) & AUC (MiniLM) \\
+\midrule
+Inverted condition   & 20  & 0.995 & \textbf{0.091} & \textbf{0.174} \\
+Number swapped       & 53  & 0.988 & \textbf{0.248} & \textbf{0.140} \\
+\emph{Correct paraphrase} & \emph{111} & \emph{0.970} & --- & --- \\
+Entity substituted   & 63  & 0.942 & 0.808 & 0.752 \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+The reason is structural. An injected error is the reference with one token
+changed, textually almost identical; a paraphrase is an honest rewrite with
+another verb and another order. Cosine similarity measures surface proximity,
+and therefore prefers the minimal corruption to the legitimate reformulation.
+The defect this matters most for in RAG --- a wrong number in an otherwise
+correct sentence --- is exactly the one the cheapest and most common oracle
+does not see.
+
+\paragraph{Consequences.} O1 is kept in the campaign at $\tau^\ast = 0.60$,
+because the study measures what the oracles practitioners deploy detect, and
+this is what that oracle detects. Its verdicts are read as such in
+Section~\ref{sec:rq2}. Two limitations are declared. The \textsc{erro} class is
+generated programmatically and may be easier to detect than the errors a model
+makes naturally; and the reviewed paraphrases turned out conservative (a verb
+and a connective changed, the structure kept). Both push in the same
+direction: $\tau^\ast$ and the AUC are upper bounds on the oracle's
+performance, from both sides. The same asymmetry that governed the retrieval
+floor (Section~\ref{sec:instrumentation}) governs $\tau^\ast$: a threshold
+that rejects a correct answer removes the case from every denominator
+silently, a threshold that accepts a wrong one is visible in the results.
+
+% =====================================================================
+\section{Study Design}
+\label{sec:design}
+
+The design was registered before execution: operators, suite, oracles,
+thresholds, repetitions, metrics and statistical tests were fixed and
+versioned, and the deviations that the pilot forced are listed in
+Section~\ref{sec:pilot}. We follow the reporting structure for case study
+research in software engineering~\cite{runeson2009guidelines}, since the
+object is one system studied in depth rather than a sample of systems.
+
+\subsection{Research questions and metrics}
+\label{sec:rqs}
+
+\textbf{RQ1 --- Adequacy by layer.} Which layers of the RAG pipeline produce
+defects that the suite fails to detect? The pre-registered hypothesis
+(H1) is that surviving mutants concentrate in the corpus, chunking, index and
+retrieval layers rather than in the prompt layer, because a suite that judges
+the answer observes prompt defects directly and retrieval defects only through
+their effect on the answer.
+
+\textbf{RQ2 --- Oracle bias.} How much does the reported adequacy depend on the
+oracle applied to identical artefacts? The hypothesis (H2) is that the spread
+between oracles is of the same order as the twenty-point swing reported for
+program-repair validators~\cite{bonfim2026evaluator}, and that disagreement
+concentrates in the abstention and traceability classes, where a similarity
+oracle and a judge disagree by nature.
+
+\textbf{RQ3 --- Cost of rigour.} What does each level of rigour cost, and what
+does it buy? The hypothesis (H3) is that cost grows faster than detection
+across levels: repetition is what discounts non-determinism, and it is also
+what costs.
+\nota{Conferir a redacao de H1--H3 contra o protocolo pre-registrado; o
+texto acima e a versao do relatorio de execucao.}
+
+Let $V_o(m, c)$ be the verdict of oracle $o$ on case $c$ against mutant $m$,
+aggregated over the $N_m$ runs: the majority verdict of the per-run verdicts
+for O1, O2 and O5, and the verdict on the modal answer for O3 and O4. With
+$\Sset_o$ as in Eq.~\eqref{eq:evaluable}, the \emph{kill rate} of a mutant is
+the proportion of evaluable cases that fail on it,
+\begin{equation}
+\label{eq:killrate}
+\kr_o(m) = \frac{\bigl|\{\, c \in \Sset_o : V_o(m, c) = \fail \,\}\bigr|}{|\Sset_o|},
+\end{equation}
+reported with a Wilson 95\% confidence interval. A mutant is \emph{killed}
+under $o$ when $\kr_o(m) > 0$, and the \emph{mutation score} of the suite
+under $o$ is the proportion of killed mutants,
+\begin{equation}
+\label{eq:ms}
+\MS_o = \frac{\bigl|\{\, m : \kr_o(m) > 0 \,\}\bigr|}{|M|}, \qquad
+\MS^{\mathrm{coh}}_o = \frac{\bigl|\{\, m : \text{killed coherently under } o \,\}\bigr|}{|M|},
+\end{equation}
+where $M$ is the set of 18 mutants and a kill is \emph{coherent} when its
+cause, classified as in Section~\ref{sec:coherence}, is one the operator was
+designed to produce. The two readings are kept apart on purpose. With one
+mutant per operator, a mutation score per operator would be 0 or 1 and its
+confidence interval would say nothing; the kill rate over cases has a
+denominator ($|\Sset_o|$) and an interpretable interval, and it is what enters
+the per-layer comparison of RQ1. The mutation score is a property of the suite
+under one oracle, and it is what the \emph{swing} of RQ2 compares:
+$\mathrm{swing} = \max_o \MS_o - \min_o \MS_o$. For RQ3 the unit is the cost
+of a level of rigour divided by the number of mutants it killed.
+
+\subsection{Execution protocol}
+\label{sec:execution}
+
+The baseline is executed $N_b = 10$ times per case (300 invocations) and each
+of the 18 mutants $N_m = 5$ times per case (2,700 invocations), for about
+3,000 invocations of the assistant. Generation runs at temperature 0.0
+everywhere except under P4, and the seed of run $r$ is $r$ itself, so that any
+run can be named. The campaign does not stop at the first killing case: every
+case runs against every mutant, because the cause of each death is a result
+(Section~\ref{sec:coherence}) and stopping early would hide it. Within a
+mutant, runs are ordered by repetition and then by case, so that the seed is
+set once per repetition in the system configuration rather than per call; the
+harness is resumable at the granularity of one invocation, and every invocation is appended to the log with the question,
+the retrieved chunks and their similarity scores, the answer, the prompt and
+completion token counts, wall-clock time, GPU-seconds and energy.
+
+Oracles never run during the campaign. They read the log afterwards, and each
+verdict records which oracle, which level of rigour and how many runs it was
+derived from.
+
+\subsection{Levels of rigour}
+\label{sec:levels}
+
+RQ3 compares three levels, all derived from the same log. \textbf{L1} is a
+single run: the verdict of run 1 alone, with no evaluable set --- it is what a
+protocol that executes each case once would have reported, and what most
+suites in practice report. \textbf{L2} is the pre-registered protocol of the
+campaign: $N_m = 5$ runs per (mutant, case) with the majority verdict, and
+$\Sset_o$ from the ten baseline runs. \textbf{L3} adds 30 baseline runs on a
+deterministic subset of ten cases, to estimate how much the stability
+judgement of L2 would change with six times the repetitions. Because
+execution is separated from judgement, moving between levels costs only the
+oracles' time, which is measured; the generation cost of each level is the
+cost of the runs it consumes.
+
+\subsection{Coherence of kills}
+\label{sec:coherence}
+
+A kill is only evidence of adequacy if the case failed for the reason the
+operator injected. Every kill $(m, c)$ is therefore classified by its cause
+with a codebook of eight codes (Table~\ref{tab:codebook}), each with the set
+of operators expected to produce it. A kill is \emph{coherent} when its code
+is in the expected set of the operator that produced the mutant. The
+classification is per kill, not per oracle: the cause is a property of the
+answer, not of the instrument that rejected it. The codebook was frozen ---
+date and author recorded in the versioned file --- before any campaign result
+was read; a cause that fits no code is recorded as \textsc{other}, and a high
+proportion of \textsc{other} is a result to report, not a problem to hide,
+because it means the catalogue of causes was incomplete.
+\todo{Registrar a data de congelamento do codebook (campo \code{frozen\_at})
+antes de olhar o primeiro veredito.}
+
+\begin{table}[width=\linewidth,cols=3,pos=h]
+\caption{Codebook for the cause of a kill, with the operators expected to
+produce each cause. A kill is coherent when its code is expected from its
+operator.}
+\label{tab:codebook}
+\begin{tabular*}{\tblwidth}{@{} LLL @{}}
+\toprule
+Code & Cause & Expected from \\
+\midrule
+\textsc{ret-miss}     & required evidence not retrieved (incl. zero chunks) & C1, C3, E2, K1, K3, K4, R1, R4 \\
+\textsc{ret-dilute}   & evidence present but diluted or redundant           & K2, R2, R3 \\
+\textsc{ret-stale}    & evidence outdated or contradicted                   & C2, C4, E2 \\
+\textsc{gen-halluc}   & claim not supported by the retrieved context        & P1 \\
+\textsc{gen-noabstain}& should have abstained or refused and did not        & P2, R4 \\
+\textsc{fmt-break}    & format or traceability requirement broken           & P3 \\
+\textsc{flow-desync}  & answers another question; wrong clarification behaviour & K4, P1 \\
+\textsc{other}        & none of the above                                   & --- \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+Reliability of the classification is measured in two ways. The first author
+classifies every kill; 30\% of them, drawn at random, are re-classified blind
+by the same author at least seven days later, and the intra-rater agreement is
+reported as Cohen's $\kappa$. \nota{Se o segundo autor classificar uma amostra
+independente, reportar tambem o kappa inter-avaliador; o protocolo preve
+``dois classificadores''.} Agreement among oracles, which is a different
+question, is reported as Fleiss' $\kappa$ in RQ2.
+
+\subsection{Cost measurement}
+\label{sec:cost}
+
+Cost is measured, not estimated. For every invocation the harness records
+wall-clock time, prompt and completion tokens as reported by the model server,
+and, by sampling the GPU through the NVIDIA management library during the
+call, GPU-seconds and energy in watt-hours. The oracles are metered in the
+same way: the embedding calls of O1, the metric computations of O3 and the
+judge calls of O4. The cost of a level of rigour is the sum over the runs and
+verdicts that level consumes, and the cost per killed mutant divides it by the
+mutants killed at that level under the primary oracle. Energy is reported as
+measured on the study hardware and is not extrapolated to other devices.
+
+\subsection{Statistical analysis}
+\label{sec:stats}
+
+All tests were fixed before collection, at $\alpha = 0.05$; no proportion is
+reported without a Wilson 95\% confidence interval and no difference of means
+without a percentile-bootstrap 95\% interval (10,000 resamples, fixed seed).
+For RQ1, the per-operator kill rates are grouped by layer and compared with a
+Kruskal--Wallis test, with $\eta^2$ as effect size and Dunn's post-hoc
+comparisons under Holm's correction~\cite{holm1979simple}. For RQ2, the binary
+verdicts of the five oracles on the same (mutant, case) pairs are compared with
+Cochran's $Q$~\cite{cochran1950comparison}, followed by pairwise McNemar tests
+under Holm's correction, and their agreement is summarised by Fleiss' $\kappa$
+and by pairwise Cohen's $\kappa$; disagreement is also broken down by test
+class. For RQ3, the cost per killed mutant at each level is reported with its
+bootstrap interval, and detection and cost are plotted on separate panels with
+a shared abscissa rather than on a dual axis, so that the two slopes can be
+compared without suggesting that they share a unit. The analysis script that
+produces every table and figure was run on synthetic data of known structure
+before the campaign, to expose edge cases without spending GPU time on them.
+
+\subsection{Pilot and deviations from the registered protocol}
+\label{sec:pilot}
+
+Before the campaign, three cases (a direct fact, a distributed fact and an
+out-of-corpus question) were run twice each against the baseline and against
+two mutants chosen to kill them (R1 and P2): 18 invocations, 45 verdicts,
+all five oracles. The pilot validated the path from execution to verdict with
+cost measured end to end, and forced the following deviations from the
+registered protocol, all made before any mutant result was examined.
+
+\emph{Retrieval check on the suite.} The question of one direct-fact case
+retrieved four documents, none of them the one holding its evidence; in a
+corpus where every document discusses testing, a generically worded question
+retrieves a topical neighbour. The check of Section~\ref{sec:suite} was added,
+found two more, and the three questions were rewritten. Three out-of-corpus
+questions were also replaced, for the reason given in
+Section~\ref{sec:instrumentation}.
+
+\emph{Judge instruction.} The reference-as-minimum instruction of
+Section~\ref{sec:o4} was added, with the controls reported there. The judge
+was otherwise stable: five out of five judgements agreed on every pair and
+every control of the pilot, which answers the pre-registered decision point on
+O4 --- the judge stays.
+
+\emph{O3.} Neither implementation of the metric bundle produced usable
+verdicts with the local judge. The reference implementation could not parse
+the judge's output in six of nine evaluations. The alternative implementation
+evaluated everything but returned faithfulness 0.0 for a grounded answer and
+1.0 for an answer that fabricated a figure about a topic absent from the
+retrieved context, the symptom of zero claims extracted. With a larger judge
+(\code{qwen3:8b}, 4 to 9 minutes per evaluation) the fabricated answer still
+scored 1.0: the metric counts claims that do not \emph{contradict} the
+context, and a claim about an absent topic contradicts nothing. The reference
+implementation is stricter --- a claim must be \emph{inferable} from the
+context --- but is the one that does not parse. The blind spot is by
+definition, not by model size, and it is a result of RQ2
+(Section~\ref{sec:rq2}). \todo{Decisao pendente e a registrar aqui: (a)
+contingencia pre-registrada, campanha com O1, O2, O4 e O5; (b) novo juiz sem
+modo de raciocinio e novo piloto do backend de referencia; (c) manter O3 via a
+implementacao alternativa e reporta-lo como degenerado.}
+
+\emph{Evaluable set requires a pass.} The refinement of
+Section~\ref{sec:equivalence}. The out-of-corpus case of the pilot received,
+from the unmutated system, an answer stating that ``WCAG 2.2 defines 14
+success criteria at level AA'' with a retrieved context that does not mention
+WCAG. The case leaves $\Sset_o$ for every oracle. This is not a defect of the
+suite; it is the system violating its own grounding rule before any mutation,
+and the consequence for the design is that the operator which removes the
+abstention instruction (P2) is only observable on cases where the baseline
+abstains. \todo{Decisao pendente: aceitar (os casos saem de S e o artigo
+reporta como achado sobre o SUT) ou afastar as perguntas ``fora do corpus''
+ate o baseline se abster. Rodar o baseline dos 5 casos antes de decidir.}
+
+\emph{Cost.} The baseline took 27\,s per invocation with 812 completion
+tokens on average, most of them the reasoning trace the generator emits before
+its answer. The projected campaign is 22.6\,h of wall-clock time and about
+1.1\,kWh, against the 8.5\,h estimated in the protocol; the pre-registered
+schedule rule (drop the five cuttable operators, or reduce the suite to 20
+cases) was \todo{applied / not applied}.
+
+% =====================================================================
+\section{Results}
+\label{sec:results}
+
+\nota{Esta secao tem a estrutura final e os resultados que ja existem
+(pre-campanha). Cada tabela e figura nomeada abaixo sai de
+\code{analyze.py} com o mesmo identificador (T0--T5, F1--F4); o texto em
+\code{TODO} e preenchido com os numeros da campanha.}
+
+\subsection{The evaluable set}
+\label{sec:evaluable}
+
+\todo{Tabela T0: $|\Sset_o|$ por oraculo, com o numero de casos instaveis no
+baseline e o de casos estavelmente reprovados, separados. Texto: quanto da
+suite cada oraculo consegue medir; se algum oraculo perde uma classe inteira
+(esperado: a classe ``fora do corpus'' sob todos os oraculos se o baseline
+alucinar, cf. Secao~\ref{sec:pilot}).}
+
+Two facts about the evaluable set are already known from the pilot and are
+confirmed or revised here. First, the case on which the unmutated system
+fabricated a figure about an absent topic leaves $\Sset_o$ for every oracle,
+which is the intended behaviour of Eq.~\eqref{eq:evaluable}: the exclusion
+records a property of the system, not of the suite. Second, one distributed
+fact case fails stably in the baseline for a reason the reference makes
+explicit --- the question asks \emph{which} mutants and the system answers with
+categories of weakness without naming one --- and it too is excluded, on
+merit. \todo{Quantos dos 5 casos ``fora do corpus'' sobrevivem em S; se P2
+ficou sem caso avaliavel, dizer aqui e tratar na Secao~\ref{sec:discussion}.}
+
+\subsection{RQ1 --- Adequacy by layer}
+\label{sec:rq1}
+
+\todo{Tabela T1: taxa de morte por operador sob o oraculo primario (O5), com IC
+de Wilson; coluna de morte coerente. Tabela T2: mortes e mortes coerentes por
+camada; Kruskal--Wallis com $\eta^2$; Dunn com Holm (T2b). Figura F1: taxa de
+morte por camada, uma barra por operador, IC como whisker. Texto: quais
+operadores sobrevivem, em que camada se concentram, e se H1 se sustenta. Tratar
+C4 (um caso) e P4 (controle) separadamente.}
+
+\subsection{RQ2 --- Oracle bias}
+\label{sec:rq2}
+
+Two of the five oracles had their bias established before the campaign, on
+artefacts that do not depend on it. They are reported first because they bound
+what the campaign numbers can mean.
+
+\paragraph{O1 inverts on the defects that matter most.} On the 247 calibration
+pairs of Section~\ref{sec:calibration}, cosine similarity to the reference
+ranks an answer with one number swapped above a correct paraphrase in 75\% of
+comparisons (AUC 0.248) and an answer with an inverted condition above a
+correct paraphrase in 91\% (AUC 0.091); it separates entity substitutions
+(AUC 0.808). The pattern holds on a second embedding model of another family
+(AUC 0.140 and 0.174 for numbers and conditions). Any threshold accepts or
+rejects paraphrases and numeric errors together; at the calibrated
+$\tau^\ast = 0.60$ it accepts both. In the campaign O1 therefore acts as a
+topic detector: it can fail a case whose answer drifted to another subject or
+abstained, and it cannot fail a case whose answer states the wrong value.
+
+\paragraph{O3 is blind to fabrication about absent topics.} On the pilot
+artefacts, the faithfulness metric of the RAGAS bundle scored 1.0 for the
+answer that fabricated ``14 success criteria at level AA'' about WCAG with a
+context that does not mention WCAG, under both available implementations and
+under a judge twice the size of the one registered (Section~\ref{sec:pilot}).
+The metric asks whether the answer's claims contradict the context, and a
+claim about a topic the context does not contain contradicts nothing. The
+defect that operator P2 injects --- answering instead of abstaining --- is
+therefore invisible to O3 by definition. \todo{Conforme a decisao sobre O3:
+(a) O3 ausente da campanha, esta subsecao reporta a contingencia; (b)/(c) O3
+presente, reportar seus vereditos com o ponto cego declarado.}
+
+\paragraph{O4 is stable.} In the pilot the five judgements agreed in every
+pair and every control; the majority vote never had to break a tie. After the
+reference-as-minimum instruction, the judge fails a swapped number and a
+swapped mutator (both with cause \code{wrong\_value}) and passes a
+shorter correct answer. It is the oracle that sees what O1 does not.
+
+\paragraph{The campaign.} \todo{Tabela T3: $\MS_o$ e $\MS^{\mathrm{coh}}_o$
+por oraculo sobre artefatos identicos, swing, Cochran's $Q$, McNemar par a par
+com Holm (T3b), Fleiss' $\kappa$ e matriz de Cohen (T3c). Tabela T3d:
+divergencia por classe de caso. Figura F2. Texto: o swing observado contra a
+referencia de 20 pontos de H2; onde os oraculos discordam (esperado: abstencao
+e rastreabilidade); se O1 e O4 discordam exatamente nos operadores que trocam
+valores (C2, C4) --- e o teste da inversao em campo.}
+
+\subsection{RQ3 --- Cost of rigour}
+\label{sec:rq3}
+
+The baseline of the pilot fixes the unit cost of the system under test:
+27\,s of wall-clock time per invocation and 812 completion tokens on average,
+of which the answer proper is a small fraction --- the rest is the reasoning
+trace the generator emits before answering. \todo{GPU-s e Wh medidos por
+invocacao no baseline.} At that rate the L2 campaign costs 22.6\,h and about
+1.1\,kWh, against 8.5\,h estimated in the protocol; the difference is entirely
+the reasoning trace, which the protocol's estimate did not anticipate.
+
+\todo{Tabela T5: por nivel (L1, L2, L3) e por oraculo, custo total (tempo,
+tokens, GPU-s, Wh), mutantes mortos, custo por mutante morto com IC bootstrap.
+Figura F4: dois paineis, deteccao e custo por nivel, mesma abscissa. Texto: o
+que L2 detecta que L1 nao detecta, e a que preco; o que L3 muda na estimativa
+de estabilidade; a proporcao entre o custo do SUT e o custo dos oraculos
+(esperado: geracao domina, juiz e segunda ordem).}
+
+\subsection{Coherence of the observed kills}
+\label{sec:coherenceresults}
+
+\todo{Tabela T4: distribuicao dos codigos por operador; fracao de mortes
+coerentes; proporcao de OTHER; kappa intra-avaliador (e inter, se houver).
+Texto: quais operadores matam pelo motivo errado; se P4 aparece como perda de
+estabilidade e nao como morte coerente (o controle do protocolo).}
+
+% =====================================================================
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{An adequacy score is a property of the pair (suite, oracle)}
+
+\todo{Abrir com o swing observado.} Before any campaign number, the calibration
+already shows that the same suite, over the same artefacts, would report
+different adequacy under O1 and O4 for every mutant that changes a value: O1
+cannot fail a wrong number and O4 fails it on every control. A mutation score
+for a RAG assistant reported without the oracle that produced it is not
+interpretable, and we suggest that studies of LLM-based systems report
+adequacy per oracle as a matter of course, as program-repair studies have begun
+to report effectiveness per validator~\cite{bonfim2026evaluator}.
+
+\subsection{What the cheapest oracle is good for}
+
+Cosine similarity to a reference is not useless; it is mis-specified as a
+correctness oracle. On our data it separates topic with a wide margin and is
+nearly blind to value and polarity. It therefore detects the failures that
+change \emph{what} the answer is about --- an abstention where an answer was
+due, a drift to a neighbouring subject, a refusal --- and misses the failures
+that change what the answer \emph{says}. The practical form is the conjunction
+of Section~\ref{sec:o5}: a similarity gate for drift and deterministic
+assertions for every value the case depends on. Where a reference answer is
+available, the numbers in it are the assertions; where it is not, the metric
+bundle's faithfulness is not a substitute, because it cannot see a claim about
+what the context does not contain.
+
+\subsection{The reference answer is the oracle}
+
+Three of the checks added during this study exist because a reference answer
+is not documentation but an instrument. A reference with a justification the
+model appended to a correct fact penalises a correct answer
+(Section~\ref{sec:suite}); an assertion that its own reference does not
+satisfy removes the case from the analysis silently (Section~\ref{sec:o2}); a
+judge that reads the reference as a ceiling fails answers better than it
+(Section~\ref{sec:o4}). All three are invisible until the oracle is run
+against the unmutated system, and all three bias the result in the same
+direction --- towards failing the baseline, which under Eq.~\eqref{eq:evaluable}
+shrinks the denominator without raising an error. The single most useful
+practice we can recommend to whoever builds a suite for a RAG assistant is
+to run every oracle against the baseline before trusting it against anything
+else.
+
+\subsection{Mutation operators need a corpus criterion}
+
+A mutation operator for source code carries its own observability: a changed
+operator is exercised if the line is executed. A mutation operator for a
+corpus does not. Whether truncating a document removes anything the suite can
+ask about, whether a chunk-size change moves any boundary, whether a
+similarity floor rejects anything at all, depend on the corpus, the pagination
+and the baseline configuration (Section~\ref{sec:equivalence}). Three of our
+eighteen operators were inert on the first version of the corpus and none of
+them would have reported an error; they would have survived, and the survival
+would have read as a gap in the suite. A catalogue of RAG operators is
+therefore only half of the instrument; the other half is the set of
+measurements --- fact density per page, chunks per page, distribution of
+similarities of the negative cases --- that establish, before the campaign,
+that each operator has something to act on.
+
+\subsection{Homogeneous corpora and the relevance floor}
+
+An assistant over a corpus of one domain is the common industrial case: the
+regulations of one agency, the manuals of one product, the papers of one
+field. In such a corpus every question is on-topic, including the ones whose
+answer is absent, and a global similarity floor cannot tell coverage from
+topicality (Section~\ref{sec:instrumentation}). The consequence for testing is
+that the out-of-corpus class of a suite exercises the abstention instruction
+of the prompt much more than the retrieval floor, so that a suite which
+appears to test retrieval fallback is in fact testing prompt compliance; the
+consequence for engineering is that abstention has to be a property of
+generation, not of retrieval, in any corpus of this shape.
+
+\subsection{Cost, and where it goes}
+
+\todo{Completar com T5.} One observation is already fixed by the pilot: with a
+generator that emits a reasoning trace, the cost of the system under test
+dominates the cost of every oracle, judge included. The protocol's expectation
+that O4 would be the expensive oracle and O1 the cheap one remains true
+between oracles, but both are second-order beside generation, and repetition
+--- the only known discount for non-determinism --- multiplies the dominant
+term. Whether that price buys detection is what Section~\ref{sec:rq3}
+measures.
+
+\subsection{Which layers the suite does not see}
+
+\todo{Depende da campanha. Se H1 se sustentar: por que uma suite que julga a
+resposta nao ve a recuperacao, e o que uma assertiva sobre o contexto
+recuperado custaria. Se nao: quais operadores de recuperacao foram mortos e
+por qual oraculo. Relacionar com a lista de Barnett et al. (FP1--FP4) e com o
+caso de C2/E2 observado em operacao~\cite{oliveira2026sast}.}
+
+% =====================================================================
+\section{Threats to Validity}
+\label{sec:threats}
+
+We follow the usual four categories~\cite{runeson2009guidelines}, and
+distinguish the threats we anticipated from the ones the study demonstrated
+--- the latter are stated with the evidence, because a demonstrated threat is
+also a result.
+
+\paragraph{Construct validity.} The central construct is ``the suite detects
+the defect'', and it is operationalised by an oracle. Section~\ref{sec:calibration}
+shows that the cheapest oracle does not measure correctness on this corpus but
+topical proximity, and Section~\ref{sec:pilot} that the standard metric bundle
+does not measure fabrication about absent topics. We do not treat these as
+threats to be mitigated but as findings, and we mitigate the construct
+threat itself by reporting adequacy per oracle and never as one number. Two
+instruments remain upper bounds: $\tau^\ast$ was calibrated on
+programmatically corrupted references and conservative paraphrases, so the
+oracle's performance in the field can only be worse than measured; and the
+judge sees the reference and not the document, so it can only detect
+contradiction, not fabrication compatible with the reference. The reference
+answers are themselves a construct: they were drafted by a model and checked
+against the source one by one, six were rewritten to remove justifications
+the model had added, and one source sentence turned out to be truncated by a
+figure caption in the normalised corpus. The relevance floor of the baseline
+was calibrated on the same suite it gates; the margin below the weakest
+positive case was chosen so that the error it can make is the visible one.
+
+\paragraph{Internal validity.} A kill must be attributable to the injected
+defect. Three mechanisms address this: the fidelity check of every operator
+(Section~\ref{sec:fidelity}), which rules out a mutant that changes nothing;
+the residue check, which rules out a mutant that changes the next one; and the
+evaluable set (Section~\ref{sec:equivalence}), which rules out kills on cases
+the unmutated system does not answer stably. The coherence classification
+addresses the remaining attribution question --- did the case fail for the
+injected reason --- and its codebook was frozen before any result was read.
+The judge is of a different family from the generator, against
+self-preference~\cite{panickssery2024llm}, and the paraphraser of the
+calibration set is of a different family from the generator, against
+circularity; both are of the same family as each other, which is a residual
+risk we declare. The pilot forced changes to the suite and to the judge's
+prompt before the campaign; all are listed in Section~\ref{sec:pilot} and none
+was made after a mutant result was examined. The run that revealed the
+unmutated system fabricating an answer is a threat of a different kind: the
+class of test cases that requires abstention presupposes a baseline that
+abstains, and where it does not, the operator that removes abstention cannot
+be observed. The evaluable set keeps such cases out of every denominator, at
+the price of leaving that operator with fewer cases; the alternative, moving
+the questions further from the corpus until the system abstains, would test
+less of what a user would actually ask.
+
+\paragraph{External validity.} The study is of one assistant, one corpus of
+eight documents in one domain, one 30-case suite, and one pair of open-weight
+models of 8 and 4 billion parameters on consumer hardware. The catalogue and
+the protocol are meant to transfer; the numbers are not. Two of the findings
+were checked for dependence on the instrument and held: the inversion of the
+similarity oracle replicates on a second embedding model of another family,
+and the blind spot of the metric bundle persists under a larger judge. The
+corpus is topically homogeneous, which is the common industrial case and also
+what defeats a global relevance floor; a heterogeneous corpus would move
+detections from the prompt layer to the retrieval layer and the RQ1 result
+should be read with that in mind. Larger or commercial models would change the
+baseline stability, the cost figures and, most likely, the propensity to
+fabricate; they would not change what the oracles can and cannot see, which
+is the part of the result we expect to generalise.
+
+\paragraph{Conclusion validity.} There is one mutant per operator, so the
+mutation score per operator is a single binary observation; every inferential
+statement is made on the kill rate over cases, whose denominator is
+$|\Sset_o|$ and whose interval is reported. The suite has 30 cases and the
+classes have between three and six; the per-layer comparison groups four
+operators or fewer, and Kruskal--Wallis on groups of that size has low power,
+which we report as such rather than compensate. C4 is targeted by a single
+case and any statement about it rests on one observation. All multiple
+comparisons are corrected by Holm's procedure, all tests were fixed before
+collection, and the analysis code was validated on synthetic data of known
+structure before being run on the campaign.
+
+% =====================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+\todo{Escrever depois da campanha. Estrutura: (i) a pergunta --- que camadas
+uma suite tipica nao ve; (ii) a resposta da RQ1 em uma frase com numero; (iii)
+o resultado da RQ2: o swing observado e as duas inversoes estabelecidas antes
+da campanha; (iv) o custo por mutante morto e o que L2 compra sobre L1; (v) o
+que fica para quem replica: catalogo, criterio de adequacao do corpus,
+conjunto avaliavel, e a regra de reportar adequacao por oraculo.}
+
+Mutation testing can be transposed to retrieval-augmented assistants, but not
+by analogy. The operators have to act on the corpus, the chunking, the index
+and the retrieval, where the documented failures are; each has to carry a
+check that it acts at all; and the score has to be computed on the cases the
+unmutated system answers stably, because there is no other ground on which a
+kill can be attributed. What the transposition then reveals is that the
+number depends on who is asked: the oracle that practitioners deploy most
+widely cannot see a wrong number in a correct sentence, and the metric that
+the field treats as standard cannot see a fabrication about a topic the
+context does not contain. \todo{Ultima frase: o que a campanha mostrou que a
+suite nao ve.}
+
+% =====================================================================
+\section*{Declaration of generative AI and AI-assisted technologies in the writing process}
+
+During the preparation of this work the authors used Claude Code (Anthropic,
+Claude Opus~5) to implement the mutation harness and the analysis scripts
+under the authors' specification and review, to draft the execution log of the
+study from which parts of Sections~\ref{sec:context}--\ref{sec:design} were
+written, and to assist with the wording of this manuscript. The authors
+executed every campaign, verified every reported number against the raw logs,
+reviewed and edited all generated code and text, and take full responsibility
+for the content of the publication.
+\nota{Alinhar a redacao com a declaracao do artigo do ISE 2026 e com a
+politica da Elsevier vigente na submissao.}
+
+\printcredits
+
+\section*{Declaration of competing interest}
+
+The authors declare that they have no known competing financial interests or
+personal relationships that could have appeared to influence the work reported
+in this paper.
+
+\section*{Funding}
+
+\todo{Agencia e numero de processo, ou: ``This research did not receive any
+specific grant from funding agencies in the public, commercial, or
+not-for-profit sectors.''}
+
+\section*{Data availability}
+
+The replication package --- the system under test, the corpus manifest with
+content hashes and reconstruction script, the test suite, the mutation
+operators with their fidelity checks, the calibration pairs and their review,
+the raw execution log, the verdicts and the analysis scripts --- is available
+at \todo{DOI Zenodo} under the Apache-2.0 license. \nota{Se a licenca dos
+PDFs do corpus nao for resolvida, o pacote publica o manifesto com hashes e o
+script que reconstroi o corpus a partir dos originais, nao os PDFs. Arquivar
+no Zenodo com DOI ate a semana 12.}
+
+\section*{Acknowledgements}
+
+\todo{}
+
+% =====================================================================
+\bibliographystyle{elsarticle-num}
+\bibliography{references}   % <- trocar pelo nome do .bib no projeto do Overleaf
+
+\end{document}

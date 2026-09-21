@@ -2,7 +2,7 @@
 
 **Artigo:** *Mutation-Based Adequacy Assessment of Test Suites for Retrieval-Augmented Assistants*
 **Destino:** Information and Software Technology, special issue VSI:EQUISA · submissão 13/12/2026
-**Branch:** `journal-ist` · **Última atualização:** 17/09/2026 (semana 5 concluída; três decisões pendentes para a semana 6)
+**Branch:** `journal-ist` · **Última atualização:** 21/09/2026 (semana 6 em curso — decisões tomadas, baseline rodando)
 
 Este documento registra o que foi construído e executado até aqui, as decisões de
 projeto com suas razões, e o que já dá para escrever do artigo. Ele existe porque
@@ -21,7 +21,7 @@ justificar para um revisor.
 | 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | **concluída** — τ* = 0,60, e a calibração virou resultado (§4.7) |
 | 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída** — 18/18 revertem sem resíduo E injetam o defeito declarado (§3.5) |
 | 5 | O3, O4, O5 prontos; `run_campaign.py` validado | **concluída** — O4 estável; O3 inviável com juízes locais (§4.9); três decisões abertas (§6) |
-| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **aguardando decisões** — O3, c16, duração (§6) |
+| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — decisões tomadas em 21/09 (§3.7); baseline iniciado 17:21 |
 | 7–13 | Coerência, RQ3, escrita, submissão | não iniciadas |
 
 O cronograma está **adiantado**: o portão GO/NO-GO da semana 4 fechou junto com a
@@ -299,6 +299,54 @@ noites resolvem; mas é decisão de cronograma.
 do piloto, a temperatura 0. O ponto de decisão da semana 5 (§9) está respondido:
 o juiz fica, e é ele que pega o que o O1 não vê — número trocado sai como
 `fail / wrong_value`.
+
+### 3.7 Semana 6 — decisões e início da campanha (21/09)
+
+As três decisões do §6 foram tomadas antes da primeira invocação, e registradas
+onde o harness as lê:
+
+| Decisão | Tomada | Onde está |
+|---|---|---|
+| O3 | **Contingência do §9**: campanha com O1, O2, O4, O5. Como executar ≠ julgar, o log fica íntegro e O3 pode ser rejulgado sobre ele se um juiz viável aparecer (`evaluate.py --oracles O3`) | `config/study.yaml`, `oracles.enabled`, com o motivo em comentário |
+| Classe "fora do corpus" | **Aceitar**: decidido com dados (abaixo), não por preferência | §3.7 e artigo §6.7/§7.1 |
+| Duração | **Campanha completa**, sem a regra de corte | — |
+
+Antes de qualquer resultado: o piloto foi arquivado em `results/pilot/` (o run de
+c01 usava a pergunta antiga e teria sido pulado pela retomada) e o codebook foi
+congelado (`frozen_at: 2026-09-21`).
+
+**A classe de abstenção no baseline.** Os 5 casos "fora do corpus" rodaram
+primeiro, para decidir com evidência. Resultado das primeiras 17 invocações
+(3–4 repetições por caso): **0 abstenções com o marcador**. Os cinco recuperam
+4 chunks acima do piso (similaridade máxima entre 0,486 e 0,608 — corpus
+homogêneo, §4.2) e o modelo responde por conhecimento paramétrico com o contexto
+na frente: c16 dá "27 critérios" (o piloto deu 14 e 13), c17 explica throughput
+do JMeter, c19 explica JaCoCo. O único que se aproxima é c20, cuja entidade é
+fictícia por desenho: "o texto fornecido não menciona…" — abstenção em
+substância, sem o marcador que a regra do prompt exige.
+
+Por que **não** reescrever as perguntas: a única reescrita que evitaria a resposta
+paramétrica é usar entidades fictícias (o estilo de c20), e c20 mostra que mesmo
+assim o modelo não emite o marcador quando tem 4 chunks tópicos na frente — no
+piloto, R1 (1 chunk) fez c16 abstrair com o marcador exato. O comportamento é do
+SUT com o corpus, não da formulação. Consequências, já previstas pelo §7.1:
+
+- a classe sai de S sob O2/O5 (marcador exato) e, provavelmente, sob O1; sob O4
+  c20 pode ficar (o juiz lê "não menciona" como abstenção) — **é exatamente a
+  divergência por classe que a H2 previa**;
+- **R4 fica inavaliável sob o oráculo primário**: seus 5 alvos são esses casos,
+  e nenhum deles é barrado pelo piso (todos acima de 0,428). É a quarta
+  instância de "equivalente por estrutura do corpus" (§4.1): o piso nunca é
+  vinculante numa pergunta real neste corpus, só na sonda construída para a
+  fidelidade (0,418);
+- P2 fica com c21 e c22 (classe "fora de escopo").
+
+Outra observação, para o §7.1 do artigo: sob temperatura 0 a semente por
+repetição não muda nada (r2 = r3 = r4 byte a byte em todos os casos), e **r1
+difere de r2–r4** em 4 dos 5 casos — o não-determinismo residual concentra-se
+na primeira invocação após carregar o modelo, não se distribui pelas
+repetições. Atil et al. reportam variação sob temperatura 0; aqui ela tem um
+padrão.
 
 ---
 
@@ -649,16 +697,11 @@ sintéticos — quando a campanha rodar, a análise sai no mesmo dia.
 
 ## 6. O que ainda falta
 
-### Decisões que bloqueiam a semana 6
+### Decisões da semana 6 — tomadas (ver §3.7)
 
-São decisões de desenho, não de código; o harness está pronto para qualquer
-uma das saídas.
-
-| Decisão | Opções | O que muda |
-|---|---|---|
-| **O3 (RAGAS)** — inviável com os juízes locais (§4.9) | (a) contingência do §9: campanha com O1, O2, O4, O5; (b) baixar llama3.1:8b e retestar `ragas` num novo piloto; (c) manter via `deepeval` e reportar como degenerado | (a) é a saída pré-registrada e o motivo está documentado; (b) custa ~5 GB e mais um piloto; (c) enfraquece a RQ2 porque a degeneração é da implementação, não do método |
-| **c16 e a classe de abstenção** — o baseline alucina (§4.10) | (a) aceitar: os casos saem de S e o artigo reporta como achado sobre o SUT; (b) afastar as cinco perguntas "fora do corpus" até o baseline se abster | (a) pode deixar P2 sem caso avaliável; (b) mede menos o que um usuário perguntaria. Aceitar exige rodar o baseline dos 5 casos antes para saber quantos sobram |
-| **Duração da campanha** — 22,6 h vs. 8,5 h estimadas (§4.11) | (a) três noites, harness retomável; (b) regra de corte do §9: 20 casos, ~15 h | (b) reduz o poder das comparações por classe (cotas caem de 5 para ~3) |
+O3 fora da campanha (contingência do §9), classe de abstenção aceita como está,
+campanha completa. Nenhuma das três é um desvio do pré-registro; as duas
+primeiras são as saídas que o protocolo já previa.
 
 ### Bloqueadores para publicação (não para a campanha)
 

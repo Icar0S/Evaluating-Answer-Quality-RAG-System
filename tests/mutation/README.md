@@ -255,7 +255,14 @@ O3 e O5.
 
 ### Semana 6 — campanha (máquina, não pesquisador)
 
+Antes da primeira invocação, e nesta ordem: arquive o piloto (`results/pilot/`
+— um run do piloto com pergunta antiga seria pulado pela retomada e entraria
+na campanha), congele o codebook (`coherence --freeze-codebook`) e registre em
+`config/study.yaml` as decisões do ponto de decisão da semana 5. Em 21/09/2026:
+O3 saiu da campanha (contingência do §9, motivo no próprio `study.yaml`).
+
 ```bash
+python -m tests.mutation.coherence --freeze-codebook
 python -m tests.mutation.run_campaign --baseline     # 30 x 10 = 300 invocações
 python -m tests.mutation.run_campaign --campaign     # 18 x 30 x 5 = 2.700
 python -m tests.mutation.run_campaign --l3           # 10 x 30 = 300 (RQ3)
