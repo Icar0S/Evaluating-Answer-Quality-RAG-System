@@ -75,13 +75,13 @@ cases:
   - {type: must_not_abstain}
   - type: contains_any
     values: [exclusivamente, capacidade]
-  - {type: regex, pattern: \b(se|quando|caso|casos|desde que|apenas|somente|porque|com base em|a partir
+  - {type: regex, pattern: \b(se|quando|caso|casos|desde que|apenas|somente|porque|com base em|com base no|com base na|com base nos|com base nas|a partir
       de|dependendo|condicao|criterio)\b}
   c13:
   - {type: must_not_abstain}
   - type: contains_any
-    values: [configuração, selecionada]
-  - {type: regex, pattern: \b(se|quando|caso|casos|desde que|apenas|somente|porque|com base em|a partir
+    values: [configura, selecion, escolhid]
+  - {type: regex, pattern: \b(se|quando|caso|casos|desde que|apenas|somente|porque|com base em|com base no|com base na|com base nos|com base nas|a partir
       de|dependendo|condicao|criterio)\b}
   c14:
   - {type: must_not_abstain}
@@ -91,7 +91,7 @@ cases:
   - {type: must_not_abstain}
   - type: contains_any
     values: [referência, influencia]
-  - {type: regex, pattern: \b(se|quando|caso|casos|desde que|apenas|somente|porque|com base em|a partir
+  - {type: regex, pattern: \b(se|quando|caso|casos|desde que|apenas|somente|porque|com base em|com base no|com base na|com base nos|com base nas|a partir
       de|dependendo|condicao|criterio)\b}
   c16:
   - {type: must_abstain}

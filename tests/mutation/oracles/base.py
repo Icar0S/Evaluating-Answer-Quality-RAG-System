@@ -61,6 +61,11 @@ def normalize(text: str, ignore_case: bool = True, ignore_accents: bool = True) 
         result = strip_accents(result)
     if ignore_case:
         result = result.lower()
+    # Separador decimal: as referências estão em português ("3,79%") e o modelo
+    # copia a tabela em inglês ("3.79%"). Descoberto no baseline v2 (c03, c07):
+    # a resposta certa reprovava por uma vírgula. Só entre dígitos, para não
+    # tocar em pontuação de frase.
+    result = re.sub(r"(?<=\d),(?=\d)", ".", result)
     return re.sub(r"\s+", " ", result).strip()
 
 

@@ -2,7 +2,7 @@
 
 **Artigo:** *Mutation-Based Adequacy Assessment of Test Suites for Retrieval-Augmented Assistants*
 **Destino:** Information and Software Technology, special issue VSI:EQUISA · submissão 13/12/2026
-**Branch:** `journal-ist` · **Última atualização:** 21/09/2026 (semana 6 em curso — truncagem de contexto corrigida, baseline v2 rodando)
+**Branch:** `journal-ist` · **Última atualização:** 21/09/2026 (semana 6 em curso — baseline v2 fechado, campanha dos 18 mutantes rodando)
 
 Este documento registra o que foi construído e executado até aqui, as decisões de
 projeto com suas razões, e o que já dá para escrever do artigo. Ele existe porque
@@ -21,7 +21,7 @@ justificar para um revisor.
 | 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | **concluída** — τ* = 0,60, e a calibração virou resultado (§4.7) |
 | 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída** — 18/18 revertem sem resíduo E injetam o defeito declarado (§3.5) |
 | 5 | O3, O4, O5 prontos; `run_campaign.py` validado | **concluída** — O4 estável; O3 inviável com juízes locais (§4.9); três decisões abertas (§6) |
-| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — baseline v1 inválido (truncagem silenciosa, §3.7); v2 iniciado 21/09 21:08 |
+| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — v1 inválido (truncagem), v2 válido (\|S\| = 25/23/21/21), v3 com ordem embaralhada + campanha encadeada desde 22/09 00:05 |
 | 7–13 | Coerência, RQ3, escrita, submissão | não iniciadas |
 
 O cronograma está **adiantado**: o portão GO/NO-GO da semana 4 fechou junto com a
@@ -378,10 +378,54 @@ qualquer mutante:
 Tudo arquivado (`results/archive_v1_truncated/`) e refeito. Baseline v2
 iniciado às 21:08 com a configuração final.
 
-Observação que sobrevive ao v1, para o §7.1: sob temperatura 0 a semente por
-repetição não muda nada (r2 = r3 = r4 byte a byte) e r1 difere de r2–r4 — o
-não-determinismo residual concentra-se na primeira invocação após carregar o
-modelo. A confirmar no v2.
+**Baseline v2 (300 invocações, 21/09 21:08–23:23) — válido.** 0 erros, 0
+truncagens; 27 s por invocação (mediana 22,7), 4.151 tokens de prompt em média
+(máx. 5.780, limite 7.168), 523 de saída (o v1 truncado dava 875: com as
+regras na frente o modelo é mais conciso), 16,3 GPU-s e 0,368 Wh. Portão
+`--check-baseline` verde. Conjunto avaliável, depois de três ajustes de
+instrumento feitos sobre os vereditos e antes de qualquer mutante:
+
+| Oráculo | \|S\| v1 (truncado) | \|S\| v2 |
+|---|---|---|
+| O1 cosseno | 23 | **25** |
+| O4 juiz | 11 | **23** |
+| O2 assertivas | 6 | **21** |
+| O5 = O1 ∧ O2 | 6 | **21** |
+
+Os 9 casos fora de S sob O5, com o motivo de cada um: c04, c05, c15 (página da
+evidência não vem — lacunas aceitas), c14 (o RAGChecker tem dez tabelas quase
+idênticas e o chunk com 93,7 não vence as outras — `accepted_gap:
+retrieval-chunk`), c07 (o modelo lista dois dos três mutadores — incompleto,
+FP7, é o SUT), c24–c26 (ambíguos: o SUT **abstém** em vez de pedir
+esclarecimento — o prompt não tem regra de esclarecimento; a classe sai de S e
+isso é achado sobre o SUT), c28 (copiou o exemplo `[relatorio_x.pdf, pág. 7]`
+da regra de citação — o SUT; c27, c29, c30 citam certo e P3 tem 3 alvos).
+
+Os três ajustes: (i) `normalize()` do O2 passou a igualar separador decimal
+entre dígitos — c03 respondia "3.79%" e reprovava contra "3,79%"; (ii) as
+assertivas de c13 usavam a flexão exata ("configuração" não casa em
+"configurações") e a regex de condição não tinha "com base nos" — radicais e
+alternativas adicionados; (iii) c02 recuperava a página certa e o **chunk
+errado** (p5::c1) e abstinha 10/10 — pergunta reescrita de novo e o portão
+passou a conferir o **valor** no contexto recuperado, não só a página.
+
+**A classe de abstenção resolveu-se com dados:** c16–c20 abstêm 10/10 com o
+marcador exato. A classe fica, P2 e R4 são avaliáveis. A decisão do §6 está
+fechada.
+
+**Repetição não é amostra independente.** Em 29 casos, 14 têm as 10 respostas
+idênticas e 15 têm r2 = r3 = … = r10 byte a byte com r1 diferente — e a
+diferença não é ruído numérico: são reescritas (razão de similaridade 0,38 a
+0,80, mesmos fatos). Sondagem com 6 invocações extras: a semente não muda nada
+(seeds 1, 1, 2 e 7 idênticas); dentro de uma mesma carga do modelo, prompt
+idêntico → resposta idêntica; e a resposta depende do **prompt anterior no slot
+do servidor** (reuso de prefixo do cache KV): em ordem fixa, r2..r10 de um caso
+têm sempre o mesmo predecessor. Dez repetições em ordem fixa amostram **dois**
+estados. Correção antes da campanha: os casos são embaralhados por repetição
+(semente = índice da repetição), para que cada invocação tenha um predecessor
+diferente. O baseline foi refeito assim (v3, iniciado 22/09 00:05) e a v2 ficou
+em `results/archive_v2_fixed_order/` para comparar |S| entre as duas ordens —
+um dado para o §7.1 e para Atil et al.
 
 **Para o artigo:** a truncagem é o achado §4.13 — FP3 por construção, sem
 erro, sem aviso fora do log do servidor, e invisível a todos os cinco oráculos
@@ -767,10 +811,12 @@ sintéticos — quando a campanha rodar, a análise sai no mesmo dia.
 
 ### Decisões da semana 6 — tomadas (ver §3.7)
 
-O3 fora da campanha (contingência do §9) e campanha completa — mantidas. A
-decisão sobre a classe de abstenção foi tomada sobre o baseline truncado e
-**volta a ser decidida com o v2**: se o SUT abstém com o contexto íntegro (o
-smoke test diz que sim), a classe fica e P2/R4 são avaliáveis.
+O3 fora da campanha (contingência do §9), campanha completa, classe de abstenção
+mantida (c16–c20 abstêm 10/10 no baseline v2). Nenhuma é desvio do pré-registro.
+Desvios declarados (artigo §6.7): janela de contexto, portão de recuperação em
+nível de página/valor com 9 perguntas reescritas e 4 lacunas aceitas, regra de
+citação com exemplo, normalização decimal do O2, assertivas de c13,
+embaralhamento por repetição.
 
 ### Bloqueadores para publicação (não para a campanha)
 

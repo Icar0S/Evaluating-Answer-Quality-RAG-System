@@ -23,6 +23,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import random
 import sys
 import time
 from pathlib import Path
@@ -65,6 +66,7 @@ def run_block(
     overrides: dict,
     done: set[str],
     seed_from_repetition: bool,
+    shuffle_per_repetition: bool = True,
 ) -> int:
     """Roda cases x repetitions com a configuração já aplicada. Devolve quantas invocações fez."""
     executed = 0
@@ -77,9 +79,20 @@ def run_block(
         if seed_from_repetition:
             run_overrides["generation_seed"] = repetition
 
+        # Ordem dos casos embaralhada por repetição, com a repetição como semente.
+        # Descoberto no baseline v2 (21/09): a temperatura 0 a semente não muda
+        # nada, mas a resposta depende do PROMPT ANTERIOR no slot do servidor
+        # (reuso de prefixo do cache KV). Em ordem fixa, r2..r10 de um caso têm
+        # sempre o mesmo predecessor e saem byte a byte iguais — 10 repetições
+        # que amostram 2 estados. Embaralhar dá a cada repetição um predecessor
+        # diferente; é o que "repetir" deveria significar num servidor com cache.
+        order = list(cases)
+        if shuffle_per_repetition:
+            random.Random(repetition).shuffle(order)
+
         with sut_configuration(run_overrides) as resolved:
             ensure_index(resolved)
-            for case in cases:
+            for case in order:
                 run_id = f"{mutant_id}-{case.case_id}-r{repetition}"
                 if run_id in done:
                     continue
@@ -110,6 +123,7 @@ def run_baseline(study, cases: list[Case], done: set[str]) -> None:
     executed = run_block(
         BASELINE_ID, None, cases, repetitions, study.baseline_overrides, done,
         bool(study.execution.get("seed_from_repetition", True)),
+        bool(study.execution.get("shuffle_cases_per_repetition", True)),
     )
     logger.info("BASELINE concluído: %d novas invocações.", executed)
 
@@ -147,6 +161,7 @@ def run_campaign(study, cases: list[Case], done: set[str], selected: list[str] |
         executed = run_block(
             operator.id, operator.id, cases, repetitions, merged, done,
             bool(study.execution.get("seed_from_repetition", True)),
+            bool(study.execution.get("shuffle_cases_per_repetition", True)),
         )
         logger.info("  %s: %d novas invocações.", operator.id, executed)
 
@@ -167,6 +182,7 @@ def run_l3(study, cases: list[Case], done: set[str]) -> None:
     executed = run_block(
         "l3-baseline", None, sample, repetitions, study.baseline_overrides, done,
         bool(study.execution.get("seed_from_repetition", True)),
+        bool(study.execution.get("shuffle_cases_per_repetition", True)),
     )
     logger.info("L3 concluído: %d novas invocações.", executed)
 

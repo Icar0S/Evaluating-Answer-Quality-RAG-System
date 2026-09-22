@@ -164,10 +164,14 @@ def check_baseline() -> list[str]:
                 f"{total - abstentions}/{total} execuções em vez de se abster."
             )
         if case.expected_behavior in ("answer", "cite") and abstentions > 0:
-            problems.append(
+            message = (
                 f"{case.case_id} ({case.expected_behavior}): o baseline se absteve em "
                 f"{abstentions}/{total} execuções — a evidência não está sendo recuperada."
             )
+            if case.accepted_gap:
+                logger.warning("%s [lacuna aceita: %s]", message, case.accepted_gap)
+            else:
+                problems.append(message)
     return problems
 
 
@@ -209,6 +213,7 @@ def check_retrieval() -> list[str]:
     hint_re = re.compile(r"([a-z0-9_]+)\s+p[áa]g\.\s*(\d+)", re.I)
 
     problems: list[str] = []
+    assertions, _defaults = load_assertions()
     study = load_study_config()
     with sut_configuration(study.baseline_overrides) as resolved:
         ensure_index(resolved)
@@ -234,6 +239,21 @@ def check_retrieval() -> list[str]:
             ids = [c["chunk_id"] for c in chunks]
             hit = [f"{doc} p{page}" for doc, page in pages
                    if any(cid.startswith(f"{doc}::p{page}::") for cid in ids)]
+            # Página certa não basta: uma página tem dois chunks e o valor mora em
+            # um deles (baseline v2, c02). Quando o caso tem assertivas de valor,
+            # exige que algum chunk recuperado contenha cada valor.
+            values = [v for a in assertions.get(case.case_id, []) if a.get("type") == "contains_all"
+                      for v in a.get("values", [])]
+            if hit and values:
+                from tests.mutation.oracles.base import normalize
+                context = normalize(" ".join(c["text"] for c in chunks))
+                missing = [v for v in values if normalize(v) not in context]
+                if missing and not case.accepted_gap:
+                    problems.append(
+                        f"{case.case_id}: a página da evidência vem, mas o contexto recuperado não contém "
+                        f"{missing} — o valor está no outro chunk da página. Reescreva com termos do trecho do valor."
+                    )
+                    continue
             if not hit and case.accepted_gap:
                 logger.warning("%s: lacuna aceita (%s) — nenhuma página da evidência no top-%d; o caso sai de S.",
                                case.case_id, case.accepted_gap, len(ids))

@@ -80,6 +80,11 @@ execution:
   campaign_repetitions: 5         # 18 mutantes x 30 casos x 5 = 2.700 invocações
   stop_on_kill: false             # desligado de propósito: queremos todas as causas de morte
   seed_from_repetition: true      # seed = índice da repetição (reprodutibilidade declarada)
+  # Semana 6: a temperatura 0 a semente é irrelevante e a resposta depende do
+  # prompt anterior no slot do servidor (cache de prefixo). Em ordem fixa,
+  # r2..r10 saem idênticas; embaralhar os casos por repetição (semente = índice
+  # da repetição) dá a cada invocação um predecessor diferente.
+  shuffle_cases_per_repetition: true
 
   # Um caso entra no conjunto avaliável S quando o baseline dá veredito único
   # nas N execuções. Exigir que esse veredito único seja "pass" é um refinamento

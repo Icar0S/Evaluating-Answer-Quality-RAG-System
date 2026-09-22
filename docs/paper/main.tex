@@ -1258,7 +1258,15 @@ The baseline is executed $N_b = 10$ times per case (300 invocations) and each
 of the 18 mutants $N_m = 5$ times per case (2,700 invocations), for about
 3,000 invocations of the assistant. Generation runs at temperature 0.0
 everywhere except under P4, and the seed of run $r$ is $r$ itself, so that any
-run can be named. The campaign does not stop at the first killing case: every
+run can be named. Within each repetition the cases are executed in an order
+shuffled with the repetition index as seed. The reason is a finding of the
+second baseline (Section~\ref{sec:pilot}): at temperature 0 the seed changes
+nothing, but the answer depends on the prompt that preceded it in the
+server's slot, through prefix reuse in the KV cache. In a fixed order,
+repetitions 2 to 10 of a case always follow the same predecessor and come
+out byte-identical while repetition 1 differs; ten repetitions sample two
+states. Shuffling gives every invocation a different predecessor, which is
+what repetition is meant to do on a server that caches. The campaign does not stop at the first killing case: every
 case runs against every mutant, because the cause of each death is a result
 (Section~\ref{sec:coherence}) and stopping early would hide it. Within a
 mutant, runs are ordered by repetition and then by case, so that the seed is
@@ -1396,6 +1404,40 @@ retracted by the second: with the full prompt the assistant answered the case
 it had declared unanswerable, abstained with the exact marker on the
 out-of-corpus case, and cited the source with document and page.
 
+\emph{Deterministic oracle and the second baseline.} The second baseline
+(300 invocations, no truncation, 27\,s and 0.368\,Wh per invocation) gave
+$|\Sset_{O1}| = 25$, $|\Sset_{O4}| = 23$ and $|\Sset_{O2}| = |\Sset_{O5}| =
+21$ after three corrections to the instruments, each made on the baseline
+verdicts and before any mutant: the deterministic oracle now treats a decimal
+comma and a decimal point between digits as the same character (a correct
+``3.79\%'' failed against the reference's ``3,79\%''); two assertions that
+matched an exact inflection or a fixed preposition were relaxed to stems;
+and the retrieval check was extended once more, from page to value, after a
+case retrieved the right page but the chunk without the number. The five
+out-of-corpus cases abstain with the exact marker in 10 of 10 runs, which
+settles the question left open by the truncated baseline: the abstention
+class stays and P2 and R4 are evaluable. The nine cases outside
+$\Sset_{O5}$ are three accepted retrieval gaps, one case whose table has
+nine near-identical siblings in the same document, one incomplete answer
+(two of three operators listed), the three ambiguous cases --- the
+assistant abstains instead of asking, because its prompt has no
+clarification rule --- and one traceability case in which the generator
+copied the example of the citation rule literally.
+
+\emph{Repetition is not an independent sample.} In the second baseline,
+14 cases had ten identical answers and 15 had repetitions 2 to 10 identical
+to one another and different from repetition 1 --- not by a token, but by a
+rewrite (similarity ratio 0.38 to 0.80, same facts). Six probe invocations
+showed that the seed has no effect at temperature 0, that an identical
+prompt within one model load yields an identical answer, and that the answer
+changes with the prompt that preceded it in the server's slot. Ten
+repetitions in a fixed order therefore sample two states. The order of cases
+is now shuffled per repetition (Section~\ref{sec:execution}), the baseline
+was run a third time under that rule, and the fixed-order baseline is kept
+in the package so that the two estimates of stability can be compared.
+\todo{|S| por oraculo no baseline v3 (ordem embaralhada) ao lado do v2;
+comentar a diferenca.}
+
 \emph{Page-level retrieval check.} A diagnosis that does not depend on
 generation --- embeddings only --- showed that in ten of the 19 factual cases
 the right document was retrieved but not the page holding the evidence, and
@@ -1477,9 +1519,9 @@ suite cada oraculo consegue medir; se algum oraculo perde uma classe inteira
 (esperado: a classe ``fora do corpus'' sob todos os oraculos se o baseline
 alucinar, cf. Secao~\ref{sec:pilot}).}
 
-\todo{Custo unitario do baseline v2 (s, tokens, GPU-s, Wh por invocacao;
+\todo{Custo unitario do baseline v3 (s, tokens, GPU-s, Wh por invocacao;
 total) e |S| por oraculo (T0), com instaveis e estavelmente reprovados
-separados.} For the record, the truncated first baseline had
+separados; comparar com o v2 (ordem fixa): O1 25, O4 23, O2 21, O5 21.} For the record, the truncated first baseline had
 $|\Sset_{O1}| = 23$, $|\Sset_{O4}| = 11$ and $|\Sset_{O2}| = |\Sset_{O5}| =
 6$ on the same 300 runs: a 17-case gap between the similarity oracle and the
 deterministic one before any mutant existed, in the direction the calibration
@@ -1764,7 +1806,12 @@ $|\Sset_o|$ and whose interval is reported. The suite has 30 cases and the
 classes have between three and six; the per-layer comparison groups four
 operators or fewer, and Kruskal--Wallis on groups of that size has low power,
 which we report as such rather than compensate. C4 is targeted by a single
-case and any statement about it rests on one observation. All multiple
+case and any statement about it rests on one observation. The five
+repetitions per mutant are not independent draws from the system's
+distribution of answers: at temperature 0 they differ only through the state
+of the server's cache, which the shuffled order varies but does not
+randomise; the stability they measure is a lower bound on the instability a
+deployment would see across sessions. All multiple
 comparisons are corrected by Holm's procedure, all tests were fixed before
 collection, and the analysis code was validated on synthetic data of known
 structure before being run on the campaign.
