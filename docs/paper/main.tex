@@ -547,6 +547,8 @@ Ollama                    & model server              & 0.34.0 \\
 ChromaDB                  & vector store              & 1.5.9 \\
 FastAPI                   & backend                   & 0.115.6 \\
 Python                    & SUT and harness           & 3.12.7 \\
+Context window            & \code{num\_ctx}, sized per configuration & 11,264 (baseline) to 23,552 (R2) \\
+Generation cap            & \code{num\_predict}    & 4,096 \\
 System under test         & git commit                & \todo{hash do commit da campanha} \\
 \bottomrule
 \end{tabular*}
@@ -708,6 +710,27 @@ explicitly, because the protocol forbids amplifying non-determinism anywhere
 except in P4. The harness refuses to apply an operator whose override equals
 the baseline value, so a mutant equivalent by configuration cannot enter the
 campaign unnoticed.
+
+One parameter of the model server had to be declared before any measurement
+could be trusted, and it was not in the protocol. Without an explicit context
+window the server uses 4,096 tokens and silently truncates every prompt longer
+than half of it, keeping the first four tokens and the last 2,046 --- which
+discards the system prompt, and with it the grounding, abstention and citation
+rules. The first full baseline of this study (300 invocations) ran that way;
+the server reported it only in its own log, and every oracle judged fluent
+answers produced from parametric knowledge as if the rules had been
+disobeyed. The window is now sized from the retrieval configuration of each
+mutant, $\mathrm{num\_ctx} = \lceil (k \cdot s \cdot 1.25 + 1{,}024 +
+\mathrm{num\_predict}) / 1{,}024 \rceil \cdot 1{,}024$ for top-$k$ and chunk
+size $s$, with the generation cap explicit because the server's prompt limit
+is their difference; a fixed window large enough for the widest mutant (12
+chunks) would have forced CPU offloading on every invocation instead of only
+on K2 and R2. The harness records the prompt length of every invocation and
+turns a prompt at the limit into an error record. Section~\ref{sec:pilot}
+reports the consequence for the schedule; Section~\ref{sec:discussion}
+returns to it, because it is the failure point FP3 of Barnett et
+al.~\cite{barnett2024seven} occurring by construction in the unmutated
+system, invisible to a suite that judges the answer.
 
 One baseline parameter had to be calibrated before the campaign could begin.
 The retrieval relevance floor was a configured but unenforced value; the
@@ -1360,24 +1383,39 @@ found two more, and the three questions were rewritten. Three out-of-corpus
 questions were also replaced, for the reason given in
 Section~\ref{sec:instrumentation}.
 
-\emph{Page-level retrieval check.} The first full baseline run (300
-invocations) failed 24 of the 30 cases under the deterministic oracle, and
-reading the verdicts separated four causes: in ten factual cases the right
-document was retrieved but not the page holding the evidence, and the model
-answered ``the text does not mention''; in three the evidence was in the
-context and the model did not extract it (c01, c08, c14); the abstention,
-refusal, clarification and traceability classes failed because the assistant
-does not follow those instructions; and the rest passed. The first cause is a
-property of the question, not of the system --- with $k = 12$ the page still
-enters the top-$k$ in only 15 of 19 cases, and with re-ranking off in 9 --- so
-the retrieval check was extended from document to page and eight questions
-were rewritten with terms of the evidence passage (c02, c03, c06, c07, c09,
-c10, c11, c12); the 80 baseline runs of those cases were discarded and
-repeated. Three cases (c04, c05, c15) have no natural formulation that beats
-neighbouring pages of the same document; they are kept as they are, marked as
-an accepted gap, and leave $\Sset_o$ by Eq.~\eqref{eq:evaluable}. The other
-causes are the system under test and were not touched. All of this preceded
-the first mutant invocation.
+\emph{Context window.} The first full baseline (300 invocations, 2.33\,h)
+failed 24 of the 30 cases under the deterministic oracle and 7 under the
+similarity oracle, and every verdict pointed at the system: answers from
+parametric knowledge on the out-of-corpus questions, no citations, ``the
+text does not mention'' with the evidence in the retrieved context. The cause
+was in the model server's log, not in the verdicts: 288 silent truncations of
+the prompt to 2,050 tokens (Section~\ref{sec:instrumentation}). The run and
+its verdicts were archived, not discarded, and repeated with the window sized
+per configuration. Three of the conclusions drawn from the first run were
+retracted by the second: with the full prompt the assistant answered the case
+it had declared unanswerable, abstained with the exact marker on the
+out-of-corpus case, and cited the source with document and page.
+
+\emph{Page-level retrieval check.} A diagnosis that does not depend on
+generation --- embeddings only --- showed that in ten of the 19 factual cases
+the right document was retrieved but not the page holding the evidence, and
+that this is a property of the question rather than of the configuration
+(with $k = 12$ the page enters the top-$k$ in 15 of 19; with re-ranking off,
+in 9). The retrieval check of Section~\ref{sec:suite} was extended from
+document to page, and eight questions were rewritten with terms of the
+evidence passage (c02, c03, c06, c07, c09, c10, c11, c12), the previous
+wording kept in the case record. Three cases (c04, c05, c15) have no natural
+formulation that beats neighbouring pages of the same document; they are kept
+as they are, marked as an accepted gap, and leave $\Sset_o$ by
+Eq.~\eqref{eq:evaluable}.
+
+\emph{Citation instruction.} Asked to cite ``in the format [document, p.~N]'',
+the generator copied the word \emph{document} literally. A rule the baseline
+cannot follow makes the operator that removes it (P3) equivalent by
+construction --- the principle of Section~\ref{sec:instrumentation} --- so the
+study's citation rule, which is not part of the production prompt, now names
+the file and gives one example. All three changes preceded the first mutant
+invocation.
 
 \emph{Judge instruction.} The reference-as-minimum instruction of
 Section~\ref{sec:o4} was added, with the controls reported there. The judge
@@ -1439,16 +1477,15 @@ suite cada oraculo consegue medir; se algum oraculo perde uma classe inteira
 (esperado: a classe ``fora do corpus'' sob todos os oraculos se o baseline
 alucinar, cf. Secao~\ref{sec:pilot}).}
 
-The unit cost of the baseline is 28\,s of wall-clock time, 875 completion
-tokens, 22.8 GPU-seconds and 0.475\,Wh per invocation (300 invocations,
-2.33\,h, 142.6\,Wh, no errors). Before the page-level rewrite of
-Section~\ref{sec:pilot}, the evaluable sets were $|\Sset_{O1}| = 23$,
-$|\Sset_{O4}| = 11$ and $|\Sset_{O2}| = |\Sset_{O5}| = 6$: on the same 300
-runs, the deterministic oracle failed 24 cases and the similarity oracle 7.
-That 17-case gap, measured before any mutant exists, is the calibration result
-of Section~\ref{sec:calibration} in the field --- O1 accepts answers that
-state the wrong value or no value at all. \todo{|S| por oraculo depois da
-reescrita (T0), com instaveis e estavelmente reprovados separados.}
+\todo{Custo unitario do baseline v2 (s, tokens, GPU-s, Wh por invocacao;
+total) e |S| por oraculo (T0), com instaveis e estavelmente reprovados
+separados.} For the record, the truncated first baseline had
+$|\Sset_{O1}| = 23$, $|\Sset_{O4}| = 11$ and $|\Sset_{O2}| = |\Sset_{O5}| =
+6$ on the same 300 runs: a 17-case gap between the similarity oracle and the
+deterministic one before any mutant existed, in the direction the calibration
+of Section~\ref{sec:calibration} predicts --- O1 accepted answers that stated
+the wrong value or none. \todo{Confirmar a direcao e o tamanho da lacuna no
+v2.}
 
 Two facts about the evaluable set are already known from the pilot and are
 confirmed or revised here. First, the case on which the unmutated system
@@ -1616,6 +1653,20 @@ appears to test retrieval fallback is in fact testing prompt compliance; the
 consequence for engineering is that abstention has to be a property of
 generation, not of retrieval, in any corpus of this shape.
 
+\subsection{The parameter nobody declares}
+
+The context window of the model server is not in the RAG literature's list of
+parameters to control, and it was not in our protocol. It decided the outcome
+of 318 invocations before we read a log line. A suite that judges answers
+cannot see it, because the model answers fluently from what it remembers when
+the rules and the evidence are cut away; a fidelity check on the operators
+cannot see it, because the operators worked --- on a prompt the model never
+read. The only instrument that would have caught it on day one is the one we
+added on week six: a sentinel rule in the system prompt whose absence in the
+answer means the prompt did not arrive. We suggest it as a standing check for
+any study of an LLM-based system, alongside the declaration of the window
+itself.
+
 \subsection{Cost, and where it goes}
 
 \todo{Completar com T5.} One observation is already fixed by the pilot: with a
@@ -1675,9 +1726,14 @@ The judge is of a different family from the generator, against
 self-preference~\cite{panickssery2024llm}, and the paraphraser of the
 calibration set is of a different family from the generator, against
 circularity; both are of the same family as each other, which is a residual
-risk we declare. The pilot forced changes to the suite and to the judge's
-prompt before the campaign; all are listed in Section~\ref{sec:pilot} and none
-was made after a mutant result was examined. The run that revealed the
+risk we declare. The pilot and the first baseline forced changes to the suite, to the
+judge's prompt and to the model server's context window before the campaign;
+all are listed in Section~\ref{sec:pilot} and none was made after a mutant
+result was examined. The truncated baseline is the strongest internal threat
+the study met, and it was not caught by any oracle, gate or test: every
+instrument judged the answer, and the defect was in what the model was given.
+We report it because a replication on another server or model would meet the
+same silent default, and because the guard that now catches it costs nothing. The run that revealed the
 unmutated system fabricating an answer is a threat of a different kind: the
 class of test cases that requires abstention presupposes a baseline that
 abstains, and where it does not, the operator that removes abstention cannot

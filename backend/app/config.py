@@ -72,6 +72,17 @@ class Settings(BaseSettings):
     # mas evita amplificar a variancia -- e o que o protocolo do estudo pede.
     generation_temperature: float | None = None
     generation_seed: int | None = None
+    # Janela de contexto e teto de geracao enviados ao Ollama. None = nao envia
+    # (comportamento historico). Descoberto no estudo de mutacao (21/09/2026):
+    # sem `num_ctx` o servidor usa 4096 e TRUNCA o prompt em num_ctx/2 tokens,
+    # descartando o inicio -- o system prompt inteiro e os primeiros chunks.
+    # 288 truncagens silenciosas no baseline antes de alguem olhar o log do
+    # servidor. "auto" dimensiona pela configuracao de recuperacao:
+    #   num_ctx = ceil_1024(top_k * chunk_size_tokens * 1.25 + 1024 + num_predict)
+    # O limite efetivo de prompt no Ollama e num_ctx - num_predict, por isso
+    # `num_predict` precisa ser explicito quando `num_ctx` e.
+    generation_num_ctx: int | str | None = None
+    generation_num_predict: int | None = None
 
     # Prompt: cada bloco de regra do system prompt e ligavel/desligavel, porque
     # os operadores de mutacao P1-P3 removem exatamente um bloco cada.

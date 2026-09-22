@@ -239,6 +239,15 @@ def invoke(
             chunks, retrieval_ms = retrieval.retrieve(question)
             result = generation.generate_answer(question, chunks)
             error = None
+            # Guarda contra truncagem silenciosa (descoberta em 21/09: o servidor
+            # descarta o INICIO do prompt -- o system prompt -- quando ele passa
+            # de num_ctx - num_predict, e so avisa no proprio log). Um run
+            # truncado nao mede o mutante; vira erro auditavel.
+            limit = generation.prompt_token_limit()
+            prompt_tokens = result.get("prompt_tokens")
+            if limit is not None and prompt_tokens is not None and prompt_tokens >= limit - 2:
+                error = f"context_truncated: prompt_tokens={prompt_tokens} limit={limit}"
+                logger.error("%s: %s", run_id, error)
         except Exception as exc:  # noqa: BLE001 — ver docstring
             logger.warning("Falha em %s: %s", run_id, exc)
             chunks, retrieval_ms = [], 0.0

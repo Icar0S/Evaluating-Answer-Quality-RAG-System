@@ -53,7 +53,15 @@ baseline_config:
   generation_model: qwen3:8b
   embedding_model: nomic-embed-text
   generation_temperature: 0.0
-  generation_timeout_seconds: 300
+  generation_timeout_seconds: 600
+  # Semana 6 (21/09): sem isto o Ollama usa num_ctx=4096 e trunca o prompt em
+  # 2.050 tokens, descartando o system prompt -- 288 truncagens silenciosas no
+  # primeiro baseline. "auto" dimensiona pela configuração de recuperação de
+  # cada mutante (ver backend/app/config.py); num_predict explícito porque o
+  # limite de prompt do servidor é num_ctx - num_predict. O maior tokens_out
+  # observado foi 3.124.
+  generation_num_ctx: auto
+  generation_num_predict: 4096
 
   # --- Prompt ---
   prompt_require_grounding: true

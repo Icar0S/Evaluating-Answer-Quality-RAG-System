@@ -261,6 +261,13 @@ na campanha), congele o codebook (`coherence --freeze-codebook`) e registre em
 `config/study.yaml` as decisões do ponto de decisão da semana 5. Em 21/09/2026:
 O3 saiu da campanha (contingência do §9, motivo no próprio `study.yaml`).
 
+Antes de rodar, confira o log do servidor Ollama (`%LOCALAPPDATA%\Ollama\server.log`)
+por `truncating input prompt`: sem `num_ctx` explícito o servidor corta o
+prompt em `num_ctx/2` e descarta o system prompt — o primeiro baseline deste
+estudo (300 invocações) rodou inteiro assim, sem erro e sem aviso fora desse
+log. `study.yaml` fixa `generation_num_ctx: auto` e `generation_num_predict`;
+o harness marca `context_truncated` como erro no run.
+
 ```bash
 python -m tests.mutation.coherence --freeze-codebook
 python -m tests.mutation.run_campaign --baseline     # 30 x 10 = 300 invocações

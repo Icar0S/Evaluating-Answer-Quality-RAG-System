@@ -2,7 +2,7 @@
 
 **Artigo:** *Mutation-Based Adequacy Assessment of Test Suites for Retrieval-Augmented Assistants*
 **Destino:** Information and Software Technology, special issue VSI:EQUISA · submissão 13/12/2026
-**Branch:** `journal-ist` · **Última atualização:** 21/09/2026 (semana 6 em curso — decisões tomadas, baseline rodando)
+**Branch:** `journal-ist` · **Última atualização:** 21/09/2026 (semana 6 em curso — truncagem de contexto corrigida, baseline v2 rodando)
 
 Este documento registra o que foi construído e executado até aqui, as decisões de
 projeto com suas razões, e o que já dá para escrever do artigo. Ele existe porque
@@ -21,7 +21,7 @@ justificar para um revisor.
 | 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | **concluída** — τ* = 0,60, e a calibração virou resultado (§4.7) |
 | 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída** — 18/18 revertem sem resíduo E injetam o defeito declarado (§3.5) |
 | 5 | O3, O4, O5 prontos; `run_campaign.py` validado | **concluída** — O4 estável; O3 inviável com juízes locais (§4.9); três decisões abertas (§6) |
-| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — decisões tomadas em 21/09 (§3.7); baseline iniciado 17:21 |
+| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — baseline v1 inválido (truncagem silenciosa, §3.7); v2 iniciado 21/09 21:08 |
 | 7–13 | Coerência, RQ3, escrita, submissão | não iniciadas |
 
 O cronograma está **adiantado**: o portão GO/NO-GO da semana 4 fechou junto com a
@@ -315,74 +315,79 @@ Antes de qualquer resultado: o piloto foi arquivado em `results/pilot/` (o run d
 c01 usava a pergunta antiga e teria sido pulado pela retomada) e o codebook foi
 congelado (`frozen_at: 2026-09-21`).
 
-**A classe de abstenção no baseline.** Os 5 casos "fora do corpus" rodaram
-primeiro, para decidir com evidência. Resultado das primeiras 17 invocações
-(3–4 repetições por caso): **0 abstenções com o marcador**. Os cinco recuperam
-4 chunks acima do piso (similaridade máxima entre 0,486 e 0,608 — corpus
-homogêneo, §4.2) e o modelo responde por conhecimento paramétrico com o contexto
-na frente: c16 dá "27 critérios" (o piloto deu 14 e 13), c17 explica throughput
-do JMeter, c19 explica JaCoCo. O único que se aproxima é c20, cuja entidade é
-fictícia por desenho: "o texto fornecido não menciona…" — abstenção em
-substância, sem o marcador que a regra do prompt exige.
+**Baseline v1 (300 invocações, 21/09 17:21–19:41) — inválido, e por quê.**
+0 erros de execução; 28 s e 875 tokens de saída por invocação; 22,8 GPU-s e
+0,475 Wh. Conjunto avaliável: |S| = O1 23, O4 11, O2 6, O5 6. Seis casos sob o
+oráculo primário eram um alarme, e a leitura dos vereditos apontava para o SUT:
+"o texto não menciona" com a evidência no contexto (c01, c08, c14), respostas
+por conhecimento paramétrico nos 5 casos "fora do corpus", nenhuma citação nos
+4 de rastreabilidade, nenhum pedido de esclarecimento nos 3 ambíguos.
 
-Por que **não** reescrever as perguntas: a única reescrita que evitaria a resposta
-paramétrica é usar entidades fictícias (o estilo de c20), e c20 mostra que mesmo
-assim o modelo não emite o marcador quando tem 4 chunks tópicos na frente — no
-piloto, R1 (1 chunk) fez c16 abstrair com o marcador exato. O comportamento é do
-SUT com o corpus, não da formulação. Consequências, já previstas pelo §7.1:
+A causa real estava no log do servidor Ollama, não nos vereditos: **288 avisos
+`truncating input prompt limit=2050 prompt=5255 keep=4`**. Sem `num_ctx`
+explícito o servidor usa 4.096 e trunca o prompt em `num_ctx/2` tokens,
+mantendo os 4 primeiros e os 2.046 últimos — ou seja, descarta o **system
+prompt inteiro** (ancoragem, abstenção, citação) e o começo do contexto. Todas
+as 300 invocações do baseline, e as 18 do piloto, rodaram assim. Nada falhou,
+nada avisou fora do log do servidor. Confirmado com um prompt de controle: a
+regra "comece com SENTINELA" no system prompt some sem `num_ctx` e volta com
+ele.
 
-- a classe sai de S sob O2/O5 (marcador exato) e, provavelmente, sob O1; sob O4
-  c20 pode ficar (o juiz lê "não menciona" como abstenção) — **é exatamente a
-  divergência por classe que a H2 previa**;
-- **R4 fica inavaliável sob o oráculo primário**: seus 5 alvos são esses casos,
-  e nenhum deles é barrado pelo piso (todos acima de 0,428). É a quarta
-  instância de "equivalente por estrutura do corpus" (§4.1): o piso nunca é
-  vinculante numa pergunta real neste corpus, só na sonda construída para a
-  fidelidade (0,418);
-- P2 fica com c21 e c22 (classe "fora de escopo").
+Consequências, na ordem em que importam:
 
-Outra observação, para o §7.1 do artigo: sob temperatura 0 a semente por
-repetição não muda nada (r2 = r3 = r4 byte a byte em todos os casos), e **r1
-difere de r2–r4** em 4 dos 5 casos — o não-determinismo residual concentra-se
-na primeira invocação após carregar o modelo, não se distribui pelas
-repetições. Atil et al. reportam variação sob temperatura 0; aqui ela tem um
-padrão.
+- **P1, P2 e P3 seriam inertes por construção** — removem regras que o modelo
+  nunca via. R2 e K2 (mais contexto) apenas truncariam mais. A campanha inteira
+  estaria confundida.
+- As conclusões sobre o SUT tiradas do v1 estão **retiradas**: com o contexto
+  íntegro, c01 responde "16 classes, 8 do Defects4J e 8 do TestBench"; c16
+  abstém com o marcador exato; c27 dá H = 4,223 e p = 0,377. O que restava era
+  formulação da pergunta e a instrução de citação.
+- A decisão "aceitar a classe de abstenção como está" foi tomada sobre dados
+  truncados e **volta a ser aberta**: decide-se com o baseline v2.
 
-**Baseline v1 (300 invocações, 21/09 17:21–19:41).** 0 erros; 28 s e 875
-tokens de saída por invocação (mediana 26 s); 22,8 GPU-s e 0,475 Wh por
-invocação, 142,6 Wh no total. Conjunto avaliável por oráculo, **antes** de
-qualquer ajuste: |S| = O1 23, O4 11, O2 6, O5 6.
+**Correção (SUT, parametrizável, default preserva o comportamento):**
+`generation_num_ctx: auto` dimensiona a janela pela configuração de recuperação
+de cada mutante — `ceil_1024(top_k × chunk_size × 1,25 + 1.024 + num_predict)`,
+com `generation_num_predict: 4096` explícito porque o limite de prompt do
+servidor é `num_ctx − num_predict` (maior `tokens_out` observado: 3.124). Um
+`num_ctx` fixo que coubesse o pior caso (R2: 12 chunks, 15.250 tokens medidos)
+forçaria offload para CPU em todas as invocações; dimensionar por mutante mantém
+o baseline a 11.264 (1–2 camadas na CPU, ~25 tok/s) e paga o offload só em K2
+(20.480) e R2 (23.552, ~200 s por invocação). O harness agora converte
+`prompt_tokens ≥ limite` em erro auditável (`context_truncated`). Flash
+attention e KV q8_0 foram testados e descartados: prompt eval 5× mais lento e
+OOM nesta GPU (6,5 GiB disponíveis dos 8).
 
-Seis casos sob o oráculo primário não são um resultado, são um alarme. A
-leitura dos vereditos do O2 separa as 24 reprovações em quatro causas:
+**Duas outras correções antes do v2**, ambas de instrumento e ambas antes de
+qualquer mutante:
 
-| Causa | Casos | Natureza |
-|---|---|---|
-| Página da evidência fora do top-4 (documento certo, página errada) | c03, c04, c05, c06, c07, c09, c10, c11, c12, c15 | formulação da pergunta — o portão da semana 5 só conferia o documento |
-| Evidência no contexto e o modelo não extrai (FP4) | c01, c08, c14 | SUT: "o texto não menciona" com "16 Java classes from the Defects4J" no contexto; c08 inverte a direção do swing; c14 lê as linhas erradas da tabela |
-| Não abstém / não recusa / não pede esclarecimento | c16–c20, c23, c24–c26 | SUT: responde por conhecimento paramétrico; c23 responde sobre o próprio system prompt |
-| Não cita documento e página | c27–c30 | SUT: a regra de citação está no prompt e o modelo não a segue (c24 chegou a copiar o placeholder "[documento, pág. 6]") |
+- **Portão de recuperação em nível de página.** Diagnóstico só com embeddings
+  (independente da truncagem): em 10 dos 19 casos factuais o documento certo
+  vinha no top-4 e a página da evidência não; com k = 12, 15/19; com MMR
+  desligado, 9/19 — é formulação. 8 perguntas reescritas com termos do trecho
+  (c02, c03, c06, c07, c09, c10, c11, c12; pergunta anterior em `notes`);
+  `validate_suite --check-retrieval` passa a exigir a página. c04, c05 e c15 não
+  têm reformulação natural que vença as páginas vizinhas do mesmo documento:
+  `accepted_gap: retrieval-page`, saem de S pelo §7.1.
+- **Instrução de citação.** Com "[documento, pág. N]" o modelo copiava a palavra
+  "documento" literalmente — regra que o baseline não cumpre torna P3
+  equivalente por construção (o mesmo princípio do piso e do MMR). A regra, que
+  não faz parte do prompt v1 de produção, passou a nomear o arquivo e dar um
+  exemplo; c24/c27/c28 citam `[arquivo.pdf, pág. N]`.
 
-O diagnóstico de recuperação (só embeddings) mostra que não é configuração:
-com top-k = 12 a página da evidência entra em 15/19; com k = 4 e MMR desligado,
-9/19. É a formulação. Um teste que reprova no programa original é corrigido
-antes da análise de mutação — sempre — e a correção legítima aqui é a mesma da
-semana 5, um nível abaixo: **8 perguntas reescritas com termos do trecho da
-evidência** (c02, c03, c06, c07, c09, c10, c11, c12), verificadas por um portão
-que agora confere a **página**, não só o documento. Três não têm reformulação
-natural que vença as páginas vizinhas do mesmo documento (c04, c05, c15):
-ficam como estão, marcadas `accepted_gap: retrieval-page`, e saem de S pelo
-§7.1. As reprovações por extração (c01, c08, c14) e por comportamento
-(abstenção, recusa, esclarecimento, citação) são o SUT e ficam como estão.
+Tudo arquivado (`results/archive_v1_truncated/`) e refeito. Baseline v2
+iniciado às 21:08 com a configuração final.
 
-Os runs v1 dos 8 casos foram arquivados em `results/pilot/runs_baseline_v1.jsonl`
-e refeitos com as perguntas novas (80 invocações). Tudo antes da primeira
-invocação de mutante.
+Observação que sobrevive ao v1, para o §7.1: sob temperatura 0 a semente por
+repetição não muda nada (r2 = r3 = r4 byte a byte) e r1 difere de r2–r4 — o
+não-determinismo residual concentra-se na primeira invocação após carregar o
+modelo. A confirmar no v2.
 
-**Para o artigo (§6.7 desvios, §7.1, §8):** o baseline reprova em 24/30 sob o
-oráculo determinístico e em 7/30 sob o cosseno — a mesma suíte, os mesmos 300
-runs. Antes de qualquer mutante, o swing entre oráculos já é de 17 casos, e a
-direção é a que a calibração previa: O1 aprova respostas erradas.
+**Para o artigo:** a truncagem é o achado §4.13 — FP3 por construção, sem
+erro, sem aviso fora do log do servidor, e invisível a todos os cinco oráculos
+(eles julgam a resposta, não o prompt). É o argumento mais forte do estudo para
+"verifique o instrumento contra o baseline antes de medir": três semanas de
+instrumentação cuidadosa e o defeito estava no parâmetro que ninguém declarou.
 
 ---
 
@@ -648,6 +653,33 @@ que o protocolo pedia como "revisão manual de 100%" sem dizer como.
 **Onde entra:** §4 (fidelidade dos operadores, com a tabela do §3.5), §10
 (validade interna: a revisão manual virou executável e versionada).
 
+### 4.13 O servidor truncava o prompt e ninguém viu
+
+Trezentas invocações de baseline, dezoito de piloto, cinco oráculos, três
+portões verdes — e o system prompt não chegava ao modelo. O Ollama, sem
+`num_ctx` explícito, usa 4.096 e corta o prompt em `num_ctx/2`, preservando os 4
+primeiros tokens e os 2.046 últimos. O corte cai exatamente sobre as regras de
+ancoragem, abstenção e citação, que ficam no início. O servidor avisa apenas no
+próprio log (`truncating input prompt`, 288 vezes); a API responde 200 e
+devolve `prompt_eval_count = 2050` — um número que ninguém compara com nada.
+
+Por que os oráculos não viram: todos julgam a resposta. Uma resposta fluente
+por conhecimento paramétrico, sem citação e sem abstenção, é indistinguível de
+"o SUT ignora as regras" — que foi a conclusão errada tirada por duas horas.
+Só um controle de prompt (uma regra sentinela no system prompt) distingue.
+
+Por que importa além deste estudo: é o FP3 de Barnett et al. ("recuperado mas
+não consolidado no contexto") acontecendo **por construção, no sistema
+não-mutado**, e é o tipo de defeito que a mutação em RAG deveria detectar — mas
+que nenhuma suíte de saída detecta se o baseline já o tem. Dois instrumentos
+saíram daqui: `num_ctx` dimensionado pela configuração (não pelo pior caso, que
+força offload para CPU) e a guarda `prompt_tokens ≥ num_ctx − num_predict →
+erro auditável`.
+
+**Onde entra:** §3.5 (instrumentação), §6.7 (desvio), §8 (o parâmetro que
+ninguém declara), §9 (validade interna — e a razão de o baseline v1 estar
+arquivado, não apagado).
+
 ---
 
 ## 5. Seções do artigo que já dão para escrever
@@ -735,9 +767,10 @@ sintéticos — quando a campanha rodar, a análise sai no mesmo dia.
 
 ### Decisões da semana 6 — tomadas (ver §3.7)
 
-O3 fora da campanha (contingência do §9), classe de abstenção aceita como está,
-campanha completa. Nenhuma das três é um desvio do pré-registro; as duas
-primeiras são as saídas que o protocolo já previa.
+O3 fora da campanha (contingência do §9) e campanha completa — mantidas. A
+decisão sobre a classe de abstenção foi tomada sobre o baseline truncado e
+**volta a ser decidida com o v2**: se o SUT abstém com o contexto íntegro (o
+smoke test diz que sim), a classe fica e P2/R4 são avaliáveis.
 
 ### Bloqueadores para publicação (não para a campanha)
 
