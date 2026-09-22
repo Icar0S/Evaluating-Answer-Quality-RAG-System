@@ -216,6 +216,17 @@ class Invocation:
         return dict(self.__dict__)
 
 
+def sample_wall_anomaly(holder: list, timeout_seconds: int) -> bool:
+    """O relógio de parede desta invocação passou do timeout do cliente?
+
+    Só pode acontecer com suspensão da máquina: o httpx aborta no timeout.
+    Margem de 20% para não marcar uma invocação que terminou no limite.
+    """
+    if not holder:
+        return False
+    return holder[0].wall_ms > timeout_seconds * 1000 * 1.2
+
+
 def invoke(
     *,
     mutant_id: str,
@@ -247,6 +258,27 @@ def invoke(
             prompt_tokens = result.get("prompt_tokens")
             if limit is not None and prompt_tokens is not None and prompt_tokens >= limit - 2:
                 error = f"context_truncated: prompt_tokens={prompt_tokens} limit={limit}"
+                logger.error("%s: %s", run_id, error)
+            # Teto de geração: o modelo gastou todos os tokens no raciocínio e
+            # devolveu resposta vazia. Registrado aqui e descartado no
+            # julgamento (evaluate.py), para não atribuir ao mutante um efeito
+            # da nossa configuração.
+            cap = settings.generation_num_predict
+            completion_tokens = result.get("completion_tokens")
+            if (
+                error is None
+                and cap is not None
+                and completion_tokens is not None
+                and completion_tokens >= int(cap)
+                and not result["answer"].strip()
+            ):
+                error = f"generation_cap: tokens_out={completion_tokens} cap={cap}, resposta vazia"
+                logger.error("%s: %s", run_id, error)
+            # Relógio de parede muito acima do timeout do cliente só acontece
+            # quando a máquina suspendeu no meio da invocação (22/09, 7,3 h):
+            # a resposta é válida, a medição de custo não.
+            if error is None and sample_wall_anomaly(holder, settings.generation_timeout_seconds):
+                error = "wall_clock_anomaly: a máquina suspendeu durante a invocação; custo inválido"
                 logger.error("%s: %s", run_id, error)
         except Exception as exc:  # noqa: BLE001 — ver docstring
             logger.warning("Falha em %s: %s", run_id, exc)

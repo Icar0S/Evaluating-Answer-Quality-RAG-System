@@ -39,6 +39,8 @@ tests/mutation/.venv/
 tests/mutation/work/
 tests/mutation/results/*
 !tests/mutation/results/.gitkeep
+# O índice de proveniência dos logs é versionado; os logs, não (ver o próprio arquivo).
+!tests/mutation/results/PROVENANCE.md
 tests/mutation/suite/drafts.jsonl
 # Os PDFs do corpus ficam de fora ENQUANTO as licenças não estiverem resolvidas
 # em corpus/sources.yaml — o corpus precisa ser redistribuível para ir ao pacote

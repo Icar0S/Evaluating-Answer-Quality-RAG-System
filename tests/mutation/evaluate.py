@@ -56,6 +56,19 @@ MODAL_ORACLES = ("O3", "O4")
 BASELINE_ID = "baseline"
 
 
+def _hit_generation_cap(run: dict, cap: int | None) -> bool:
+    """A execução foi cortada pelo teto de geração antes de produzir resposta?
+
+    Sinal duplo de propósito: só conta quando a resposta está vazia E o número
+    de tokens gerados bateu no teto. Resposta vazia com poucos tokens é outra
+    coisa (erro de rede, recusa degenerada) e continua sendo julgada.
+    """
+    if cap is None or run.get("error"):
+        return False
+    tokens_out = run.get("tokens_out")
+    return not (run.get("answer") or "").strip() and tokens_out is not None and tokens_out >= int(cap)
+
+
 def group_runs(runs: list[dict]) -> dict[tuple[str, str], list[dict]]:
     grouped: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for run in runs:
@@ -119,6 +132,25 @@ def main(argv: list[str] | None = None) -> int:
     if not runs:
         logger.error("results/runs.jsonl vazio — rode run_campaign.py antes.")
         return 1
+
+    # Execuções cortadas pelo teto de geração NÃO viram veredito (22/09).
+    # O qwen3 raciocina antes de responder; num caso difícil ele consome os
+    # `num_predict` tokens no raciocínio e devolve resposta VAZIA. Reprovar isso
+    # atribuiria ao mutante um efeito do nosso teto — o erro de atribuição que
+    # o estudo inteiro existe para evitar. Sai do numerador e do denominador e
+    # é reportado; a alternativa (subir o teto) muda `num_ctx` e o custo de
+    # todas as invocações, e o teto é parte da configuração declarada.
+    cap = study.baseline_overrides.get("generation_num_predict")
+    capped = [r for r in runs if _hit_generation_cap(r, cap)]
+    if capped:
+        by_case: dict[str, int] = defaultdict(int)
+        for record in capped:
+            by_case[f"{record['mutant_id']}/{record['case_id']}"] += 1
+        logger.warning(
+            "%d execução(ões) atingiram o teto de geração (%s tokens) e ficam fora dos vereditos: %s",
+            len(capped), cap, dict(sorted(by_case.items())),
+        )
+        runs = [r for r in runs if not _hit_generation_cap(r, cap)]
 
     cases = {case.case_id: case for case in load_cases()}
     assertions, defaults = load_assertions()

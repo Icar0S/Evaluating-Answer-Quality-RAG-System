@@ -2,7 +2,7 @@
 
 **Artigo:** *Mutation-Based Adequacy Assessment of Test Suites for Retrieval-Augmented Assistants*
 **Destino:** Information and Software Technology, special issue VSI:EQUISA · submissão 13/12/2026
-**Branch:** `journal-ist` · **Última atualização:** 21/09/2026 (semana 6 em curso — baseline v2 fechado, campanha dos 18 mutantes rodando)
+**Branch:** `journal-ist` · **Última atualização:** 21/09/2026 (semana 6 em curso — baseline v3 e campanha rodando; proveniência dos logs indexada)
 
 Este documento registra o que foi construído e executado até aqui, as decisões de
 projeto com suas razões, e o que já dá para escrever do artigo. Ele existe porque
@@ -432,6 +432,42 @@ erro, sem aviso fora do log do servidor, e invisível a todos os cinco oráculos
 (eles julgam a resposta, não o prompt). É o argumento mais forte do estudo para
 "verifique o instrumento contra o baseline antes de medir": três semanas de
 instrumentação cuidadosa e o defeito estava no parâmetro que ninguém declarou.
+
+### 3.8 Semana 6 — a noite de 21 para 22/09 (auditoria de replicação)
+
+A cadeia `baseline v3 → evaluate → portão → campanha → evaluate` foi lançada às
+00:05. Estado às 09:40 de 22/09: **baseline v3 em 219/300**, 0 erros. O atraso
+não é do harness — a máquina **suspendeu** às 00:41 e voltou às 08:01 (o log do
+Ollama salta de 00:00:58 para 08:01:17). Windows conta ociosidade por entrada do
+usuário, não por carga de GPU, e o plano de energia tinha suspensão em 30 min no
+AC. Corrigido para "nunca" enquanto a campanha roda (`powercfg /change
+standby-timeout-ac 0`; restaurar com `1800`).
+
+Duas anomalias de medição ficaram registradas, e as duas viraram guarda no
+código:
+
+- **`baseline-c18-r1` atravessou a suspensão**: 26.463 s de relógio de parede e
+  58,4 Wh medidos por NVML (contra 27 s e 0,37 Wh típicos) para uma resposta de
+  203 tokens. A resposta é válida; a medição de custo, não. `runner/sut.py`
+  passa a marcar `wall_clock_anomaly` quando o relógio passa 1,2× o timeout do
+  cliente — só a suspensão produz isso, porque o httpx aborta no timeout.
+- **6 execuções de c14 bateram o teto de geração** (`num_predict` 4.096) com
+  **resposta vazia**: o qwen3 gastou todos os tokens no raciocínio e não chegou
+  a responder. Nenhuma ocorrência no baseline v2 (ordem fixa) — foi o
+  embaralhamento que levou c14 a essa trajetória, o que é mais uma evidência do
+  achado sobre repetição. Reprovar uma resposta vazia atribuiria ao mutante um
+  efeito do **nosso teto**: `evaluate.py` passa a excluir do julgamento as
+  execuções com resposta vazia E `tokens_out ≥ num_predict`, reportando quantas
+  foram; `runner/sut.py` as marca como `generation_cap` no próprio log.
+
+**Índice de proveniência.** Os logs de execução não são versionados (são
+grandes e regeneráveis), mas até aqui também não havia registro de qual log era
+qual. `results/PROVENANCE.md` (versionado, gerado por
+`tools/provenance.py`) passa a dizer, para cada um: quando rodou, com que
+commit, o que é, por que foi superado, quantas linhas, energia total e
+**sha256**. Cinco logs indexados: piloto, baseline v1 (truncado), parcial v1,
+baseline v2 (ordem fixa) e o v3 em curso. Nenhum foi apagado — um log inválido é
+a evidência da ameaça que ele revelou.
 
 ---
 

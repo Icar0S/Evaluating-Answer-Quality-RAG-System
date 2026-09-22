@@ -268,6 +268,15 @@ estudo (300 invocações) rodou inteiro assim, sem erro e sem aviso fora desse
 log. `study.yaml` fixa `generation_num_ctx: auto` e `generation_num_predict`;
 o harness marca `context_truncated` como erro no run.
 
+Desligue a suspensão automática antes de deixar a campanha sozinha: o Windows
+conta ociosidade por entrada do usuário, não por carga de GPU, e uma campanha de
+30 h dorme no primeiro intervalo de 30 min sem teclado. Em 22/09 isso custou
+7,3 h e contaminou a medição de custo de uma invocação.
+
+```powershell
+powercfg /change standby-timeout-ac 0    # restaurar depois: 1800
+```
+
 ```bash
 python -m tests.mutation.coherence --freeze-codebook
 python -m tests.mutation.run_campaign --baseline     # 30 x 10 = 300 invocações
@@ -316,6 +325,10 @@ python -m tests.mutation.evaluate --level L1         # veredito pontual
 python -m tests.mutation.evaluate --level L3
 python -m tests.mutation.analyze
 ```
+
+`tools/provenance.py` regenera `results/PROVENANCE.md`, o índice versionado dos
+logs (o que cada um é, com que commit rodou, por que foi superado, sha256). Rode
+depois de cada campanha; os logs em si ficam fora do git e vão para o Zenodo.
 
 Sai em `results/`:
 
