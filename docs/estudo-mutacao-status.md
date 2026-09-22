@@ -21,7 +21,7 @@ justificar para um revisor.
 | 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | **concluída** — τ* = 0,60, e a calibração virou resultado (§4.7) |
 | 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída** — 18/18 revertem sem resíduo E injetam o defeito declarado (§3.5) |
 | 5 | O3, O4, O5 prontos; `run_campaign.py` validado | **concluída** — O4 estável; O3 inviável com juízes locais (§4.9); três decisões abertas (§6) |
-| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — baseline v3 fechado (|S| = 26/22/20/20, portão verde); campanha dos 18 mutantes desde 22/09 10:51 |
+| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — baseline v3 fechado (|S| = 26/22/20/20, portão verde); campanha dos 18 mutantes desde 22/09 10:51, 21% em 16:45 |
 | 7–13 | Coerência, RQ3, escrita, submissão | não iniciadas |
 
 O cronograma está **adiantado**: o portão GO/NO-GO da semana 4 fechou junto com a
@@ -498,6 +498,44 @@ commit, o que é, por que foi superado, quantas linhas, energia total e
 **sha256**. Cinco logs indexados: piloto, baseline v1 (truncado), parcial v1,
 baseline v2 (ordem fixa) e o v3 em curso. Nenhum foi apagado — um log inválido é
 a evidência da ameaça que ele revelou.
+
+### 3.9 Campanha — andamento e primeiro achado (22/09, 16:45)
+
+**569/2.700 invocações (21%)** desde as 10:51, 10 com erro — todas
+`generation_cap` (resposta vazia no teto de 4.096 tokens), nenhuma de
+infraestrutura. Ordem: os mutantes de configuração primeiro (reaproveitam o
+índice do baseline), os de corpus no fim.
+
+| Mutante | Invocações | tokens de prompt (mediana) | s/invocação | total |
+|---|---|---|---|---|
+| E1 | 150/150 | 302 | 11 | 39 min |
+| K1 | 150/150 | 1.997 | 16 | 57 min |
+| K2 | 150/150 | 8.227 | 64 | 3,6 h |
+| K3 | 118/150 | 4.400 | 22 | ~59 min |
+
+O tempo por invocação é quase constante até o prompt caber na VRAM (manda a
+geração da resposta) e dispara depois — o joelho está entre 4.600 e 8.200
+tokens, onde o modelo passa a processar parte do prompt na CPU. Isso projeta
+**R2 (top-k 12) em ~130 s por invocação, 5,4 h sozinho**, e **17,4 h para o
+resto da campanha**, mais ~3,3 h de avaliação. `tools/progress.py` recalcula
+isso a qualquer momento, sem tocar na GPU.
+
+**E1 não mede o que o catálogo diz — e isso é achado.** Trocar
+`nomic-embed-text` por `all-minilm` deveria degradar a recuperação; o que
+acontece é que ela **para**: 95 das 150 invocações recuperam **zero chunks**
+(prompt mediano de 302 tokens, contra 4.646 do baseline). A causa é o piso de
+similaridade: 0,428 foi calibrado para a escala do `nomic`, e a do `all-minilm`
+é outra. O piso não é propriedade do corpus, é do **par corpus/modelo**, e uma
+troca de modelo de embedding — atualização de rotina em produção — invalida o
+piso silenciosamente.
+
+Para o artigo isto tem duas consequências. Primeira: E1 será morto por quase
+todo caso, e o mecanismo precisa ser reportado, senão o leitor entende
+"degradação de recall" onde o que houve foi piso descalibrado. Segunda, e mais
+forte: é o mesmo defeito do §4.2 visto do outro lado — lá o piso não barrava
+pergunta fora do corpus, aqui barra evidência legítima. **Um piso global de
+similaridade é frágil nas duas direções**, e a fragilidade só aparece quando se
+muda uma peça que parece não ter relação com ele.
 
 ---
 
