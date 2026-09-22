@@ -21,7 +21,7 @@ justificar para um revisor.
 | 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | **concluída** — τ* = 0,60, e a calibração virou resultado (§4.7) |
 | 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída** — 18/18 revertem sem resíduo E injetam o defeito declarado (§3.5) |
 | 5 | O3, O4, O5 prontos; `run_campaign.py` validado | **concluída** — O4 estável; O3 inviável com juízes locais (§4.9); três decisões abertas (§6) |
-| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — baseline v3 fechado (\|S\| = 26/22/20/20, portão verde); campanha dos 18 mutantes desde 22/09 10:51 |
+| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — baseline v3 fechado (|S| = 26/22/20/20, portão verde); campanha dos 18 mutantes desde 22/09 10:51 |
 | 7–13 | Coerência, RQ3, escrita, submissão | não iniciadas |
 
 O cronograma está **adiantado**: o portão GO/NO-GO da semana 4 fechou junto com a
