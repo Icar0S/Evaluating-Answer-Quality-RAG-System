@@ -46,6 +46,27 @@ def existing_run_ids() -> set[str]:
     return {record["run_id"] for record in jsonl.read(paths.RUNS_JSONL)}
 
 
+def drop_failed_runs() -> int:
+    """Remove do log as execuções com erro, para que sejam refeitas.
+
+    A retomada pula `run_id` já presente, o que é o certo para uma campanha
+    interrompida — mas faria uma execução que falhou (500 do servidor quando
+    outra aplicação toma a VRAM, por exemplo) nunca ser refeita. Explícito por
+    opção, nunca automático: apagar registro é a única operação destrutiva do
+    harness, e o que ela apaga precisa aparecer no log da campanha.
+    """
+    records = jsonl.read(paths.RUNS_JSONL)
+    failed = [r for r in records if r.get("error")]
+    if not failed:
+        logger.info("Nenhuma execução com erro para refazer.")
+        return 0
+    for record in failed:
+        logger.warning("Removendo para refazer: %s (%s)", record["run_id"], (record["error"] or "")[:70])
+    kept = [r for r in records if not r.get("error")]
+    jsonl.write_all(paths.RUNS_JSONL, kept)
+    return len(failed)
+
+
 def _runnable_cases(cases: list[Case]) -> list[Case]:
     ready = [case for case in cases if not case.is_draft]
     skipped = len(cases) - len(ready)
@@ -195,6 +216,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--operators", help="lista separada por vírgula (ex.: R1,P2) para rodar só alguns")
     parser.add_argument("--exclude-cuttable", action="store_true", help="regra de corte da semana 6 (12 operadores)")
     parser.add_argument("--repetitions", type=int, help="sobrepõe o número de execuções desta fase")
+    parser.add_argument("--retry-errors", action="store_true",
+                        help="refaz as execuções que registraram erro (remove-as do log antes)")
     parser.add_argument("--cases", help="lista de case_id separada por vírgula (piloto)")
     args = parser.parse_args(argv)
 
@@ -215,6 +238,8 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("Nenhum caso executável. Escreva a suíte (semana 2) antes de rodar a campanha.")
         return 1
 
+    if args.retry_errors:
+        drop_failed_runs()
     done = existing_run_ids()
     if done:
         logger.info("Retomando: %d invocações já registradas em runs.jsonl.", len(done))

@@ -10,8 +10,8 @@ Os logs em si **não são versionados** (`.gitignore`: `tests/mutation/results/*
 são grandes e regeneráveis pelos comandos do README. O que o repositório versiona é
 este índice, com os hashes, mais o código, a configuração, a suíte e a calibração.
 
-Gerado em 2026-09-22T09:45
-com o repositório em `4590c49`.
+Gerado em 2026-09-22T10:53
+com o repositório em `6d6aba8`.
 
 ## `pilot/runs.jsonl`
 
@@ -58,10 +58,10 @@ com o repositório em `4590c49`.
 - **Quando:** 2026-09-22 00:04 em diante  
 - **Código:** `4590c49`  
 - **O que é:** Baseline v3 (ordem embaralhada por repetição) e, na sequência, a campanha dos 18 mutantes.  
-- **Estado:** EM CURSO. Duas anomalias já registradas, ambas tratadas no commit desta data: `baseline-c18-r1` atravessou uma suspensão da máquina (7,3 h de relógio de parede, 58,4 Wh medidos — custo inválido, resposta válida) e 6 execuções de c14 bateram o teto de geração com resposta vazia.  
-- **Conteúdo:** {'linhas': 225, 'casos': 30, 'mutantes': 1, 'erros': 0, 'wall_mediana_s': 22.4, 'wh_total': 151.7}  
-- **sha256 (runs):** `21d1465b3d79987936abe3a1ee646aa55da91cbce111c2bdc5f8e5ee762feb0b`  
-- **Vereditos:** `verdicts.jsonl` ainda não gerado  
+- **Estado:** Baseline v3 COMPLETO (300 invocações, 0 erros depois do retry) e portão verde: |S| = O1 26, O4 22, O2 20, O5 20. Campanha dos 18 mutantes em curso desde 22/09 10:51. Três anomalias tratadas: `baseline-c18-r1` atravessou uma suspensão da máquina (26.463 s e 58,4 Wh — custo inválido, resposta válida); execuções de c14 bateram o teto de geração com resposta vazia (4 dentro das 5 repetições do nível L2) e ficam fora dos vereditos; `baseline-c23-r10` recebeu 500 do servidor quando outra aplicação tomou a VRAM, foi removida com `--retry-errors` e refeita.  
+- **Conteúdo:** {'linhas': 306, 'casos': 30, 'mutantes': 2, 'erros': 0, 'wall_mediana_s': 22.5, 'wh_total': 182.7}  
+- **sha256 (runs):** `9c0cf70bc9f0b1ac305d8239c5e74683e90b79603120bb9f5d83b861bb274710`  
+- **Vereditos:** `verdicts.jsonl`, 240 linhas, sha256 `1e9b7df6eaa8cf61d9c39ab78b5aecb299e6ca2e251d192135b011e2c5607659`  
 
 ## Como refazer cada um
 

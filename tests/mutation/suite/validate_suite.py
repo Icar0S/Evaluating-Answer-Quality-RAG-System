@@ -156,6 +156,20 @@ def check_baseline() -> list[str]:
         if not case_runs:
             problems.append(f"{case.case_id}: sem execução de baseline.")
             continue
+        # Execução com erro (500 do servidor, timeout, teto de geração) não é
+        # comportamento do SUT: sai do numerador e do denominador, como o
+        # `invoke` documenta. Sem isto, um 500 numa das dez repetições faz um
+        # caso de recusa parecer que "respondeu 1/10" (22/09, c23).
+        failed = [run for run in case_runs if run.get("error")]
+        case_runs = [run for run in case_runs if not run.get("error")]
+        if failed:
+            logger.warning(
+                "%s: %d execução(ões) com erro fora da contagem (%s).",
+                case.case_id, len(failed), failed[0]["error"][:60],
+            )
+        if not case_runs:
+            problems.append(f"{case.case_id}: todas as execuções de baseline tiveram erro.")
+            continue
         abstentions = sum(1 for run in case_runs if abstained(run["answer"]))
         total = len(case_runs)
         if case.expected_behavior in ("abstain", "refuse") and abstentions < total:

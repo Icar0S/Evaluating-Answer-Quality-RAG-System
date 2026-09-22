@@ -35,10 +35,13 @@ ENTRIES = [
      "byte a byte iguais). |S| = O1 25, O4 23, O2 21, O5 21. É o par de comparação do v3."),
     ("runs.jsonl", "verdicts.jsonl", "4590c49", "2026-09-22 00:04 em diante",
      "Baseline v3 (ordem embaralhada por repetição) e, na sequência, a campanha dos 18 mutantes.",
-     "EM CURSO. Duas anomalias já registradas, ambas tratadas no commit desta data: "
-     "`baseline-c18-r1` atravessou uma suspensão da máquina (7,3 h de relógio de parede, "
-     "58,4 Wh medidos — custo inválido, resposta válida) e 6 execuções de c14 bateram o teto "
-     "de geração com resposta vazia."),
+     "Baseline v3 COMPLETO (300 invocações, 0 erros depois do retry) e portão verde: "
+     "|S| = O1 26, O4 22, O2 20, O5 20. Campanha dos 18 mutantes em curso desde 22/09 10:51. "
+     "Três anomalias tratadas: `baseline-c18-r1` atravessou uma suspensão da máquina (26.463 s "
+     "e 58,4 Wh — custo inválido, resposta válida); execuções de c14 bateram o teto de geração "
+     "com resposta vazia (4 dentro das 5 repetições do nível L2) e ficam fora dos vereditos; "
+     "`baseline-c23-r10` recebeu 500 do servidor quando outra aplicação tomou a VRAM, foi "
+     "removida com `--retry-errors` e refeita."),
 ]
 
 

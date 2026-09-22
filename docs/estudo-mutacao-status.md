@@ -21,7 +21,7 @@ justificar para um revisor.
 | 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | **concluída** — τ* = 0,60, e a calibração virou resultado (§4.7) |
 | 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída** — 18/18 revertem sem resíduo E injetam o defeito declarado (§3.5) |
 | 5 | O3, O4, O5 prontos; `run_campaign.py` validado | **concluída** — O4 estável; O3 inviável com juízes locais (§4.9); três decisões abertas (§6) |
-| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — v1 inválido (truncagem), v2 válido (\|S\| = 25/23/21/21), v3 com ordem embaralhada + campanha encadeada desde 22/09 00:05 |
+| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — baseline v3 fechado (\|S\| = 26/22/20/20, portão verde); campanha dos 18 mutantes desde 22/09 10:51 |
 | 7–13 | Coerência, RQ3, escrita, submissão | não iniciadas |
 
 O cronograma está **adiantado**: o portão GO/NO-GO da semana 4 fechou junto com a
@@ -459,6 +459,36 @@ código:
   efeito do **nosso teto**: `evaluate.py` passa a excluir do julgamento as
   execuções com resposta vazia E `tokens_out ≥ num_predict`, reportando quantas
   foram; `runner/sut.py` as marca como `generation_cap` no próprio log.
+
+**Desfecho do baseline v3 (10:20).** 300 invocações, 616 min de relógio (dos
+quais 7,3 h de suspensão). Portão verde depois de duas correções de contagem:
+
+| Oráculo | v2 (ordem fixa) | v3 (embaralhado) |
+|---|---|---|
+| O1 cosseno | 25 | **26** |
+| O4 juiz | 23 | **22** |
+| O2 assertivas | 21 | **20** |
+| O5 = O1 ∧ O2 | 21 | **20** |
+
+As duas ordens dão |S| a um caso de distância — a diferença está em quais casos,
+não em quantos, e é material para o §7.1.
+
+Mais duas correções de instrumento, ambas sobre execuções que **não são
+comportamento do SUT**:
+
+- **500 do servidor** em `baseline-c23-r10`: outra aplicação tomou a VRAM
+  (o log do Ollama mostra 625 MiB livres) e o `llama-server` não subiu. O caso
+  c23 (recusa) passou a parecer "respondeu 1/10" porque o portão contava a
+  execução com erro. `check_baseline` passa a excluí-las, como o `invoke` já
+  documentava, e avisa quantas foram.
+- **Execução com erro nunca era refeita**: a retomada pula `run_id` já
+  presente, o que é certo para uma campanha interrompida e errado para uma
+  invocação que falhou. `run_campaign --retry-errors` remove do log as
+  execuções com erro e as refaz — explícito por opção, nunca automático, e o
+  que ele apaga aparece no log da campanha.
+
+**Campanha dos 18 mutantes iniciada às 10:51** (2.700 invocações), com
+`--retry-errors` e `evaluate` encadeados.
 
 **Índice de proveniência.** Os logs de execução não são versionados (são
 grandes e regeneráveis), mas até aqui também não havia registro de qual log era
