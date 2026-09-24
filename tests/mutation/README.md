@@ -326,6 +326,16 @@ python -m tests.mutation.evaluate --level L3
 python -m tests.mutation.analyze
 ```
 
+`tools/package.py` monta o pacote de replicacao: dados (log bruto, vereditos,
+logs historicos), analise (tabelas, figuras, resumo), instrumentos (suite,
+assertivas, catalogo, calibracao, codebook) e codigo, com sha256 de cada
+arquivo em `MANIFEST.sha256` e um LEIAME que diz como refazer a analise sem
+reexecutar nada. Rode antes de depositar no Zenodo.
+
+```bash
+python -m tests.mutation.tools.package
+```
+
 `tools/provenance.py` regenera `results/PROVENANCE.md`, o índice versionado dos
 logs (o que cada um é, com que commit rodou, por que foi superado, sha256). Rode
 depois de cada campanha; os logs em si ficam fora do git e vão para o Zenodo.

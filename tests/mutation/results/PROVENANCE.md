@@ -10,8 +10,8 @@ Os logs em si **não são versionados** (`.gitignore`: `tests/mutation/results/*
 são grandes e regeneráveis pelos comandos do README. O que o repositório versiona é
 este índice, com os hashes, mais o código, a configuração, a suíte e a calibração.
 
-Gerado em 2026-09-23T22:29
-com o repositório em `1b154e9`.
+Gerado em 2026-09-24T00:15
+com o repositório em `a4a8ed9`.
 
 ## `pilot/runs.jsonl`
 
