@@ -24,6 +24,8 @@
 \usepackage[numbers]{natbib}
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
 \usepackage{multirow}
 \usepackage{xcolor}
 \usepackage{url}
@@ -86,28 +88,40 @@ costs.
 corpus, chunking, indexing, retrieval and prompt from documented RAG failure
 points, each with an executable fidelity check, and apply it to an open-source
 software-engineering RAG assistant with a 30-case suite built by
-equivalence-class partitioning. Five oracles of different natures --- cosine
+equivalence-class partitioning. Oracles of different natures --- cosine
 similarity, deterministic assertions, a RAGAS metric bundle, an LLM judge and
-their conjunction --- read the same execution log of about 3,000 invocations.
+their conjunction --- read the same execution log of 3,000 invocations; the
+metric bundle was withdrawn before the campaign under a pre-registered
+contingency, for a reason that is itself a result.
 Non-determinism is discounted by restricting every denominator to the cases that
 are stable in the unmutated baseline, and cost is measured per invocation in
 wall-clock time, tokens, GPU-seconds and energy.
-\textbf{Results.} \todo{3--4 frases COM OS NUMEROS: escore de mutacao por
-camada, swing entre oraculos, fracao de mortes coerentes e custo por mutante
-morto em cada nivel de rigor.} Two oracle biases were established before the
-campaign: on this corpus the cosine-similarity oracle ranks injected numeric
-errors and inverted conditions \emph{above} correct paraphrases (AUC 0.25 and
-0.09), and the faithfulness metric of the RAGAS bundle scores a fabricated
-figure about an absent topic as fully faithful.
-\textbf{Conclusion.} \todo{2 frases. O que o leitor leva para casa.} An
-adequacy score for a RAG assistant is a property of the pair (suite, oracle),
-and must be reported as such.
+\textbf{Results.} The suite kills 17 of the 18 mutants under the primary
+oracle, but through very few of its cases: the median operator is detected by
+2.5 of the 20 evaluable cases, and the kill rate does not differ across the
+five layers ($H = 1.368$, $p = 0.850$). The same execution log judged by four
+oracles yields mutation scores from 0.722 to 0.944, a spread of 22 percentage
+points, and the cheapest oracle is strictly dominated: in 32 (mutant, case)
+pairs the deterministic assertions fail where cosine similarity passes, and in
+none the reverse. Two of the biases were established before the campaign ---
+cosine similarity ranks injected numeric errors and inverted conditions
+\emph{above} correct paraphrases (AUC 0.25 and 0.09), and the faithfulness
+metric of the RAGAS bundle scores a fabricated figure about an absent topic as
+fully faithful. The campaign cost 33.9 hours, 1.08 kWh and 63 to 83 watt-hours
+per killed mutant, depending on which oracle is asked.
+\textbf{Conclusion.} An adequacy score for a retrieval-augmented assistant
+is a property of the pair (suite, oracle) and has to be reported as such: the
+oracle most widely deployed in practice cannot see a wrong number in an
+otherwise correct sentence. Mutation testing does transfer to these systems,
+but only with operators that reach the data and retrieval layers, an executable
+check that each operator injects what it claims, and a denominator restricted
+to the cases the unmutated system answers stably.
 \end{abstract}
 
 \begin{highlights}
-\item \todo{ate 85 caracteres -- o achado da RQ1}
-\item Cosine similarity ranks injected numeric errors above correct paraphrases (AUC 0.25)
-\item \todo{ate 85 caracteres -- o custo por mutante morto}
+\item 17 of 18 RAG mutants are killed, but the median one by only 2.5 of 20 cases
+\item Four oracles, one execution log: mutation score swings 22 points (0.722 to 0.944)
+\item A killed mutant costs 63 Wh under assertions and 83 Wh under cosine similarity
 \end{highlights}
 
 \begin{keywords}
@@ -222,7 +236,9 @@ cannot appear to work for the wrong reason. Against the second, we restrict
 every measurement to the subset of test cases whose verdict is stable across
 repeated runs of the unmutated system, and report the residual instability
 alongside the score. Against the third, we evaluate the same execution log with
-five oracles of different natures and report the spread between them.
+five oracles of different natures --- one of which the pilot disqualified
+before the campaign, for a reason we report --- and we give the spread between
+those that remained.
 
 The system under test is an open-source RAG assistant whose own domain is the
 testing of LLM- and RAG-based systems. The choice is deliberate on two counts:
@@ -473,18 +489,59 @@ times against the unmutated assistant, which establishes which cases behave
 stably enough to be measured at all. Each of 18 mutation operators is then
 applied in turn, and the suite is executed $N_m$ times against each resulting
 mutant. Every invocation is appended to a structured log. Only afterwards are
-verdicts produced: five oracles read that log and decide, independently of one
+verdicts produced: the oracles read that log and decide, independently of one
 another, whether each case passed. Adequacy, oracle disagreement and cost are
 all computed from the resulting verdicts.
 
 \begin{figure}
 \centering
-\rule{\linewidth}{0pt}
-\todo{Figura 1 -- desenhar o fluxo acima. Deixar visivel onde entra o conjunto
-avaliavel e o ponto em que executar se separa de julgar.}
-\caption{Overview of the study. Execution (baseline and 18 mutants) produces
-one log; the five oracles read the log afterwards; the evaluable set is derived
-from the baseline alone and restricts every denominator.}
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[
+  font=\footnotesize,
+  node distance=4mm,
+  box/.style={draw, rounded corners=1.5pt, align=center, inner sep=3pt, minimum height=6mm},
+  wide/.style={box, text width=54mm},
+  half/.style={box, text width=25mm},
+  flow/.style={-{Latex[length=1.6mm]}, thick}
+]
+\node[wide] (base) {Baseline: 30 cases $\times$ $N_b = 10$};
+\node[wide, below=of base] (mut) {18 mutants: 30 cases $\times$ $N_m = 5$};
+\node[wide, below=of mut, fill=black!5] (log)
+  {Execution log: 3{,}000 invocations\\[1pt]
+   \scriptsize question, retrieved chunks, answer, tokens, GPU-s, Wh};
+\node[half, below left=9mm and 1mm of log] (cheap)
+  {O1 cosine\\ O2 assertions\\ O5 conjunction\\[1pt] \scriptsize per run};
+\node[half, below right=9mm and 1mm of log] (exp)
+  {O3 metric bundle\\ O4 judge\\[1pt] \scriptsize on the modal answer};
+\node[wide, below=9mm of log |- cheap.south] (verd)
+  {Verdicts, per oracle and per rigour level};
+\node[wide, below=of verd] (ana)
+  {RQ1 adequacy \quad RQ2 oracle bias \quad RQ3 cost};
+\node[box, dashed, text width=27mm, right=4mm of mut] (S)
+  {$\Sset_o$\\[1pt] \scriptsize the cases the baseline answers stably and
+   correctly: the denominator of every research question};
+\draw[flow] (base) -- (mut);
+\draw[flow] (mut) -- (log);
+\draw[flow] (log) -- (cheap);
+\draw[flow] (log) -- (exp);
+\draw[flow] (cheap) -- (verd);
+\draw[flow] (exp) -- (verd);
+\draw[flow] (verd) -- (ana);
+\draw[flow, dashed] (base) -| (S);
+\draw[flow, dashed] (S) -| (ana);
+\begin{scope}[on background layer]
+  \node[fit=(base)(mut)(log), draw=black!40, rounded corners=2pt, inner sep=4pt] (exec) {};
+  \node[fit=(cheap)(exp)(verd), draw=black!40, rounded corners=2pt, inner sep=4pt] (judge) {};
+\end{scope}
+\node[font=\scriptsize\itshape, anchor=north west] at (exec.north west) {\ execute};
+\node[font=\scriptsize\itshape, anchor=north west] at (judge.north west) {\ judge};
+\end{tikzpicture}%
+}
+\caption{Overview of the study. Execution produces one log and stops there; the
+oracles read that log afterwards, which is what makes re-judging free and makes
+a change of threshold, of judge or of rigour level reproducible without running
+the assistant again. The evaluable set $\Sset_o$ comes from the baseline alone
+and restricts every denominator.}
 \label{fig:overview}
 \end{figure}
 
@@ -549,7 +606,7 @@ FastAPI                   & backend                   & 0.115.6 \\
 Python                    & SUT and harness           & 3.12.7 \\
 Context window            & \code{num\_ctx}, sized per configuration & 11,264 (baseline) to 23,552 (R2) \\
 Generation cap            & \code{num\_predict}    & 4,096 \\
-System under test         & git commit                & \todo{hash do commit da campanha} \\
+System under test         & git commit                & \code{e7895d8} \\
 \bottomrule
 \end{tabular*}
 \end{table}
@@ -754,7 +811,10 @@ that PIT reports on Defects4J, which had the highest similarity of the whole
 suite (0.656) because the primary document is about PIT, Defects4J and
 surviving mutants: the value is absent, the topic is densely covered. That
 question and two others were replaced by questions further from the corpus,
-and \todo{N} of the 8 negatives still clear the floor. In a topically
+and 6 of the 8 negatives still clear it: the five out-of-corpus questions
+retrieve four chunks each (best similarity between 0.486 and 0.608) and so
+does one of the three out-of-scope questions; only two out-of-scope questions,
+which name no object of the corpus at all, retrieve nothing. In a topically
 homogeneous corpus a global similarity floor does not separate ``covered'' from
 ``not covered'', so the out-of-corpus class exercises the abstention
 instruction (P2) far more than the relevance floor (R4). We return to this in
@@ -1308,8 +1368,9 @@ date and author recorded in the versioned file --- before any campaign result
 was read; a cause that fits no code is recorded as \textsc{other}, and a high
 proportion of \textsc{other} is a result to report, not a problem to hide,
 because it means the catalogue of causes was incomplete.
-\todo{Registrar a data de congelamento do codebook (campo \code{frozen\_at})
-antes de olhar o primeiro veredito.}
+The codebook was frozen on 21 September 2026, before the first campaign
+invocation and before any verdict of the final baseline was read; the date and
+the author are recorded in the versioned file.
 
 \begin{table}[width=\linewidth,cols=3,pos=h]
 \caption{Codebook for the cause of a kill, with the operators expected to
@@ -1362,7 +1423,7 @@ without a percentile-bootstrap 95\% interval (10,000 resamples, fixed seed).
 For RQ1, the per-operator kill rates are grouped by layer and compared with a
 Kruskal--Wallis test, with $\eta^2$ as effect size and Dunn's post-hoc
 comparisons under Holm's correction~\cite{holm1979simple}. For RQ2, the binary
-verdicts of the five oracles on the same (mutant, case) pairs are compared with
+verdicts of the oracles on the same (mutant, case) pairs are compared with
 Cochran's $Q$~\cite{cochran1950comparison}, followed by pairwise McNemar tests
 under Holm's correction, and their agreement is summarised by Fleiss' $\kappa$
 and by pairwise Cohen's $\kappa$; disagreement is also broken down by test
@@ -1435,8 +1496,17 @@ repetitions in a fixed order therefore sample two states. The order of cases
 is now shuffled per repetition (Section~\ref{sec:execution}), the baseline
 was run a third time under that rule, and the fixed-order baseline is kept
 in the package so that the two estimates of stability can be compared.
-\todo{|S| por oraculo no baseline v3 (ordem embaralhada) ao lado do v2;
-comentar a diferenca.}
+The two baselines give evaluable sets of almost the same size ---
+26/22/20/20 under O1/O4/O2/O5 with the shuffled order, against 25/23/21/21
+with the fixed one --- but the difference is in \emph{which} cases, and each
+of the three that moved is instructive. Under the similarity oracle the
+shuffled order gains one ambiguous case whose baseline answer became stable;
+under the judge it loses one case that now fails stably, for a wrong value the
+judge names; and under the assertions it loses one out-of-corpus case in which
+a single run out of ten answered with the abstention phrase plus a 61-word
+explanation, one word over the length bound. That last one is the point: in the
+fixed order the same case produced the same seven-word abstention ten times,
+and the instability the protocol exists to discount was invisible.
 
 \emph{Page-level retrieval check.} A diagnosis that does not depend on
 generation --- embeddings only --- showed that in ten of the 19 factual cases
@@ -1477,10 +1547,12 @@ context, and a claim about an absent topic contradicts nothing. The reference
 implementation is stricter --- a claim must be \emph{inferable} from the
 context --- but is the one that does not parse. The blind spot is by
 definition, not by model size, and it is a result of RQ2
-(Section~\ref{sec:rq2}). \todo{Decisao pendente e a registrar aqui: (a)
-contingencia pre-registrada, campanha com O1, O2, O4 e O5; (b) novo juiz sem
-modo de raciocinio e novo piloto do backend de referencia; (c) manter O3 via a
-implementacao alternativa e reporta-lo como degenerado.}
+(Section~\ref{sec:rq2}). The pre-registered contingency was applied: the
+campaign ran with four oracles and O3 is reported as a measured blind spot
+rather than as a verdict-producing instrument. Because execution is separated
+from judgement, the choice is reversible without spending GPU time again ---
+the execution log is intact, and an O3 backed by a judge that can sustain the
+metric can be run over it at any time.
 
 \emph{Evaluable set requires a pass.} The refinement of
 Section~\ref{sec:equivalence}. The out-of-corpus case of the pilot received,
@@ -1490,16 +1562,30 @@ WCAG. The case leaves $\Sset_o$ for every oracle. This is not a defect of the
 suite; it is the system violating its own grounding rule before any mutation,
 and the consequence for the design is that the operator which removes the
 abstention instruction (P2) is only observable on cases where the baseline
-abstains. \todo{Decisao pendente: aceitar (os casos saem de S e o artigo
-reporta como achado sobre o SUT) ou afastar as perguntas ``fora do corpus''
-ate o baseline se abster. Rodar o baseline dos 5 casos antes de decidir.}
+abstains. The decision was made with data rather than with preference: the
+five out-of-corpus cases were run first against the corrected baseline, and all
+five abstain with the exact marker in ten runs out of ten. The class stays, and
+P2 and R4 are evaluable. The pilot's fabricated answer was an effect of the
+truncated prompt, not of the questions.
 
-\emph{Cost.} The baseline took 27\,s per invocation with 812 completion
-tokens on average, most of them the reasoning trace the generator emits before
-its answer. The projected campaign is 22.6\,h of wall-clock time and about
-1.1\,kWh, against the 8.5\,h estimated in the protocol; the pre-registered
-schedule rule (drop the five cuttable operators, or reduce the suite to 20
-cases) was \todo{applied / not applied}.
+\emph{Cost and schedule.} The protocol estimated 8.5 hours of wall-clock
+time for the campaign. The pilot projected 22.6 and the campaign took 33.9,
+because the generator emits a reasoning trace before every answer and because
+the two operators that widen the context (K2, R2) push the model past what
+fits in the GPU's memory. The pre-registered schedule rule --- drop the five
+cuttable operators, or reduce the suite to 20 cases --- was \textbf{not
+applied}: the full 18 $\times$ 30 $\times$ 5 design ran, over three nights,
+and the cost is reported as a result rather than absorbed as a cut.
+
+\emph{Generation cap.} Forty-one invocations of the campaign (1.5\%) spent
+the whole generation budget of 4,096 tokens on the reasoning trace and returned
+an empty answer. They are recorded as errors, excluded from the verdicts ---
+failing them would attribute to the mutant an effect of our own cap --- and
+re-executed once by an explicit retry pass, after which all completed. The
+retry is a deviation worth naming: it re-runs only what failed, so if capping
+were correlated with a mutant's effect the procedure would bias against
+detecting it. The 41 concentrate in three cases (c02, c06, c14) across nine
+mutants, and c14 is outside $\Sset_o$ for every oracle in any case.
 
 % =====================================================================
 \section{Results}
@@ -1636,7 +1722,11 @@ Section~\ref{sec:instrumentation} seen from the other side: there the floor
 failed to reject a question it should have rejected; here it rejects the
 evidence it should have kept. A global similarity floor is fragile in both
 directions, and the fragility appears only when something apparently unrelated
-to it changes.
+to it changes. It belongs to the family of data properties that are invisible
+until an instrument is built to look for them --- the same argument
+d'Aloisio et al.~\cite{daloisio2025bias} make for bias symptoms in training
+datasets --- and, like those, it is cheap to measure once and expensive to
+discover in production.
 
 \subsection{RQ2 --- Oracle bias}
 \label{sec:rq2}
@@ -1781,10 +1871,16 @@ Figura F4 (dois painéis, detecção e custo por nível) já é gerada por
 \subsection{Coherence of the observed kills}
 \label{sec:coherenceresults}
 
-\todo{Tabela T4: distribuicao dos codigos por operador; fracao de mortes
-coerentes; proporcao de OTHER; kappa intra-avaliador (e inter, se houver).
-Texto: quais operadores matam pelo motivo errado; se P4 aparece como perda de
-estabilidade e nao como morte coerente (o controle do protocolo).}
+The campaign produced \textbf{80 kills} --- (mutant, case) pairs that fail
+under at least one oracle while inside that oracle's evaluable set --- and each
+is classified against the codebook frozen before the campaign
+(Table~\ref{tab:codebook}).
+\todo{Depois da classificacao: distribuicao dos codigos por operador; fracao
+de mortes coerentes por oraculo (MS coerente, hoje zerado nas tabelas);
+proporcao de OTHER; kappa intra-avaliador sobre 30\% reclassificados as cegas.
+Texto: quais operadores matam pelo motivo errado, e se P4 --- o operador de
+controle, que injeta variancia e nao defeito --- aparece como perda de
+estabilidade e nao como morte coerente.}
 
 % =====================================================================
 \section{Discussion}
@@ -1792,10 +1888,12 @@ estabilidade e nao como morte coerente (o controle do protocolo).}
 
 \subsection{An adequacy score is a property of the pair (suite, oracle)}
 
-\todo{Abrir com o swing observado.} Before any campaign number, the calibration
-already shows that the same suite, over the same artefacts, would report
-different adequacy under O1 and O4 for every mutant that changes a value: O1
-cannot fail a wrong number and O4 fails it on every control. A mutation score
+The same suite, the same 3,000 invocations, the same 342 (mutant, case) pairs:
+a mutation score of 0.722 if the verdict comes from cosine similarity and 0.944
+if it comes from deterministic assertions. Twenty-two points of adequacy are a
+property of the instrument, not of the assistant, and the direction was
+predicted by the calibration before the campaign ran --- O1 cannot fail a wrong
+number, and the judge fails it on every control. A mutation score
 for a RAG assistant reported without the oracle that produced it is not
 interpretable, and we suggest that studies of LLM-based systems report
 adequacy per oracle as a matter of course, as program-repair studies have begun
@@ -1876,7 +1974,14 @@ itself.
 
 \subsection{Cost, and where it goes}
 
-\todo{Completar com T5.} One observation is already fixed by the pilot: with a
+A killed mutant cost 63 watt-hours under the deterministic assertions and 83
+under cosine similarity --- the same execution, four fewer mutants detected.
+The judge adds 9\% to the campaign's energy and finds two mutants the
+similarity oracle misses, which on this corpus is the best marginal return of
+the three. But the comparison that matters to a practitioner is not between
+oracles: it is that 1.08 kWh bought an adequacy estimate for one suite against
+one assistant, and that repeating the campaign after any change to the corpus,
+the chunking or the model costs the same again. With a
 generator that emits a reasoning trace, the cost of the system under test
 dominates the cost of every oracle, judge included. The protocol's expectation
 that O4 would be the expensive oracle and O1 the cheap one remains true
@@ -1887,11 +1992,26 @@ measures.
 
 \subsection{Which layers the suite does not see}
 
-\todo{Depende da campanha. Se H1 se sustentar: por que uma suite que julga a
-resposta nao ve a recuperacao, e o que uma assertiva sobre o contexto
-recuperado custaria. Se nao: quais operadores de recuperacao foram mortos e
-por qual oraculo. Relacionar com a lista de Barnett et al. (FP1--FP4) e com o
-caso de C2/E2 observado em operacao~\cite{oliveira2026sast}.}
+The hypothesis we registered --- that surviving mutants would concentrate in
+the data and retrieval layers --- is not what the campaign shows. Seventeen of
+eighteen mutants die, the layers do not separate, and the single survivor is
+explained by the corpus rather than by the suite. The result that replaces it
+is about \emph{how thinly} the suite detects: the median operator is caught by
+2.5 of 20 cases, and a defect at FP1 or FP2 becomes visible only through the
+cases whose evidence it happens to touch. C1 removes the primary document
+altogether: four cases were designed to catch it and eight notice. C2 replaces
+that same document with a superseded version and \emph{one} case notices,
+because only one asks for a value on which the two versions disagree. The
+assistant we studied in production~\cite{oliveira2026sast} failed in exactly
+the second way --- a regulatory document updated at the source and left indexed
+in its previous version --- and a suite of this shape had one case in twenty
+that could have seen it.
+
+This is the practical reading of RQ1, and it does not depend on the layer
+comparison: a mutation score near one can coexist with a suite that detects
+each data-layer defect through a single question. Reporting the kill rate next
+to the score is what makes the difference visible, and it costs nothing --- the
+denominator is already there.
 
 % =====================================================================
 \section{Threats to Validity}
@@ -1985,12 +2105,15 @@ structure before being run on the campaign.
 \section{Conclusion}
 \label{sec:conclusion}
 
-\todo{Escrever depois da campanha. Estrutura: (i) a pergunta --- que camadas
-uma suite tipica nao ve; (ii) a resposta da RQ1 em uma frase com numero; (iii)
-o resultado da RQ2: o swing observado e as duas inversoes estabelecidas antes
-da campanha; (iv) o custo por mutante morto e o que L2 compra sobre L1; (v) o
-que fica para quem replica: catalogo, criterio de adequacao do corpus,
-conjunto avaliavel, e a regra de reportar adequacao por oraculo.}
+We asked which layers of a RAG pipeline produce defects that a representative
+test suite fails to detect, how much of the answer depends on the oracle, and
+what the rigour costs. Over 3,000 invocations of an open-source
+software-engineering assistant, mutated by 18 operators spanning corpus,
+chunking, indexing, retrieval and prompt, the suite killed 17 of the 18
+mutants --- and detected the median one through 2.5 of its 20 evaluable cases.
+Adequacy near one and detection that thin are not a contradiction: they are
+what a mutation score hides when it is reported without the kill rate beside
+it.
 
 Mutation testing can be transposed to retrieval-augmented assistants, but not
 by analogy. The operators have to act on the corpus, the chunking, the index
@@ -2001,8 +2124,13 @@ kill can be attributed. What the transposition then reveals is that the
 number depends on who is asked: the oracle that practitioners deploy most
 widely cannot see a wrong number in a correct sentence, and the metric that
 the field treats as standard cannot see a fabrication about a topic the
-context does not contain. \todo{Ultima frase: o que a campanha mostrou que a
-suite nao ve.}
+context does not contain. What the campaign adds is that this is not a
+tie-breaker between instruments but a 22-point difference in the headline
+number, with the cheapest instrument strictly dominated by the one that costs
+nothing to run. A practitioner who measures the adequacy of a RAG suite with
+cosine similarity to a reference is measuring topical proximity, and the number
+they obtain is not the number a colleague with assertions would obtain over the
+same log.
 
 % =====================================================================
 \section*{Declaration of generative AI and AI-assisted technologies in the writing process}
@@ -2049,6 +2177,6 @@ no Zenodo com DOI ate a semana 12.}
 
 % =====================================================================
 \bibliographystyle{elsarticle-num}
-\bibliography{references}   % <- trocar pelo nome do .bib no projeto do Overleaf
+\bibliography{refes}
 
 \end{document}

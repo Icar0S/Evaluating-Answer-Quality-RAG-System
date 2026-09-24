@@ -21,7 +21,7 @@ justificar para um revisor.
 | 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | **concluída** — τ* = 0,60, e a calibração virou resultado (§4.7) |
 | 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída** — 18/18 revertem sem resíduo E injetam o defeito declarado (§3.5) |
 | 5 | O3, O4, O5 prontos; `run_campaign.py` validado | **concluída** — O4 estável; O3 inviável com juízes locais (§4.9); três decisões abertas (§6) |
-| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — baseline v3 fechado (|S| = 26/22/20/20, portão verde); **campanha concluída** 23/09: 3.000 invocações, 0 erros, MS = 0,944, swing de 22,2 pontos (§3.10) |
+| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — baseline v3 fechado (|S| = 26/22/20/20, portão verde); **campanha concluída** 23/09 (§3.10); artigo fechado nos dados (§3.11) |
 | 7–13 | Coerência, RQ3, escrita, submissão | não iniciadas |
 
 O cronograma está **adiantado**: o portão GO/NO-GO da semana 4 fechou junto com a
@@ -595,6 +595,40 @@ interativo por desenho — o codebook está congelado desde 21/09 e a causa é
 julgamento do pesquisador, não do juiz. Sem ela, MS_coerente sai zerado (é o
 que as tabelas mostram hoje) e a comparação "morte" vs. "morte pelo defeito
 injetado" — o ponto do §7.4 — fica em aberto.
+
+### 3.11 Artigo fechado nos dados (23/09, noite)
+
+`docs/paper/main.tex` (2.181 linhas) passou de rascunho a artigo com resultados.
+O que entrou nesta passada, tudo com número medido:
+
+- **Abstract** Results e Conclusion escritos; Methods corrigido (o O3 saiu da
+  campanha, então "cinco oráculos" virou "os oráculos", com a retirada
+  declarada como resultado). Três **highlights** de até 85 caracteres.
+- **Figura 1** desenhada em TikZ: baseline → mutantes → log → oráculos →
+  vereditos → RQs, com a caixa de $S_o$ tracejada e as duas molduras
+  *execute* / *judge*. Envolvida em `esizebox{\columnwidth}` para caber na
+  coluna do `cas-dc`.
+- **§3.2** commit do SUT da campanha (`e7895d8`) na tabela de versões.
+- **§3.5** quantos negativos passam do piso: **6 dos 8** (os cinco fora do
+  corpus mais um fora de escopo; só dois não recuperam nada).
+- **§6.5** data do congelamento do codebook (21/09).
+- **§6.7** as três decisões pendentes viraram texto: O3 retirado pela
+  contingência, classe de abstenção mantida (10/10 abstêm), regra de corte
+  **não** aplicada. Mais dois desvios novos: o teto de geração (41 invocações,
+  1,5%, com o viés do retry declarado) e a comparação v2/v3 do \|S\|.
+- **§7.1–§7.4** escritos com os dados (ver §3.10).
+- **§8** três subseções fechadas: a abertura com o swing, o custo por mutante
+  morto, e "que camadas a suíte não vê" — que virou o contrário do previsto e
+  ficou mais forte: a suíte mata quase tudo e detecta **fininho**, e C2 (a
+  falha que vimos em produção) é notada por **um caso em vinte**.
+- **§10** conclusão escrita.
+- Bibliografia apontando para `refes.bib` (32 entradas, todas as 28 citadas
+  existem). Citação nova de d'Aloisio et al. (IST 2025) onde o achado do piso
+  encontra o paralelo metodológico deles.
+
+Restam **5 `	odo`**, todos por dependência externa: L1/L3 (rodando), a
+classificação de coerência (sua), financiamento, DOI do Zenodo e
+agradecimentos.
 
 ---
 
