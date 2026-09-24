@@ -10,8 +10,8 @@ Os logs em si **não são versionados** (`.gitignore`: `tests/mutation/results/*
 são grandes e regeneráveis pelos comandos do README. O que o repositório versiona é
 este índice, com os hashes, mais o código, a configuração, a suíte e a calibração.
 
-Gerado em 2026-09-22T10:53
-com o repositório em `6d6aba8`.
+Gerado em 2026-09-23T22:29
+com o repositório em `1b154e9`.
 
 ## `pilot/runs.jsonl`
 
@@ -59,9 +59,9 @@ com o repositório em `6d6aba8`.
 - **Código:** `4590c49`  
 - **O que é:** Baseline v3 (ordem embaralhada por repetição) e, na sequência, a campanha dos 18 mutantes.  
 - **Estado:** Baseline v3 COMPLETO (300 invocações, 0 erros depois do retry) e portão verde: |S| = O1 26, O4 22, O2 20, O5 20. Campanha dos 18 mutantes em curso desde 22/09 10:51. Três anomalias tratadas: `baseline-c18-r1` atravessou uma suspensão da máquina (26.463 s e 58,4 Wh — custo inválido, resposta válida); execuções de c14 bateram o teto de geração com resposta vazia (4 dentro das 5 repetições do nível L2) e ficam fora dos vereditos; `baseline-c23-r10` recebeu 500 do servidor quando outra aplicação tomou a VRAM, foi removida com `--retry-errors` e refeita.  
-- **Conteúdo:** {'linhas': 306, 'casos': 30, 'mutantes': 2, 'erros': 0, 'wall_mediana_s': 22.5, 'wh_total': 182.7}  
-- **sha256 (runs):** `9c0cf70bc9f0b1ac305d8239c5e74683e90b79603120bb9f5d83b861bb274710`  
-- **Vereditos:** `verdicts.jsonl`, 240 linhas, sha256 `1e9b7df6eaa8cf61d9c39ab78b5aecb299e6ca2e251d192135b011e2c5607659`  
+- **Conteúdo:** {'linhas': 3000, 'casos': 30, 'mutantes': 19, 'erros': 0, 'wall_mediana_s': 22.3, 'wh_total': 1139.8}  
+- **sha256 (runs):** `fdbff1dab640ffd28845fe49b80d66a3e378485d1f81b505f6e3085de45880d7`  
+- **Vereditos:** `verdicts.jsonl`, 2400 linhas, sha256 `6f740304fb954b3df6501867d28b27e408d56dc920ef78a945b6c62cd92b4b46`  
 
 ## Como refazer cada um
 

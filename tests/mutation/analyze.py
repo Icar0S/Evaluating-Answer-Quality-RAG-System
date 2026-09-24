@@ -101,7 +101,16 @@ class Dataset:
 
 def load_dataset(level: str) -> Dataset:
     runs = jsonl.read(paths.RUNS_JSONL)
-    verdicts = [v for v in jsonl.read(paths.VERDICTS_JSONL) if v.get("level", "L2") == level]
+    # `verdicts.jsonl` é append-only: reavaliar com --force acrescenta um registro
+    # novo em vez de substituir o antigo (o log é trilha de auditoria). Aqui fica
+    # valendo o ÚLTIMO veredito de cada (mutante, caso, oráculo) — o mais recente
+    # é o que foi calculado com os instrumentos atuais.
+    deduplicated: dict[tuple[str, str, str], dict] = {}
+    for record in jsonl.read(paths.VERDICTS_JSONL):
+        if record.get("level", "L2") != level:
+            continue
+        deduplicated[(record["mutant_id"], record["case_id"], record["oracle"])] = record
+    verdicts = list(deduplicated.values())
     if not verdicts:
         raise SystemExit(
             f"Nenhum veredito no nível {level} em {paths.VERDICTS_JSONL.name}. "

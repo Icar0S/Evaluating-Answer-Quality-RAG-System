@@ -2,7 +2,7 @@
 
 **Artigo:** *Mutation-Based Adequacy Assessment of Test Suites for Retrieval-Augmented Assistants*
 **Destino:** Information and Software Technology, special issue VSI:EQUISA · submissão 13/12/2026
-**Branch:** `journal-ist` · **Última atualização:** 21/09/2026 (semana 6 em curso — baseline v3 e campanha rodando; proveniência dos logs indexada)
+**Branch:** `journal-ist` · **Última atualização:** 23/09/2026 (semana 6 concluída — campanha e vereditos L2 prontos; falta a classificação de coerência)
 
 Este documento registra o que foi construído e executado até aqui, as decisões de
 projeto com suas razões, e o que já dá para escrever do artigo. Ele existe porque
@@ -21,7 +21,7 @@ justificar para um revisor.
 | 3 | `calibration/` gerado; τ* calibrado; O1 e O2 prontos | **concluída** — τ* = 0,60, e a calibração virou resultado (§4.7) |
 | 4 | `apply.py` + catálogo testado (GO/NO-GO) | **concluída** — 18/18 revertem sem resíduo E injetam o defeito declarado (§3.5) |
 | 5 | O3, O4, O5 prontos; `run_campaign.py` validado | **concluída** — O4 estável; O3 inviável com juízes locais (§4.9); três decisões abertas (§6) |
-| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — baseline v3 fechado (|S| = 26/22/20/20, portão verde); campanha dos 18 mutantes desde 22/09 10:51, 21% em 16:45 |
+| 6 | Baseline (300 inv.) + campanha (2.700 inv.) | **em curso** — baseline v3 fechado (|S| = 26/22/20/20, portão verde); **campanha concluída** 23/09: 3.000 invocações, 0 erros, MS = 0,944, swing de 22,2 pontos (§3.10) |
 | 7–13 | Coerência, RQ3, escrita, submissão | não iniciadas |
 
 O cronograma está **adiantado**: o portão GO/NO-GO da semana 4 fechou junto com a
@@ -536,6 +536,65 @@ forte: é o mesmo defeito do §4.2 visto do outro lado — lá o piso não barra
 pergunta fora do corpus, aqui barra evidência legítima. **Um piso global de
 similaridade é frágil nas duas direções**, e a fragilidade só aparece quando se
 muda uma peça que parece não ter relação com ele.
+
+### 3.10 Campanha concluída — os resultados (23/09)
+
+3.000 invocações no log final, **zero erros**: 300 de baseline e 2.700 de
+mutantes, entre 21 e 23/09. A campanha levou 33,9 h de parede, 13,6 milhões de
+tokens, 47.326 GPU-s e **1,08 kWh** medidos. Vereditos L2 calculados para os
+quatro oráculos (2.160 novos).
+
+**RQ1.** A suíte mata **17 dos 18 mutantes** sob O5 (MS = 0,944 [0,742;
+0,990]). O único sobrevivente é **R4**, e pelo motivo que já sabíamos: seus
+cinco alvos são as perguntas "fora do corpus", que num corpus homogêneo ficam
+acima de qualquer piso — tirar o piso não muda nada. É mutante equivalente
+*neste corpus*, não lacuna da suíte.
+
+O número que importa é a **taxa de morte**, não o escore: o operador mediano é
+detectado por **2,5 dos 20 casos avaliáveis**. Só três passam de um terço da
+suíte: P2 (0,450), C1 (0,400) e R1 (0,400). Por camada: índice 0,225, prompt
+0,200, recuperação 0,163, corpus 0,150, chunking 0,150 — **Kruskal-Wallis
+H = 1,368, p = 0,850**, nenhum par sobrevive a Holm. **H1 não se sustenta**, e
+a leitura honesta é que com no máximo quatro operadores por camada o teste não
+tem poder para separá-las.
+
+**RQ2 — o resultado mais forte.** Sobre os 342 pares avaliáveis nos quatro
+oráculos: Cochran's Q = 58,62 (p = 1,2 × 10⁻¹²), Fleiss' κ = 0,681, e **swing
+de 22,2 pontos** no escore de mutação (0,722 do cosseno contra 0,944 das
+assertivas). É a mesma ordem dos 20 pontos que Bonfim e Teixeira reportam para
+validadores de reparo de programa, o que sugere propriedade da avaliação por
+referência, não deste pipeline.
+
+E há algo mais forte que o swing: em **32 pares** as assertivas reprovam onde o
+cosseno aprova, e em **zero** o contrário (McNemar, p < 10⁻⁴ com Holm). **O1 é
+estritamente dominado por O2** — e portanto O5 = O1 ∧ O2 é *idêntico* a O2 nos
+342 pares: o componente de similaridade nunca contribui um veredito. A forma
+prática que um praticante adota depois do primeiro falso positivo do cosseno
+é, neste corpus, as assertivas sozinhas.
+
+O juiz fica no meio sem ser versão fraca de nenhum: reprova 4 pares que as
+assertivas aprovam e aprova 22 que elas reprovam (p = 0,002). Lendo os 22: a
+assertiva exige o valor literal e o juiz aceita o valor em outra forma, ou
+tolera a omissão de um segundo número menos central.
+
+Divergência por classe: rastreabilidade 0,222 > fora de escopo 0,167 > fato
+distribuído 0,148 > fato direto 0,125 > filtro condicional 0,083 > fora do
+corpus 0,056. **H2 metade**: acertamos rastreabilidade, erramos abstenção — é
+justamente a classe onde os oráculos mais concordam, porque a frase fixa de
+abstenção é a propriedade de superfície que assertiva, cosseno e juiz leem
+igual.
+
+**RQ3 (parcial).** Custo por mutante morto: 63,5 Wh sob O2/O5, 83,0 Wh sob O1
+(que mata quatro a menos pela mesma execução), 73,5 Wh sob O4. O juiz custa
+11.109 s e 98 Wh próprios — 9% sobre o custo do SUT — pelos dois mutantes que o
+cosseno não vê. Faltam L1 e L3, rodando.
+
+**O que falta, e é seu:** a classificação de coerência (§7.4) de **80 pares
+(mutante, caso)** que reprovam dentro de S. `coherence --classify` é
+interativo por desenho — o codebook está congelado desde 21/09 e a causa é
+julgamento do pesquisador, não do juiz. Sem ela, MS_coerente sai zerado (é o
+que as tabelas mostram hoje) e a comparação "morte" vs. "morte pelo defeito
+injetado" — o ponto do §7.4 — fica em aberto.
 
 ---
 

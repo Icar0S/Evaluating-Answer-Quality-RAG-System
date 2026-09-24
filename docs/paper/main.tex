@@ -1513,49 +1513,137 @@ cases) was \todo{applied / not applied}.
 \subsection{The evaluable set}
 \label{sec:evaluable}
 
-\todo{Tabela T0: $|\Sset_o|$ por oraculo, com o numero de casos instaveis no
-baseline e o de casos estavelmente reprovados, separados. Texto: quanto da
-suite cada oraculo consegue medir; se algum oraculo perde uma classe inteira
-(esperado: a classe ``fora do corpus'' sob todos os oraculos se o baseline
-alucinar, cf. Secao~\ref{sec:pilot}).}
+The campaign is 3,000 invocations of the assistant: 300 of the unmutated
+baseline (30 cases $\times$ 10 repetitions) and 2,700 of the mutants (18
+$\times$ 30 $\times$ 5), executed between 21 and 23 September 2026 with no
+failed invocation in the final log. Table~\ref{tab:evaluable} reports, per
+oracle, how much of the suite the protocol can measure at all.
 
-\todo{Custo unitario do baseline v3 (s, tokens, GPU-s, Wh por invocacao;
-total) e |S| por oraculo (T0), com instaveis e estavelmente reprovados
-separados; comparar com o v2 (ordem fixa): O1 25, O4 23, O2 21, O5 21.} For the record, the truncated first baseline had
-$|\Sset_{O1}| = 23$, $|\Sset_{O4}| = 11$ and $|\Sset_{O2}| = |\Sset_{O5}| =
-6$ on the same 300 runs: a 17-case gap between the similarity oracle and the
-deterministic one before any mutant existed, in the direction the calibration
-of Section~\ref{sec:calibration} predicts --- O1 accepted answers that stated
-the wrong value or none. \todo{Confirmar a direcao e o tamanho da lacuna no
-v2.}
+\begin{table}[width=\linewidth,cols=5,pos=h]
+\caption{Evaluable set per oracle. A case leaves $\Sset_o$ either because the
+baseline verdict is unstable across its ten runs, or because it is stably
+\fail{} on the unmutated system.}
+\label{tab:evaluable}
+\begin{tabular*}{\tblwidth}{@{} LCCCC @{}}
+\toprule
+Oracle & $|\Sset_o|$ & Unstable & Stably \fail{} & Flakiness [95\% CI] \\
+\midrule
+O1 cosine     & 26 & 1 & 3 & 0.033 [0.006; 0.167] \\
+O2 assertions & 20 & 3 & 7 & 0.100 [0.035; 0.256] \\
+O4 judge      & 22 & 0 & 8 & 0.000 [0.000; 0.114] \\
+O5 conjunction& 20 & 3 & 7 & 0.100 [0.035; 0.256] \\
+\bottomrule
+\end{tabular*}
+\end{table}
 
-Two facts about the evaluable set are already known from the pilot and are
-confirmed or revised here. First, the case on which the unmutated system
-fabricated a figure about an absent topic leaves $\Sset_o$ for every oracle,
-which is the intended behaviour of Eq.~\eqref{eq:evaluable}: the exclusion
-records a property of the system, not of the suite. Second, one distributed
-fact case fails stably in the baseline for a reason the reference makes
-explicit --- the question asks \emph{which} mutants and the system answers with
-categories of weakness without naming one --- and it too is excluded, on
-merit. \todo{Quantos dos 5 casos ``fora do corpus'' sobrevivem em S; se P2
-ficou sem caso avaliavel, dizer aqui e tratar na Secao~\ref{sec:discussion}.}
+Three readings matter. First, the four oracles disagree about what is
+measurable before they judge a single mutant: the similarity oracle keeps 26 of
+the 30 cases and the deterministic one keeps 20, because a stricter oracle
+fails more cases on the unmutated system. A study that reported adequacy
+without reporting $|\Sset_o|$ would be comparing scores computed on different
+denominators.
+
+Second, the residual instability of the system under test is small but not
+zero, and it is oracle-dependent: one case for O1, three for O2 and O5, none
+for O4. The judge's zero is a property of the judge, not of the assistant ---
+it aggregates the modal answer, so it sees a single text per pair and cannot
+observe variation that the per-run oracles do observe.
+
+Third, the cases that fail stably on the baseline fail for reasons we can name,
+and naming them is what keeps the exclusion honest: three retrieve the right
+document but not the page holding the evidence, one asks about a table with
+nine near-identical siblings in the same document, one is answered
+incompletely, three ask an ambiguous question and receive an abstention instead
+of a request for clarification --- the assistant's prompt has no clarification
+rule --- and one copies the example given in the citation rule instead of the
+document's name. None is a defect the campaign injected; all are properties of
+the assistant or of the suite, established before any mutant ran.
 
 \subsection{RQ1 --- Adequacy by layer}
 \label{sec:rq1}
 
-\todo{Tabela T1: taxa de morte por operador sob o oraculo primario (O5), com IC
-de Wilson; coluna de morte coerente. Tabela T2: mortes e mortes coerentes por
-camada; Kruskal--Wallis com $\eta^2$; Dunn com Holm (T2b). Figura F1: taxa de
-morte por camada, uma barra por operador, IC como whisker. Texto: quais
-operadores sobrevivem, em que camada se concentram, e se H1 se sustenta. Tratar
-C4 (um caso) e P4 (controle) separadamente.}
+Under the primary oracle, the suite kills 17 of the 18 mutants
+($\MS_{O5} = 0.944$, 95\% CI [0.742; 0.990]). The single survivor is R4, the
+operator that removes the retrieval relevance floor.
+
+The mutation score, however, is the least informative number in
+Table~\ref{tab:killrate}. What the kill \emph{rate} shows is that the suite
+detects each defect through very few of its cases: the median operator is
+killed by 2.5 of the 20 evaluable cases, and only three operators --- P2
+(abstention rule removed, 0.450), C1 (primary document removed, 0.400) and R1
+(top-$k$ reduced to one, 0.400) --- are detected by more than a third of the
+suite. A defect injected into the corpus or the index is visible to a suite
+that judges answers only through the cases whose evidence it happens to touch.
+
+\begin{table}[width=\linewidth,cols=4,pos=h]
+\caption{Kill rate per operator under O5, over the 20 evaluable cases, with
+Wilson 95\% confidence intervals.}
+\label{tab:killrate}
+\begin{tabular*}{\tblwidth}{@{} LLCL @{}}
+\toprule
+Op. & Layer & Cases & Kill rate [95\% CI] \\
+\midrule
+P2 & prompt    & 9 & 0.450 [0.258; 0.658] \\
+C1 & corpus    & 8 & 0.400 [0.219; 0.613] \\
+R1 & retrieval & 8 & 0.400 [0.219; 0.613] \\
+E1 & index     & 6 & 0.300 [0.145; 0.519] \\
+K4 & chunking  & 5 & 0.250 [0.112; 0.469] \\
+K2 & chunking  & 4 & 0.200 [0.081; 0.416] \\
+P3 & prompt    & 4 & 0.200 [0.081; 0.416] \\
+E2 & index     & 3 & 0.150 [0.052; 0.360] \\
+R2 & retrieval & 3 & 0.150 [0.052; 0.360] \\
+C3 & corpus    & 2 & 0.100 [0.028; 0.301] \\
+K1 & chunking  & 2 & 0.100 [0.028; 0.301] \\
+P1 & prompt    & 2 & 0.100 [0.028; 0.301] \\
+R3 & retrieval & 2 & 0.100 [0.028; 0.301] \\
+C2 & corpus    & 1 & 0.050 [0.009; 0.236] \\
+C4 & corpus    & 1 & 0.050 [0.009; 0.236] \\
+K3 & chunking  & 1 & 0.050 [0.009; 0.236] \\
+P4 & prompt    & 1 & 0.050 [0.009; 0.236] \\
+R4 & retrieval & 0 & 0.000 [0.000; 0.161] \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+Grouped by layer, the kill rates do not differ: index 0.225, prompt 0.200,
+retrieval 0.163, corpus 0.150, chunking 0.150, with Kruskal--Wallis
+$H = 1.368$, $p = 0.850$ over five groups of four operators or fewer, and no
+pairwise comparison surviving Holm's correction. \textbf{H1 is not supported};
+with at most four operators per layer the test has little power, so the honest
+reading is that this design cannot separate the layers, not that the layers are
+equivalent.
+
+Two operators deserve their own account, because in both the number hides the
+mechanism.
+
+\emph{R4 survives for a reason the corpus explains.} The five cases that target
+it are the out-of-corpus questions, and Section~\ref{sec:instrumentation}
+already showed that in a topically homogeneous corpus those questions retrieve
+four chunks well above any floor that preserves the legitimate cases. Removing
+the floor therefore changes nothing: the mutant is equivalent \emph{on this
+corpus}, and the survivor is a property of the corpus and of the suite, not a
+gap in the assistant's testing. A study that reported R4 as an undetected
+defect would be reporting an artefact.
+
+\emph{E1 does not degrade retrieval, it stops it.} Swapping the embedding model
+for a smaller one from another family leaves 95 of its 150 invocations with
+\emph{zero} retrieved chunks and a median prompt of 302 tokens, against 4,646
+in the baseline. The cause is the relevance floor: 0.428 was calibrated on the
+similarity scale of one model, and the other model's scale is different. The
+floor is a property of the pair (corpus, embedding model), not of the corpus,
+and a routine model upgrade invalidates it silently. This is the finding of
+Section~\ref{sec:instrumentation} seen from the other side: there the floor
+failed to reject a question it should have rejected; here it rejects the
+evidence it should have kept. A global similarity floor is fragile in both
+directions, and the fragility appears only when something apparently unrelated
+to it changes.
 
 \subsection{RQ2 --- Oracle bias}
 \label{sec:rq2}
 
-Two of the five oracles had their bias established before the campaign, on
-artefacts that do not depend on it. They are reported first because they bound
-what the campaign numbers can mean.
+Two of the oracles had their bias established before the campaign, on artefacts
+that do not depend on it. They are reported first because they bound what the
+campaign numbers can mean.
 
 \paragraph{O1 inverts on the defects that matter most.} On the 247 calibration
 pairs of Section~\ref{sec:calibration}, cosine similarity to the reference
@@ -1565,53 +1653,130 @@ correct paraphrase in 91\% (AUC 0.091); it separates entity substitutions
 (AUC 0.808). The pattern holds on a second embedding model of another family
 (AUC 0.140 and 0.174 for numbers and conditions). Any threshold accepts or
 rejects paraphrases and numeric errors together; at the calibrated
-$\tau^\ast = 0.60$ it accepts both. In the campaign O1 therefore acts as a
-topic detector: it can fail a case whose answer drifted to another subject or
-abstained, and it cannot fail a case whose answer states the wrong value.
+$\tau^\ast = 0.60$ it accepts both.
 
 \paragraph{O3 is blind to fabrication about absent topics.} On the pilot
-artefacts, the faithfulness metric of the RAGAS bundle scored 1.0 for the
-answer that fabricated ``14 success criteria at level AA'' about WCAG with a
-context that does not mention WCAG, under both available implementations and
-under a judge twice the size of the one registered (Section~\ref{sec:pilot}).
-The metric asks whether the answer's claims contradict the context, and a
-claim about a topic the context does not contain contradicts nothing. The
-defect that operator P2 injects --- answering instead of abstaining --- is
-therefore invisible to O3 by definition. \todo{Conforme a decisao sobre O3:
-(a) O3 ausente da campanha, esta subsecao reporta a contingencia; (b)/(c) O3
-presente, reportar seus vereditos com o ponto cego declarado.}
+artefacts, the faithfulness metric of the RAGAS bundle scored 1.0 for an answer
+that fabricated a figure about a topic the retrieved context does not mention,
+under both available implementations and under a judge twice the size of the
+one registered (Section~\ref{sec:pilot}). The metric asks whether the answer's
+claims contradict the context, and a claim about an absent topic contradicts
+nothing. The defect that operator P2 injects --- answering instead of
+abstaining --- is invisible to it by definition. O3 was therefore dropped from
+the campaign under the contingency of Section~\ref{sec:design}, and the
+campaign ran with four oracles.
 
-\paragraph{O4 is stable.} In the pilot the five judgements agreed in every
-pair and every control; the majority vote never had to break a tie. After the
-reference-as-minimum instruction, the judge fails a swapped number and a
-swapped mutator (both with cause \code{wrong\_value}) and passes a
-shorter correct answer. It is the oracle that sees what O1 does not.
+\paragraph{The campaign.} Over the 342 (mutant, case) pairs that are evaluable
+under all four oracles, the four disagree
+(Cochran's $Q = 58.62$, $p = 1.2 \times 10^{-12}$), with Fleiss'
+$\kappa = 0.681$ --- substantial agreement in the usual reading, and still a
+spread of \textbf{22.2 percentage points} in the reported mutation score
+(Table~\ref{tab:oraclebias}). The same suite, the same 3,000 invocations, the
+same artefacts: 0.722 under the cheapest oracle and 0.944 under the
+deterministic one. The swing is of the same order as the twenty points reported
+for program-repair validators~\cite{bonfim2026evaluator} on a different task,
+which suggests the effect is a property of reference-based evaluation rather
+than of this pipeline.
 
-\paragraph{The campaign.} \todo{Tabela T3: $\MS_o$ e $\MS^{\mathrm{coh}}_o$
-por oraculo sobre artefatos identicos, swing, Cochran's $Q$, McNemar par a par
-com Holm (T3b), Fleiss' $\kappa$ e matriz de Cohen (T3c). Tabela T3d:
-divergencia por classe de caso. Figura F2. Texto: o swing observado contra a
-referencia de 20 pontos de H2; onde os oraculos discordam (esperado: abstencao
-e rastreabilidade); se O1 e O4 discordam exatamente nos operadores que trocam
-valores (C2, C4) --- e o teste da inversao em campo.}
+\begin{table}[width=\linewidth,cols=4,pos=h]
+\caption{Adequacy per oracle over identical artefacts. Swing $= \max - \min =
+0.222$.}
+\label{tab:oraclebias}
+\begin{tabular*}{\tblwidth}{@{} LCCL @{}}
+\toprule
+Oracle & $|\Sset_o|$ & Killed & $\MS$ [95\% CI] \\
+\midrule
+O1 cosine      & 26 & 13/18 & 0.722 [0.491; 0.875] \\
+O4 judge       & 22 & 16/18 & 0.889 [0.672; 0.969] \\
+O2 assertions  & 20 & 17/18 & 0.944 [0.742; 0.990] \\
+O5 conjunction & 20 & 17/18 & 0.944 [0.742; 0.990] \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+The pairwise tests say something stronger than the spread. In 32 pairs the
+deterministic oracle fails where the similarity oracle passes, and in
+\textbf{zero} pairs the reverse happens (McNemar, $p < 10^{-4}$ after Holm):
+on this corpus \textbf{O1 is strictly dominated by O2}. The conjunction O5,
+defined as $\mathrm{O1} \wedge \mathrm{O2}$, is therefore identical to O2 on
+every one of the 342 pairs --- its similarity component never contributes a
+verdict. The practical form that a practitioner reaches for after the first
+false pass of a similarity oracle turns out, on this corpus, to be the
+assertions alone.
+
+The judge sits between the two, and not by being a weaker version of either:
+it fails 4 pairs that the assertions pass and passes 22 that they fail
+($p = 0.002$ after Holm). Reading those 22: the assertions require a literal
+value and the judge accepts an answer that states the value in another form or
+omits a second, less central figure. Neither instrument is right in the
+abstract --- they encode different notions of ``correct'', and the notion is
+what a study must declare.
+
+Disagreement is not uniform across the suite
+(Table~\ref{tab:divergence}). It concentrates in traceability
+(0.222 of pairs) and out-of-scope refusal (0.167), and is lowest in the
+out-of-corpus class (0.056), where the abstention marker makes the verdict
+mechanical for every oracle at once. \textbf{H2 is half supported}: we
+predicted abstention and traceability; traceability is confirmed and abstention
+is the class where the oracles agree most, because the assistant's fixed
+abstention phrase is exactly the kind of surface property that a deterministic
+assertion, a similarity score and a judge all read the same way.
+
+\begin{table}[width=\linewidth,cols=3,pos=h]
+\caption{Pairs on which at least two oracles disagree, by equivalence class.}
+\label{tab:divergence}
+\begin{tabular*}{\tblwidth}{@{} LCL @{}}
+\toprule
+Class & Pairs & Divergent [95\% CI] \\
+\midrule
+Traceability       & 54 & 0.222 [0.132; 0.349] \\
+Out of scope       & 54 & 0.167 [0.090; 0.287] \\
+Distributed fact   & 54 & 0.148 [0.077; 0.266] \\
+Direct fact        & 72 & 0.125 [0.067; 0.221] \\
+Conditional filter & 36 & 0.083 [0.029; 0.218] \\
+Out of corpus      & 72 & 0.056 [0.022; 0.134] \\
+\bottomrule
+\end{tabular*}
+\end{table}
 
 \subsection{RQ3 --- Cost of rigour}
 \label{sec:rq3}
 
-The baseline of the pilot fixes the unit cost of the system under test:
-27\,s of wall-clock time per invocation and 812 completion tokens on average,
-of which the answer proper is a small fraction --- the rest is the reasoning
-trace the generator emits before answering. \todo{GPU-s e Wh medidos por
-invocacao no baseline.} At that rate the L2 campaign costs 22.6\,h and about
-1.1\,kWh, against 8.5\,h estimated in the protocol; the difference is entirely
-the reasoning trace, which the protocol's estimate did not anticipate.
+The campaign at the registered level of rigour (L2: five repetitions per pair,
+ten for the baseline, verdict by majority) cost \textbf{33.9 hours} of
+wall-clock time, 13.6 million tokens, 47,326 GPU-seconds and
+\textbf{1.08 kWh} measured per invocation through the GPU's own counters. The
+unit is 27 seconds and 0.36 watt-hours per invocation of the assistant; the
+generator's reasoning trace, which precedes every answer, is most of it.
 
-\todo{Tabela T5: por nivel (L1, L2, L3) e por oraculo, custo total (tempo,
-tokens, GPU-s, Wh), mutantes mortos, custo por mutante morto com IC bootstrap.
-Figura F4: dois paineis, deteccao e custo por nivel, mesma abscissa. Texto: o
-que L2 detecta que L1 nao detecta, e a que preco; o que L3 muda na estimativa
-de estabilidade; a proporcao entre o custo do SUT e o custo dos oraculos
-(esperado: geracao domina, juiz e segunda ordem).}
+Normalised by what it bought (Table~\ref{tab:cost}), a killed mutant costs
+about two hours of wall-clock time and 63 watt-hours under the deterministic
+oracle, and a third more under the similarity oracle, which kills four fewer
+mutants for the same execution. The judge adds 11,109 seconds and 98 watt-hours
+of its own over the campaign --- 9\% on top of the assistant's cost --- for two
+mutants that the similarity oracle misses.
+
+\begin{table}[width=\linewidth,cols=5,pos=h]
+\caption{Cost of the campaign at level L2 and cost per killed mutant. Execution
+is shared by all oracles; only the judge adds measurable cost of its own.}
+\label{tab:cost}
+\begin{tabular*}{\tblwidth}{@{} LCCCC @{}}
+\toprule
+Oracle & Wall (h) & GPU-s & Wh & Wh/kill \\
+\midrule
+O1 & 33.9 & 47,326 & 1,079 & 83.0 \\
+O2 & 33.9 & 47,326 & 1,079 & 63.5 \\
+O4 & 37.0 & 51,183 & 1,177 & 73.5 \\
+O5 & 33.9 & 47,326 & 1,079 & 63.5 \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+\todo{Completar com L1 e L3 quando terminarem: o que um protocolo de execução
+única (L1) teria detectado sobre os mesmos mutantes, e quanto a estimativa de
+estabilidade muda com 30 repetições (L3) sobre o subconjunto de 10 casos.
+Figura F4 (dois painéis, detecção e custo por nível) já é gerada por
+\code{analyze.py}.}
 
 \subsection{Coherence of the observed kills}
 \label{sec:coherenceresults}
