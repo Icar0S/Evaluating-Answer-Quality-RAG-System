@@ -1,7 +1,8 @@
 """/chat: roteamento por provider, metadados e log estruturado.
 
-O ponto central aqui não é a qualidade da resposta (isso é escopo do RAGAS na
-Fase 2), e sim *para onde* a chamada foi e o que ficou registrado — trocar de
+O ponto central aqui não é a qualidade da resposta (isso é escopo de
+tests/deepeval/, Fase 2), e sim *para onde* a chamada foi e o que ficou
+registrado — trocar de
 provider precisa redirecionar a geração de verdade, mas os embeddings ficam
 sempre no Ollama local (a API remota não expõe essa rota, ver
 llm-api-referencia.md e app/providers.py).
@@ -10,6 +11,7 @@ from __future__ import annotations
 
 import json
 
+from app.config import get_settings
 from conftest import (
     LOCAL_BASE_URL,
     LOCAL_EMBEDDING_MODEL,
@@ -124,3 +126,26 @@ def test_alimenta_o_monitor_com_as_estatisticas_da_geracao(client):
     ultima = client.get("/metrics").json()["last_generation"]
     assert ultima["completion_tokens"] == 42
     assert ultima["tokens_per_second"] == 21.0  # 42 tokens / 2s de eval_duration
+
+
+def _corpo_da_geracao_local(ollama):
+    geracao = [r for r in ollama.requests_to(LOCAL_BASE_URL) if r.url.path == "/api/chat"]
+    assert len(geracao) == 1
+    return _corpo_da_chamada(geracao[0])
+
+
+def test_nao_envia_think_por_padrao(client, ollama):
+    # Sem GENERATION_THINK o payload fica como sempre foi: o modelo decide se
+    # raciocina. Mudar isso alteraria o baseline do estudo de mutacao.
+    client.post("/chat", json={"question": "O que e RAG?"})
+
+    assert "think" not in _corpo_da_geracao_local(ollama)
+
+
+def test_generation_think_false_desliga_o_raciocinio(client, ollama, monkeypatch):
+    monkeypatch.setenv("GENERATION_THINK", "false")
+    get_settings.cache_clear()
+
+    client.post("/chat", json={"question": "O que e RAG?"})
+
+    assert _corpo_da_geracao_local(ollama)["think"] is False

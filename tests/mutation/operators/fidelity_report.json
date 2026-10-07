@@ -1,0 +1,267 @@
+{
+  "verified_at": "2026-09-17T00:04:40.315193+00:00",
+  "baseline_chunks": 184,
+  "operators": {
+    "C1": {
+      "passed": true,
+      "observations": {
+        "overrides": {},
+        "file_log": [
+          "removido does_prompt_engineering_really_impact_llm_genera.pdf de corpus/",
+          "removido does_prompt_engineering_really_impact_llm_genera.pdf de index_src/"
+        ],
+        "primary_no_corpus": false,
+        "primary_no_indice": false,
+        "demais_intactos": 7
+      },
+      "failures": []
+    },
+    "C2": {
+      "passed": true,
+      "observations": {
+        "overrides": {},
+        "file_log": [
+          "does_prompt_engineering_really_impact_llm_genera.pdf substituído pela variante 'prev' em corpus/",
+          "does_prompt_engineering_really_impact_llm_genera.pdf substituído pela variante 'prev' em index_src/"
+        ],
+        "texto_difere_do_base": true,
+        "substituicoes_aplicadas": {
+          "registradas": 40,
+          "com_valor_novo_presente": 40
+        },
+        "indice_recebe_a_variante": true
+      },
+      "failures": []
+    },
+    "C3": {
+      "passed": true,
+      "observations": {
+        "overrides": {},
+        "file_log": [
+          "metarag_metamorphic_testing_for_hallucination_de.pdf truncado 9->6 páginas em corpus/",
+          "metarag_metamorphic_testing_for_hallucination_de.pdf truncado 9->6 páginas em index_src/"
+        ],
+        "paginas": {
+          "antes": 9,
+          "depois": 6
+        },
+        "indice_tambem_truncado": 6
+      },
+      "failures": []
+    },
+    "C4": {
+      "passed": true,
+      "observations": {
+        "overrides": {},
+        "file_log": [
+          "adicionado does_prompt_engineering_really_impact_llm_genera__dup.pdf em corpus/",
+          "adicionado does_prompt_engineering_really_impact_llm_genera__dup.pdf em index_src/"
+        ],
+        "duplicata_no_corpus": true,
+        "duplicata_no_indice": true,
+        "original_preservado": true,
+        "duplicata_diverge_do_original": true
+      },
+      "failures": []
+    },
+    "K1": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "chunk_size_tokens": 400
+        },
+        "file_log": [],
+        "baseline_chunks": 184,
+        "chunk_size": 400,
+        "chunks": 790
+      },
+      "failures": []
+    },
+    "K2": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "chunk_size_tokens": 3000
+        },
+        "file_log": [],
+        "baseline_chunks": 184,
+        "chunk_size": 3000,
+        "chunks": 96
+      },
+      "failures": []
+    },
+    "K3": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "chunk_overlap_tokens": 0
+        },
+        "file_log": [],
+        "baseline_chunks": 184,
+        "overlap": 0,
+        "sobreposicao_observada_chars": {
+          "baseline": 913,
+          "mutante": 0
+        }
+      },
+      "failures": []
+    },
+    "K4": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "chunk_boundary_offset_tokens": 600
+        },
+        "file_log": [],
+        "baseline_chunks": 184,
+        "offset": 600,
+        "fronteiras_deslocadas": {
+          "baseline": [
+            6206,
+            4512,
+            6316
+          ],
+          "mutante": [
+            3131,
+            6333,
+            2630
+          ]
+        }
+      },
+      "failures": []
+    },
+    "E1": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "embedding_model": "all-minilm"
+        },
+        "file_log": [],
+        "embedding_model": "all-minilm",
+        "dimensao": {
+          "mutante": 384,
+          "baseline": 768
+        }
+      },
+      "failures": []
+    },
+    "E2": {
+      "passed": true,
+      "observations": {
+        "overrides": {},
+        "file_log": [
+          "removido evaluator_bias_in_llm_based_program_repair_a_dis.pdf de index_src/",
+          "removido qaquest_a_gamified_plugin_for_manual_testing.pdf de index_src/"
+        ],
+        "evaluator_bias_in_llm_ba_no_corpus": true,
+        "evaluator_bias_in_llm_ba_fora_do_indice": false,
+        "qaquest_a_gamified_plugi_no_corpus": true,
+        "qaquest_a_gamified_plugi_fora_do_indice": false
+      },
+      "failures": []
+    },
+    "R1": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "top_k": 1
+        },
+        "file_log": [],
+        "top_k": 1,
+        "chunks_devolvidos": 1
+      },
+      "failures": []
+    },
+    "R2": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "top_k": 12
+        },
+        "file_log": [],
+        "top_k": 12,
+        "chunks_devolvidos": 12
+      },
+      "failures": []
+    },
+    "R3": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "retrieval_use_mmr": false
+        },
+        "file_log": [],
+        "mmr": false
+      },
+      "failures": []
+    },
+    "R4": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "min_similarity_score": 0.0
+        },
+        "file_log": [],
+        "baseline_chunks_for_probe": 0,
+        "piso": 0.0,
+        "fora_do_corpus_recebe_contexto": {
+          "chunks_mutante": 4,
+          "chunks_baseline": 0,
+          "menor_similaridade": 0.3995
+        }
+      },
+      "failures": []
+    },
+    "P1": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "prompt_require_grounding": false
+        },
+        "file_log": [],
+        "regra_de_ancoragem": false,
+        "abstencao_preservada": true
+      },
+      "failures": []
+    },
+    "P2": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "prompt_require_abstention": false
+        },
+        "file_log": [],
+        "regra_de_abstencao": false,
+        "ancoragem_preservada": true
+      },
+      "failures": []
+    },
+    "P3": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "prompt_require_citation": false
+        },
+        "file_log": [],
+        "regra_de_citacao": false,
+        "ancoragem_preservada": true
+      },
+      "failures": []
+    },
+    "P4": {
+      "passed": true,
+      "observations": {
+        "overrides": {
+          "generation_temperature": 0.8
+        },
+        "file_log": [],
+        "temperatura": 0.8
+      },
+      "failures": []
+    }
+  },
+  "summary": {
+    "passed": 18,
+    "total": 18
+  }
+}

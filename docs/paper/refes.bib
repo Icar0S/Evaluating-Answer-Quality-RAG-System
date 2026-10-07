@@ -1,0 +1,585 @@
+% =====================================================================
+%  1. INFORMATION AND SOFTWARE TECHNOLOGY -- o periodico-alvo
+%
+%  Citar o proprio periodico nao e cortesia: mostra ao editor que o
+%  artigo conversa com o que o IST publica. As duas primeiras entradas
+%  sao de autores que assinam a chamada desta special issue, e ambas
+%  sao de fato relevantes ao argumento -- nao cite por cortesia o que
+%  nao usar no texto.
+% =====================================================================
+
+% [CONFIRM] Assistentes inteligentes de modelagem + LLM. E a entrada
+% mais proxima do escopo do EQUISA publicada no proprio IST.
+% Usar na Secao 2.4.
+@article{muttillo2025modeling,
+  author  = {Muttillo, Vittoriano and Di Sipio, Claudio and
+             Rubei, Riccardo and Berardinelli, Luca},
+  title   = {Leveraging synthetic trace generation of modeling
+             operations for intelligent modeling assistants using
+             large language models},
+  journal = {Inf. Softw. Technol.},
+  volume  = {186},
+  pages   = {107806},
+  year    = {2025},
+  issn    = {0950-5849},
+  doi     = {TODO}
+}
+
+% [CONFIRM] Deteccao precoce de vies a partir de sintomas no dataset.
+% Util na Secao 2.4 pelo paralelo metodologico: propriedade do dado
+% que so aparece quando voce a procura. Cite SO se usar o paralelo.
+@article{daloisio2025bias,
+  author  = {d'Aloisio, Giordano and Di Sipio, Claudio and
+             Di Marco, Antinisca and Di Ruscio, Davide},
+  title   = {Towards early detection of algorithmic bias from
+             dataset's bias symptoms: An empirical study},
+  journal = {Inf. Softw. Technol.},
+  volume  = {188},
+  pages   = {107905},
+  year    = {2025},
+  issn    = {0950-5849},
+  doi     = {TODO}
+}
+
+% [OK] LLM aplicado a priorizacao de artefatos de teste, no IST.
+@article{ling2025crowdsourced,
+  author  = {Ling, Yuchen and Yu, Shengcheng and Fang, Chunrong and
+             Pan, Guobin and Wang, Jun and Liu, Jia},
+  title   = {Redefining crowdsourced test report prioritization: An
+             innovative approach with large language model},
+  journal = {Inf. Softw. Technol.},
+  volume  = {179},
+  pages   = {107629},
+  year    = {2025},
+  issn    = {0950-5849},
+  doi     = {10.1016/j.infsof.2024.107629}
+}
+
+% [OK-DOI / TODO-autores] Capacidade de LLMs em entender semantica de
+% codigo. Util na Secao 2.2: LLM e bom em superficie e fraco em
+% semantica -- o mesmo padrao que o nosso achado do oraculo de cosseno.
+@article{infsof2025codesemantics,
+  author  = {TODO},
+  title   = {An empirical study on capability of Large Language Models
+             in understanding code semantics},
+  journal = {Inf. Softw. Technol.},
+  volume  = {TODO},
+  pages   = {107780},
+  year    = {2025},
+  issn    = {0950-5849},
+  doi     = {10.1016/j.infsof.2025.107780}
+}
+
+% [OK-DOI / TODO-autores] LLM em engenharia de requisitos: corretude,
+% justica e confiabilidade dos artefatos gerados. Secao 2.4.
+@article{infsof2025reroadmap,
+  author  = {TODO},
+  title   = {Formal requirements engineering and large language
+             models: A two-way roadmap},
+  journal = {Inf. Softw. Technol.},
+  volume  = {181},
+  pages   = {107697},
+  year    = {2025},
+  issn    = {0950-5849},
+  doi     = {10.1016/j.infsof.2025.107697}
+}
+
+% [OK] Classico metodologico publicado no proprio IST. Usar na Secao 3
+% se o desenho da suite for descrito como mapeamento, ou na 2.1.
+@article{petersen2015guidelines,
+  author  = {Petersen, Kai and Vakkalanka, Sairam and Kuzniarz, Ludwik},
+  title   = {Guidelines for conducting systematic mapping studies in
+             software engineering: An update},
+  journal = {Inf. Softw. Technol.},
+  volume  = {64},
+  pages   = {1--18},
+  year    = {2015},
+  issn    = {0950-5849},
+  doi     = {10.1016/j.infsof.2015.03.007}
+}
+
+% ---------------------------------------------------------------------
+% A BUSCAR NO IST, com o campo de busca da ScienceDirect (bloqueada
+% para acesso automatizado -- faca logado). Termos que rendem:
+%   "retrieval-augmented" / "RAG"         -> Secoes 2.1 e 2.4
+%   "test oracle"                          -> Secao 2.2
+%   "mutation testing" 2024..2026          -> Secao 2.3
+%   "non-determinism" OR "flakiness" LLM   -> Secao 2.2
+%   "LLM-as-a-judge"                       -> Secao 5.4
+% Meta razoavel: 8 a 12 referencias do proprio IST num artigo do IST.
+% Hoje temos 6.
+% ---------------------------------------------------------------------
+
+
+% =====================================================================
+%  2. TRABALHOS DO GRUPO -- autocitacoes
+%
+%  Revisao single anonymized: o artigo vai assinado, entao autocitacao
+%  em primeira pessoa ("in our earlier work") e permitida e esperada.
+% =====================================================================
+
+% [CONFIRM] Versao preliminar deste trabalho. CITADA NA INTRODUCAO.
+% Autoria conforme JEMS #26881 (a submissao aceita).
+% CONFIRMAR com o Ismayle antes de submeter.
+@inproceedings{oliveira2026sast,
+  author    = {de Oliveira, {\'I}caro Santos and
+               de Oliveira, Felipe Rodrigues and
+               Santos, Ismayle S.},
+  title     = {Relato de Experi{\^e}ncia: Arquitetura de Testes e
+               Valida{\c c}{\~a}o Sem{\^a}ntica para um Sistema {RAG}
+               no Setor P{\'u}blico},
+  booktitle = {Anais do Simp{\'o}sio Brasileiro de Testes de Software
+               Sistem{\'a}tico e Automatizado (SAST)},
+  publisher = {Sociedade Brasileira de Computa{\c c}{\~a}o},
+  address   = {Porto Alegre, RS, Brasil},
+  year      = {2026},
+  pages     = {TODO},
+  doi       = {TODO}
+}
+
+% [OK] RSL que fundamenta a linha de pesquisa. SBQS 2024, p. 22-31.
+% Conferido no SBC OpenLib (sol.sbc.org.br/index.php/sbqs/article/view/32931).
+@inproceedings{oliveira2024bigdata,
+  author    = {de Oliveira, {\'I}caro Santos and
+               Alves, Jo{\~a}o Matheus and
+               Alc{\^a}ntara, Samuel and
+               Santos, Ismayle Sousa and
+               Andrade, Rossana Maria de Castro},
+  title     = {Quality of Big Data Systems: a Systematic Review of
+               Practices, Methods and Tools},
+  booktitle = {Anais do XXIII Simp{\'o}sio Brasileiro de Qualidade de
+               Software (SBQS)},
+  publisher = {Sociedade Brasileira de Computa{\c c}{\~a}o},
+  address   = {Porto Alegre, RS, Brasil},
+  year      = {2024},
+  pages     = {22--31},
+  doi       = {TODO}
+}
+
+% [OK] Relato industrial de processo de testes em plataforma Big Data
+% governamental. ICEIS 2025, vol. 2, p. 227-236.
+% Conferido no SciTePress.
+@inproceedings{cavalcante2025bigdata,
+  author    = {Cavalcante, Amanda K. B. and
+               de Oliveira, {\'I}caro S. and
+               Oliveira, Vict{\'o}ria T. and
+               Oliveira, Pedro Almir M. and
+               Nogueira, Tales P. and
+               Santos, Ismayle S. and
+               Andrade, Rossana M. C.},
+  title     = {Big Data Fortaleza Platform: Quality Improvement with
+               Testing Process},
+  booktitle = {Proc. 27th Int. Conf. Enterprise Information Systems
+               (ICEIS)},
+  volume    = {2},
+  publisher = {SciTePress},
+  year      = {2025},
+  pages     = {227--236},
+  isbn      = {978-989-758-749-8},
+  doi       = {10.5220/0013290500003929}
+}
+
+% [TODO] Versao estendida do ICEIS em LNBIP (Springer). Voce tem o PDF
+% (LNBIP2025_BigDataFortaleza_TestingProcess.pdf) -- preencha volume,
+% paginas e DOI a partir da primeira pagina dele.
+@incollection{cavalcante2025lnbip,
+  author    = {Cavalcante, Amanda K. B. and
+               de Oliveira, {\'I}caro S. and
+               Oliveira, Vict{\'o}ria T. and
+               Oliveira, Pedro Almir M. and
+               Nogueira, Tales P. and
+               Santos, Ismayle S. and
+               Andrade, Rossana M. C.},
+  title     = {TODO -- titulo da versao estendida},
+  booktitle = {Enterprise Information Systems},
+  series    = {Lecture Notes in Business Information Processing},
+  volume    = {TODO},
+  publisher = {Springer},
+  year      = {2025},
+  pages     = {TODO},
+  doi       = {TODO}
+}
+
+% [TODO] Dissertacao de mestrado. Confira o titulo exato na folha de
+% rosto do PDF que esta no projeto.
+@mastersthesis{oliveira2026dissertacao,
+  author = {de Oliveira, {\'I}caro Santos},
+  title  = {Plataforma Assistida por {LLM} para Testes em Sistemas
+            Big Data},
+  school = {Universidade Estadual do Cear{\'a} (UECE)},
+  type   = {Disserta{\c c}{\~a}o de Mestrado},
+  year   = {2026},
+  note   = {Programa de P{\'o}s-Gradua{\c c}{\~a}o em Ci{\^e}ncia da
+            Computa{\c c}{\~a}o}
+}
+
+% [TODO] MLR de testes em Big Data, submetida ao JSS.
+% NAO CITE COMO PUBLICADO. Se citar, use o campo note com "under
+% review" ou espere o aceite. Revisor de IST nota autocitacao a
+% trabalho inacessivel.
+%   entrada comentada de proposito -- o BibTeX NAO respeita '%' e
+%   leria o caractere arroba aqui como inicio de entrada. Para
+%   reativar, copie a linha abaixo e acrescente o caractere arroba:
+%     article{oliveira2026mlr, author = {...}, note = {Under review} }
+
+% ---------------------------------------------------------------------
+% OUTRAS AUTOCITACOES DISPONIVEIS (do seu JEMS), a incluir SO se o
+% texto realmente usar:
+%   - "Will I Be Replaced?" Revisited (ISE 2026, aceito) -- util se a
+%     Secao 8 discutir percepcao de profissionais sobre ferramentas de IA
+%   - Da Valida{\c c}{\~a}o Manual {\`a} Qualidade Cont{\'i}nua (VEM 2026,
+%     aceito) -- util na Secao 2.4 como relato industrial de evolucao de
+%     suite de testes
+% Autocitacao irrelevante e pior que nenhuma: o editor percebe.
+% ---------------------------------------------------------------------
+
+
+% =====================================================================
+%  3. FUNDAMENTO -- RAG e o problema do oraculo
+% =====================================================================
+
+% [CONFIRM] O artigo original de RAG. CITADO NA INTRODUCAO.
+@inproceedings{lewis2020rag,
+  author    = {Lewis, Patrick and Perez, Ethan and Piktus, Aleksandra
+               and Petroni, Fabio and Karpukhin, Vladimir and
+               Goyal, Naman and K{\"u}ttler, Heinrich and Lewis, Mike
+               and Yih, Wen-tau and Rockt{\"a}schel, Tim and
+               Riedel, Sebastian and Kiela, Douwe},
+  title     = {Retrieval-Augmented Generation for Knowledge-Intensive
+               {NLP} Tasks},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {33},
+  year      = {2020},
+  pages     = {9459--9474}
+}
+
+% [TODO] Os sete pontos de falha. CITADO NA INTRODUCAO e base do
+% catalogo da Secao 4. Preencha paginas e DOI -- e a referencia que
+% sustenta a derivacao dos operadores, nao pode ficar incompleta.
+@inproceedings{barnett2024seven,
+  author    = {Barnett, Scott and Kurniawan, Stefanus and
+               Thudumu, Srikanth and Brannelly, Zach and
+               Abdelrazek, Mohamed},
+  title     = {Seven Failure Points When Engineering a Retrieval
+               Augmented Generation System},
+  booktitle = {Proc. IEEE/ACM 3rd Int. Conf. AI Engineering --
+               Software Engineering for AI (CAIN)},
+  year      = {2024},
+  pages     = {TODO},
+  doi       = {TODO}
+}
+
+% [TODO] Taxonomia facetada do problema do oraculo. Base da Secao 2.2.
+% Falta a lista completa de autores -- confira no PDF ou na ACM DL.
+@article{dobslaw2026challenges,
+  author  = {Dobslaw, Felix and TODO},
+  title   = {Challenges in Testing {LLM}-Based Software: A Faceted
+             Taxonomy},
+  journal = {ACM Trans. Softw. Eng. Methodol.},
+  year    = {2026},
+  volume  = {TODO},
+  number  = {TODO},
+  pages   = {TODO},
+  doi     = {TODO}
+}
+
+% [OK] Survey de referencia sobre teste com LLMs. Extraido da lista de
+% referencias dos artigos do SAST 2026 em maos.
+@article{wang2024testing,
+  author  = {Wang, Junjie and Huang, Yuchao and Chen, Chunyang and
+             Liu, Zhe and Wang, Song and Wang, Qing},
+  title   = {Software Testing with Large Language Models: Survey,
+             Landscape, and Vision},
+  journal = {IEEE Trans. Softw. Eng.},
+  volume  = {50},
+  number  = {4},
+  pages   = {911--936},
+  year    = {2024},
+  doi     = {10.1109/TSE.2024.3368208}
+}
+
+% [OK] RAGAS -- o oraculo O3. Extraido da lista de referencias do
+% artigo de RAG corporativo do SBES 2026.
+@inproceedings{es2024ragas,
+  author    = {Es, Shahul and James, Jithin and
+               Espinosa Anke, Luis and Schockaert, Steven},
+  title     = {{RAGAs}: Automated Evaluation of Retrieval Augmented
+               Generation},
+  booktitle = {Proc. 18th Conf. European Chapter of the Association
+               for Computational Linguistics: System Demonstrations},
+  year      = {2024},
+  pages     = {150--158},
+  doi       = {10.18653/v1/2024.eacl-demo.16}
+}
+
+% [OK] LLM-as-a-judge. Base do oraculo O4.
+@inproceedings{zheng2023judging,
+  author    = {Zheng, Lianmin and Chiang, Wei-Lin and Sheng, Ying and
+               Zhuang, Siyuan and Wu, Zhanghao and Zhuang, Yonghao and
+               Lin, Zi and Li, Zhuohan and Li, Dacheng and
+               Xing, Eric P. and Zhang, Hao and Gonzalez, Joseph E.
+               and Stoica, Ion},
+  title     = {Judging {LLM}-as-a-Judge with {MT}-Bench and Chatbot
+               Arena},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {36},
+  year      = {2023}
+}
+
+% [OK] Nao-determinismo sob configuracao "deterministica". Sustenta a
+% Eq. do conjunto avaliavel (Secao 4.3) e o P4 do catalogo.
+@misc{atil2025nondeterminism,
+  author       = {Atil, Berk and Aykent, Sarp and Chittams, Alexa and
+                  Fu, Lisheng and Passonneau, Rebecca J. and
+                  Radcliffe, Evan and Rajagopal, Guru Rajan and
+                  Sloan, Adam and Tudrej, Tomasz and Ture, Ferhan and
+                  Wu, Zhe and Xu, Lixinyu and Baldwin, Breck},
+  title        = {Non-Determinism of ``Deterministic'' {LLM} Settings},
+  year         = {2025},
+  eprint       = {2408.04667},
+  archiveprefix= {arXiv},
+  primaryclass = {cs.CL}
+}
+
+
+% =====================================================================
+%  4. TESTE DE MUTACAO -- fundamento e vizinhos diretos
+% =====================================================================
+
+% [OK] Origem do teste de mutacao. CITADO NA INTRODUCAO.
+% DOI conferido na lista de referencias do artigo do SAST 2026.
+@article{demillo1978hints,
+  author  = {DeMillo, Richard A. and Lipton, Richard J. and
+             Sayward, Frederick G.},
+  title   = {Hints on Test Data Selection: Help for the Practicing
+             Programmer},
+  journal = {Computer},
+  volume  = {11},
+  number  = {4},
+  pages   = {34--41},
+  year    = {1978},
+  doi     = {10.1109/C-M.1978.218136}
+}
+
+% [OK] Survey de mutacao. CITADO NA INTRODUCAO.
+@article{jia2011analysis,
+  author  = {Jia, Yue and Harman, Mark},
+  title   = {An Analysis and Survey of the Development of Mutation
+             Testing},
+  journal = {IEEE Trans. Softw. Eng.},
+  volume  = {37},
+  number  = {5},
+  pages   = {649--678},
+  year    = {2011},
+  doi     = {10.1109/TSE.2010.62}
+}
+
+% [OK-autores / TODO-paginas] VIZINHO MAIS PROXIMO. Mutacao sobre
+% system prompt; escore bruto 0,86 -> ajustado 0,38 pela analise de
+% coerencia. CITADO NA INTRODUCAO e central na Secao 2.3.
+@inproceedings{braga2026mutation,
+  author    = {Braga, Carlos E. C. and Paiva, Sofia L. C.},
+  title     = {Teste de Muta{\c c}{\~a}o em System Prompts para
+               Avalia{\c c}{\~a}o de Conjuntos de Testes de Chatbots
+               Baseados em {LLMs}},
+  booktitle = {Anais do Simp{\'o}sio Brasileiro de Testes de Software
+               Sistem{\'a}tico e Automatizado (SAST)},
+  publisher = {Sociedade Brasileira de Computa{\c c}{\~a}o},
+  address   = {Porto Alegre, RS, Brasil},
+  year      = {2026},
+  pages     = {TODO},
+  doi       = {TODO}
+}
+
+% [OK-autores / TODO-paginas] VIZINHO. Mutacao para avaliar testes
+% unitarios gerados por LLM; 5 execucoes, diagnostico de sobreviventes.
+% CITADO NA INTRODUCAO.
+@inproceedings{cabral2026prompt,
+  author    = {Cabral, Pedro Fernando M. and Morais, Christian and
+               Pinto, Victor Hugo S. C.},
+  title     = {Does Prompt Engineering Really Impact {LLM}-Generated
+               Unit Tests? An Empirical Study Based on Mutation
+               Testing},
+  booktitle = {Anais do Simp{\'o}sio Brasileiro de Engenharia de
+               Software (SBES)},
+  publisher = {Sociedade Brasileira de Computa{\c c}{\~a}o},
+  address   = {Porto Alegre, RS, Brasil},
+  year      = {2026},
+  pages     = {TODO},
+  doi       = {TODO}
+}
+
+% [OK-autor / TODO-paginas] VIZINHO. Teste metamorfico sobre o Trigger
+% de agentes; MR0 como desconto de flakiness. Origem conceitual da
+% nossa regra do conjunto avaliavel. CITADO NA INTRODUCAO.
+@inproceedings{amorim2026trigger,
+  author    = {de Amorim, Wyllgner Fran{\c c}a},
+  title     = {When the Trigger Fails: Metamorphic Testing of
+               Tool-Calling {AI} Agents},
+  booktitle = {Anais do Simp{\'o}sio Brasileiro de Testes de Software
+               Sistem{\'a}tico e Automatizado (SAST)},
+  publisher = {Sociedade Brasileira de Computa{\c c}{\~a}o},
+  address   = {Porto Alegre, RS, Brasil},
+  year      = {2026},
+  pages     = {TODO},
+  doi       = {TODO}
+}
+
+
+% =====================================================================
+%  5. VIES DE AVALIADOR E AVALIACAO DE ASSISTENTES
+% =====================================================================
+
+% [OK-autores / TODO-paginas] O paralelo mais forte do nosso achado do
+% oraculo: mesmos artefatos, validadores diferentes, oscilacao de 20
+% pontos. CITADO NA INTRODUCAO.
+@inproceedings{bonfim2026evaluator,
+  author    = {Bonfim, Andrezza and Teixeira, Leopoldo},
+  title     = {Evaluator Bias in {LLM}-Based Program Repair: A
+               Disagreement Analysis on Android Resource Leaks},
+  booktitle = {Anais do Simp{\'o}sio Brasileiro de Engenharia de
+               Software (SBES)},
+  publisher = {Sociedade Brasileira de Computa{\c c}{\~a}o},
+  address   = {Porto Alegre, RS, Brasil},
+  year      = {2026},
+  pages     = {TODO},
+  doi       = {TODO}
+}
+
+% [OK-autores / TODO-paginas] Resultado delimitador com custo como
+% resultado de primeira classe. Modelo para a nossa RQ3 e util na
+% Secao 8.
+@inproceedings{lima2026limits,
+  author    = {Lima, Alexandre and Soares, Ronaldo and
+               Soares, Yan and Ribeiro, Acauan and
+               Nascimento, Jos{\'e} and Santos, Eulanda and
+               Gadelha, Bruno and Carvalho, Andr{\'e}},
+  title     = {On the Limits of Text-Only {LLM}-Based Test Case
+               Prioritization in Industrial Black-Box Regression
+               Testing},
+  booktitle = {Anais do Simp{\'o}sio Brasileiro de Engenharia de
+               Software (SBES)},
+  publisher = {Sociedade Brasileira de Computa{\c c}{\~a}o},
+  address   = {Porto Alegre, RS, Brasil},
+  year      = {2026},
+  pages     = {TODO},
+  doi       = {TODO}
+}
+
+% [OK-autores / TODO-paginas] RAG nao generaliza de snippet para
+% repositorio; custo degrada. Util na Secao 8 pelo paralelo: ganho
+% medido em ambiente controlado nao transfere.
+@inproceedings{vergilio2026rag,
+  author    = {Verg{\'i}lio, Breno and Mota, Matheus and
+               Font{\~a}o, Awdren},
+  title     = {Does Retrieval-Augmented Vulnerability Repair
+               Generalize Beyond Snippets? A Study on {TypeScript}
+               Web Applications},
+  booktitle = {Anais do Simp{\'o}sio Brasileiro de Engenharia de
+               Software (SBES)},
+  publisher = {Sociedade Brasileira de Computa{\c c}{\~a}o},
+  address   = {Porto Alegre, RS, Brasil},
+  year      = {2026},
+  pages     = {TODO},
+  doi       = {TODO}
+}
+
+% [OK-autores / TODO-paginas] Benchmark de estrategias de provisao de
+% contexto, com token/latencia/custo por trial. Referencia direta para
+% a RQ3.
+@inproceedings{vasconcelos2026llmcontextbench,
+  author    = {Vasconcelos, Michel and Mendon{\c c}a, Nabor C.},
+  title     = {{LLMContextBench}: A Benchmark Tool for Evaluating
+               Context Provisioning Strategies in {LLM}-Based Systems},
+  booktitle = {Anais do Simp{\'o}sio Brasileiro de Engenharia de
+               Software (SBES)},
+  publisher = {Sociedade Brasileira de Computa{\c c}{\~a}o},
+  address   = {Porto Alegre, RS, Brasil},
+  year      = {2026},
+  pages     = {TODO},
+  doi       = {TODO}
+}
+
+% [OK-autores / TODO-paginas] RAG encontrou 7 cenarios onde humanos
+% encontraram 48 no mesmo fluxo; conhecimento tacito como limite real.
+% Excelente para a Secao 8 (o que RAG nao consegue).
+@inproceedings{franca2026genai,
+  author    = {Fran{\c c}a, Aline Lima de Souza and
+               Costa, Jessica Soares da and
+               Motta, Rebeca and Nunes, Elaine and
+               Pinto, Gustavo Rocha Barreto and
+               de Mello, Rafael Maiani},
+  title     = {Utilizando a {IA} Generativa para Apoiar a
+               Especifica{\c c}{\~a}o de Casos de Teste Funcionais em
+               um Sistema de Software do Setor P{\'u}blico},
+  booktitle = {Anais do Simp{\'o}sio Brasileiro de Testes de Software
+               Sistem{\'a}tico e Automatizado (SAST)},
+  publisher = {Sociedade Brasileira de Computa{\c c}{\~a}o},
+  address   = {Porto Alegre, RS, Brasil},
+  year      = {2026},
+  pages     = {TODO},
+  doi       = {TODO}
+}
+
+
+% =====================================================================
+%  6. METODO EMPIRICO
+% =====================================================================
+
+% [CONFIRM] Guia canonico de estudo de caso em ES. Usar na Secao 6 se o
+% desenho for apresentado como estudo de caso.
+@article{runeson2009guidelines,
+  author  = {Runeson, Per and H{\"o}st, Martin},
+  title   = {Guidelines for conducting and reporting case study
+             research in software engineering},
+  journal = {Empir. Softw. Eng.},
+  volume  = {14},
+  number  = {2},
+  pages   = {131--164},
+  year    = {2009},
+  doi     = {10.1007/s10664-008-9102-8}
+}
+
+
+@article{holm1979simple,
+  title={A simple sequentially rejective multiple test procedure},
+  author={Holm, Sture},
+  journal={Scandinavian journal of statistics},
+  pages={65--70},
+  year={1979},
+  publisher={JSTOR}
+}
+
+@article{cochran1950comparison,
+  title={The comparison of percentages in matched samples},
+  author={Cochran, William G},
+  journal={Biometrika},
+  volume={37},
+  number={3/4},
+  pages={256--266},
+  year={1950},
+  publisher={JSTOR}
+}
+
+% ---------------------------------------------------------------------
+% AINDA FALTA (por secao do artigo):
+%   2.2  um trabalho recente sobre flakiness/instabilidade de LLM em
+%        avaliacao -- procurar no IST primeiro
+%   5.1  referencia para similaridade de cosseno como oraculo semantico
+%        em teste (nao so em IR)
+%   5.4  vies de autopreferencia em LLM-as-a-judge (Panickssery et al.,
+%        2024) -- esta na lista de referencias do artigo de mutacao do
+%        SAST 2026 que voce tem em maos
+@article{panickssery2024llm,
+  title={Llm evaluators recognize and favor their own generations},
+  author={Panickssery, Arjun and Bowman, Samuel R and Feng, Shi},
+  journal={Advances in Neural Information Processing Systems},
+  volume={37},
+  pages={68772--68802},
+  year={2024}
+}
+
+
+%   6.7  Wilson (1927) para o intervalo de proporcao, se for citar a
+%        formula em vez de so nomea-la
+% ---------------------------------------------------------------------

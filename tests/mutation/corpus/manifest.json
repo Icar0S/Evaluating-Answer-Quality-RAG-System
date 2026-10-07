@@ -1,0 +1,112 @@
+{
+  "generated_at": "2026-09-16T01:15:27.480849+00:00",
+  "source_dir": "C:\\Users\\Icaro\\Documents\\cagece-projetos\\Evaluating-Answer-Quality-RAG-System\\data\\source_pdfs",
+  "tokens_per_page": 1800,
+  "documents": [
+    {
+      "document": "does_prompt_engineering_really_impact_llm_genera.pdf",
+      "source_file": "Does Prompt Engineering Really Impact LLM-Generated Unit Tests An Empirical Study Based on Mutation Testing.pdf",
+      "pages": 10,
+      "approx_tokens": 18800,
+      "sha256": "fb9cc5eb834ff3ac084b23acead869caec560de8364c7f66ca3e446a9337860f",
+      "license": "DESCONHECIDA",
+      "source_url": "PREENCHER",
+      "redistributable": "unknown",
+      "license_note": "o PDF não declara licença — verifique na página do editor/arXiv antes de publicar"
+    },
+    {
+      "document": "evaluator_bias_in_llm_based_program_repair_a_dis.pdf",
+      "source_file": "Evaluator Bias in LLM-Based Program Repair A Disagreement Analysis on Android Resource Leaks.pdf",
+      "pages": 8,
+      "approx_tokens": 15271,
+      "sha256": "5f1ec628c62ccefd03932e62a84d4cd845e09701e8c708c0052f7d53a373b884",
+      "license": "DESCONHECIDA",
+      "source_url": "PREENCHER",
+      "redistributable": "unknown",
+      "license_note": "o PDF não declara licença — verifique na página do editor/arXiv antes de publicar"
+    },
+    {
+      "document": "large_language_models_for_software_testing_a_res.pdf",
+      "source_file": "Large_Language_Models_for_Software_Testing_A_Resea.pdf",
+      "pages": 22,
+      "approx_tokens": 40204,
+      "sha256": "024d64ec55b9d47b98e154980c1e71db36982837fec5092fe59fded9dc0bbda0",
+      "license": "ACM",
+      "source_url": "PREENCHER",
+      "redistributable": "no",
+      "license_note": "copyright licenciado à ACM — redistribuição do PDF não é garantida",
+      "identifier": "arXiv:2509.25043"
+    },
+    {
+      "document": "metmap_metamorphic_testing_for_detecting_false_v.pdf",
+      "source_file": "MeTMaP Metamorphic Testing for Detecting False Vector Matching Problems in LLM-Augmented Generation.pdf",
+      "pages": 12,
+      "approx_tokens": 18754,
+      "sha256": "30c7f8ebb372080117445400c2e71455b504b27729efcb320c8be10847139efa",
+      "license": "ACM",
+      "source_url": "PREENCHER",
+      "redistributable": "no",
+      "license_note": "copyright licenciado à ACM — redistribuição do PDF não é garantida",
+      "identifier": "DOI:10.1145/3650105.3652297"
+    },
+    {
+      "document": "metarag_metamorphic_testing_for_hallucination_de.pdf",
+      "source_file": "MetaRAG Metamorphic Testing for Hallucination Detection in RAG Systems.pdf",
+      "pages": 9,
+      "approx_tokens": 14758,
+      "sha256": "f63353fb515902828a75a567e9ea8775196802bd6061aec4af576b60487c4273",
+      "license": "CC-BY-4.0",
+      "source_url": "PREENCHER",
+      "redistributable": "yes",
+      "license_note": "Creative Commons Attribution 4.0 — redistribuição permitida com atribuição"
+    },
+    {
+      "document": "neurips_2024_ragchecker_a_fine_grained_framework.pdf",
+      "source_file": "NeurIPS-2024-ragchecker-a-fine-grained-framework-for-diagnosing-retrieval-augmented-generation-Paper-Datasets_and_Benchmarks_Track.pdf",
+      "pages": 16,
+      "approx_tokens": 22510,
+      "sha256": "993974915243f9ed1dadfbe8532f1aec14d0c2ee8a5f3256cf032a8ea4cc8371",
+      "license": "DESCONHECIDA",
+      "source_url": "PREENCHER",
+      "redistributable": "unknown",
+      "license_note": "o PDF não declara licença — verifique na página do editor/arXiv antes de publicar"
+    },
+    {
+      "document": "qaquest_a_gamified_plugin_for_manual_testing.pdf",
+      "source_file": "QAQuest A Gamified Plugin for Manual Testing.pdf",
+      "pages": 5,
+      "approx_tokens": 8911,
+      "sha256": "0a4a71cb389d6c7d392f0f47e04b73dc5a8bfaffcdda8ade40bb1407ecf8bf13",
+      "license": "DESCONHECIDA",
+      "source_url": "PREENCHER",
+      "redistributable": "unknown",
+      "license_note": "o PDF não declara licença — verifique na página do editor/arXiv antes de publicar"
+    },
+    {
+      "document": "rag_driven_multiple_assertions_generation_with_l.pdf",
+      "source_file": "RAG-Driven Multiple Assertions Generation with Large Language Models.pdf",
+      "pages": 14,
+      "approx_tokens": 25129,
+      "sha256": "0eee31211aebe40732fc7e34fd135231afd3a56e7b8b0fc4ec9399c4ee33e265",
+      "license": "DESCONHECIDA",
+      "source_url": "PREENCHER",
+      "redistributable": "unknown",
+      "license_note": "o PDF não declara licença — verifique na página do editor/arXiv antes de publicar",
+      "identifier": "DOI:10.1007/s10664-025-10641-1"
+    }
+  ],
+  "roles": {
+    "primary": "does_prompt_engineering_really_impact_llm_genera.pdf",
+    "secondary": "metarag_metamorphic_testing_for_hallucination_de.pdf",
+    "recent": [
+      "evaluator_bias_in_llm_based_program_repair_a_dis.pdf",
+      "qaquest_a_gamified_plugin_for_manual_testing.pdf"
+    ]
+  },
+  "license_note": "Todo documento precisa de licença que permita redistribuição antes do pacote de replicação (Zenodo). Campos 'PREENCHER' bloqueiam o empacotamento.",
+  "license_audit": {
+    "yes": 1,
+    "no": 2,
+    "unknown": 5
+  }
+}

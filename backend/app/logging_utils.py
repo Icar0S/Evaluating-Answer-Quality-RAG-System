@@ -1,7 +1,8 @@
 """Logging estruturado em JSON Lines de cada interação do RAG.
 
 Cada linha de logs/interactions.jsonl é um registro completo e independente,
-pensado para ser lido depois por pandas/RAGAS sem parsing adicional.
+pensado para ser lido depois por pandas/DeepEval (ver tests/deepeval/) sem
+parsing adicional.
 """
 from __future__ import annotations
 

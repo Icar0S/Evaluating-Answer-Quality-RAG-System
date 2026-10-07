@@ -1,0 +1,1363 @@
+\documentclass[12pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{times}
+\usepackage[a4paper,left=3cm,right=3cm,top=2.8cm,bottom=2.8cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb}
+\usepackage{url}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\Sset}{\mathcal{S}}
+\newcommand{\Cset}{\mathcal{C}}
+\newcommand{\MS}{\mathrm{EM}}
+\newcommand{\taxa}{\mathrm{tx}}
+\newcommand{\aprova}{\textsc{aprova}}
+\newcommand{\reprova}{\textsc{reprova}}
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+\title{Adequação de Suítes de Teste para Assistentes com Geração Aumentada por
+Recuperação: um Estudo Baseado em Mutação}
+
+\author{Ícaro S. de Oliveira\thanks{Universidade Estadual do Ceará (UECE),
+Fortaleza, CE, Brasil. \texttt{icaro.santos@aluno.uece.br}} \and
+Ismayle S. Santos\thanks{Universidade Estadual do Ceará (UECE), Fortaleza, CE,
+Brasil. \texttt{ismayle.santos@uece.br}}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent\textbf{Resumo.}
+Assistentes inteligentes baseados em geração aumentada por recuperação (RAG)
+chegaram à produção antes de existir prática consolidada para testá-los. As
+suítes escritas para esses sistemas emparelham perguntas com respostas de
+referência e julgam o texto gerado, enquanto os pontos de falha documentados de
+RAG se concentram nas camadas de dado e de recuperação, que antecedem a geração.
+Este artigo transpõe o teste de mutação para essas camadas. Derivamos 18
+operadores de mutação a partir de pontos de falha documentados, cobrindo corpus,
+segmentação, índice, recuperação e prompt, cada um com uma checagem executável
+de fidelidade; aplicamo-los a um assistente RAG de código aberto do domínio de
+engenharia de software, com uma suíte de 30 casos e quatro oráculos lendo o
+mesmo log de 3.000 invocações. A suíte mata 17 dos 18 mutantes, mas detecta o
+operador mediano por apenas 2,5 dos 20 casos avaliáveis, e as camadas não se
+separam. O mesmo log julgado por oráculos diferentes produz escores de mutação
+de 0,722 a 0,944 --- 22 pontos percentuais de oscilação --- e o oráculo mais
+barato é estritamente dominado: em 32 pares (mutante, caso) as assertivas
+determinísticas reprovam onde a similaridade de cosseno aprova, e em nenhum o
+inverso. A campanha custou 33,9 horas, 1,08 kWh e de 63 a 83 watts-hora por
+mutante morto, conforme o oráculo consultado.
+\end{abstract}
+
+\noindent\textbf{Abstract.}
+Intelligent assistants built on retrieval-augmented generation reached
+production before a practice of testing them matured. This paper transposes
+mutation testing to the data and retrieval layers of a RAG pipeline with 18
+operators derived from documented failure points, each carrying an executable
+fidelity check, applied to an open-source software-engineering assistant with a
+30-case suite and four oracles reading the same log of 3,000 invocations. The
+suite kills 17 of the 18 mutants but detects the median operator through only
+2.5 of the 20 evaluable cases. The same log judged by different oracles yields
+mutation scores from 0.722 to 0.944, and the cheapest oracle is strictly
+dominated.
+
+\section{Introdução}
+
+Assistentes inteligentes deixaram o estágio de protótipo e entraram na prática
+diária da engenharia de software. Engenheiros os consultam para localizar uma
+regra em uma especificação, explicar o comportamento de um framework, redigir um
+caso de teste ou justificar uma decisão de projeto. A maior parte desses
+assistentes é construída sobre geração aumentada por recuperação
+(RAG)~\cite{lewis2020rag}: em vez de responder a partir do que o modelo
+memorizou no treinamento, o sistema recupera trechos de um corpus controlado e
+condiciona a resposta a eles. A arquitetura é atraente justamente porque promete
+ancoragem --- respostas rastreáveis a documentos que a organização possui e
+atualiza.
+
+Essa promessa carrega uma obrigação. Um assistente que responde sobre um
+contrato de interface, uma restrição regulatória ou um procedimento de teste faz
+parte do processo de engenharia, e uma resposta errada não para na tela: ela se
+propaga para os artefatos que o engenheiro produz a partir dela. Ainda assim,
+esses sistemas chegaram à produção mais rápido do que a prática de testá-los
+amadureceu.
+
+Onde o teste existe, ele tem uma forma reconhecível. Uma suíte emparelha
+perguntas com respostas de referência, executa-as contra o sistema implantado e
+deriva um veredito comparando cada resposta gerada à sua referência, às vezes
+reforçada por assertivas textuais ou por um segundo modelo atuando como juiz. É
+a forma relatada em experiências industriais com assistentes implantados,
+inclusive a nossa~\cite{oliveira2026sast}, e é a forma que um praticante adota
+naturalmente, porque a resposta é o que o usuário vê.
+
+A dificuldade é que a resposta não é onde a maioria das falhas se origina.
+\citet{barnett2024seven} catalogam sete pontos de falha observados ao construir
+sistemas RAG, e quatro deles ocorrem antes de um único token ser gerado:
+conteúdo ausente do corpus, trecho relevante nunca recuperado, trecho recuperado
+mas expulso da janela de contexto, trecho presente mas não extraído. Uma suíte
+que inspeciona apenas a resposta final observa um pipeline de cinco estágios
+pela sua abertura mais estreita.
+
+Perguntar o que essa suíte deixa de ver é perguntar se ela é \emph{adequada}.
+Para software determinístico o instrumento padrão é o teste de
+mutação~\cite{demillo1978hints,jia2011analysis}: injetam-se defeitos pequenos no
+sistema, executa-se a suíte contra cada versão defeituosa e mede-se quantos são
+detectados. Transpor esse instrumento para um assistente RAG encontra dois
+obstáculos.
+
+O primeiro é que as adaptações existentes não alcançam a camada onde as falhas
+estão. \citet{braga2026mutation} aplicam operadores de mutação ao prompt de
+sistema de um chatbot baseado em LLM; \citet{cabral2026prompt} usam mutação para
+avaliar testes unitários gerados por LLMs sob cinco estratégias de prompt;
+\citet{amorim2026trigger} aplicam relações metamórficas ao prompt que dispara
+agentes com chamada de ferramentas. Cada um perturba a instrução dada ao modelo
+ou o código que o modelo escreve. Nenhum perturba o corpus, a estratégia de
+segmentação, o índice ou os parâmetros de recuperação --- isto é, nenhum
+perturba o pipeline de recuperação que distingue um sistema RAG de um chatbot.
+
+O segundo obstáculo é que o escore de mutação repousa sobre uma suposição que
+RAG viola. Diz-se que um mutante foi morto quando a suíte falha sobre ele, e o
+escore só tem significado se a falha for atribuível ao defeito injetado. Um
+assistente RAG devolve respostas diferentes para a mesma pergunta em execuções
+distintas, de modo que um teste pode falhar por razões que nada têm a ver com a
+mutação. O remédio clássico --- identificar mutantes equivalentes verificando se
+o mutante se comporta exatamente como o original --- não está disponível aqui,
+porque o original é ele próprio instável~\cite{atil2025nondeterminism}.
+
+Um terceiro obstáculo apareceu enquanto construíamos os instrumentos deste
+estudo, e ele muda o que um escore de adequação pode significar. O veredito que
+decide se um mutante foi morto é produzido por um oráculo, e oráculos para
+respostas em linguagem natural discordam entre si. Ao calibrar o mais barato e
+mais difundido deles --- similaridade de cosseno entre a resposta gerada e sua
+referência --- encontramos que, no nosso corpus, \emph{nenhum} limiar separa uma
+paráfrase correta de um erro factual injetado (AUC $= 0{,}485$, abaixo do
+acaso). O efeito não é ruído, é inversão: uma sentença com o sentido invertido
+pontuou 0,9912 contra a referência, enquanto uma paráfrase fiel da mesma
+referência pontuou 0,9907 e uma versão diferindo em um único valor numérico
+pontuou 0,9184. A razão é estrutural: o erro injetado é a referência com um
+token trocado, textualmente quase idêntica, ao passo que a paráfrase é uma
+reescrita honesta.
+
+Isso não é um problema incidental de medição. Significa que um escore de
+adequação relatado sem nomear o oráculo que o produziu não é interpretável, do
+mesmo modo que um escore de eficácia de reparo depende do validador que julgou
+os \emph{patches}~\cite{bonfim2026evaluator}. Este estudo, portanto, relata
+adequação por oráculo, e não como número único.
+
+O sistema sob teste é um assistente RAG de código aberto cujo próprio domínio é
+o teste de sistemas baseados em LLM e RAG. A escolha é deliberada: ele pertence
+ao ciclo de vida da engenharia de software e é público na íntegra, corpus
+incluído, de modo que o estudo possa ser replicado em vez de apenas descrito.
+Fazemos três perguntas: quais camadas do pipeline produzem defeitos que a suíte
+deixa de detectar (QP1), quanto a adequação relatada depende do oráculo aplicado
+a artefatos idênticos (QP2) e quanto custa cada nível de rigor, em tempo de
+parede, tokens, GPU-segundo e energia (QP3).
+
+As contribuições são: (i) um catálogo de 18 operadores de mutação para pipelines
+RAG, cada um derivado de um ponto de falha documentado e acompanhado de uma
+checagem executável que falha no sistema não-mutado e passa no mutante; (ii) um
+protocolo de adequação sob não-determinismo que separa o efeito do defeito
+injetado da instabilidade intrínseca do sistema, restringindo todo denominador
+aos casos estáveis no baseline; (iii) uma quantificação do viés de oráculo, com
+adequação relatada por oráculo e duas das distorções estabelecidas antes da
+campanha; (iv) uma caracterização de custo por nível de rigor, normalizada por
+mutante morto; e (v) um pacote de replicação que roda em hardware de consumo com
+modelos de pesos abertos.
+
+\section{Fundamentação e Trabalhos Relacionados}
+\label{sec:fundamentacao}
+
+\subsection{Geração aumentada por recuperação e seus pontos de falha}
+
+A geração aumentada por recuperação~\cite{lewis2020rag} separa o que um sistema
+sabe do que seu modelo memorizou. Um corpus de documentos é segmentado em
+trechos, cada trecho é projetado em um espaço vetorial e, no momento da
+consulta, os trechos mais próximos da pergunta são colocados no prompt que
+condiciona a geração. O pipeline tem, portanto, cinco estágios distinguíveis ---
+ingestão do corpus, segmentação, indexação, recuperação e geração --- e um
+defeito pode ser introduzido em qualquer um deles sem produzir erro em nenhum
+outro.
+
+\citet{barnett2024seven} relatam sete pontos de falha observados na construção
+de sistemas RAG. Quatro surgem antes de o modelo escrever qualquer coisa: a
+resposta está simplesmente ausente do corpus (FP1); o trecho que a contém existe
+mas não é ranqueado alto o bastante para ser recuperado (FP2); é recuperado mas
+não sobrevive à consolidação na janela de contexto (FP3); ou chega ao contexto e
+não é extraído dele (FP4). Os três restantes dizem respeito ao texto gerado:
+formato errado (FP5), nível de especificidade inadequado (FP6) e resposta
+incompleta (FP7).
+
+Essa distribuição tem uma consequência prática que motiva este estudo. Uma suíte
+para assistente RAG costuma ser escrita como um conjunto de perguntas
+emparelhadas com respostas de referência, e seu veredito é derivado do texto
+gerado. Tal suíte observa FP5 a FP7 diretamente, porque são propriedades desse
+texto. Observa FP1 a FP4 apenas quando eles por acaso mudam a resposta de um
+jeito que o oráculo nota --- e uma falha de recuperação muda a resposta
+sutilmente, removendo um qualificador ou um número, em vez de visivelmente.
+Relatos industriais de teste de sistemas intensivos em dados descrevem suítes
+exatamente com essa forma~\cite{cavalcante2025bigdata,oliveira2026sast}, o que
+sugere que a assimetria não é artefato de um projeto.
+
+A qualidade de sistemas intensivos em dados tem sido estudada de forma
+sistemática na comunidade brasileira~\cite{oliveira2024bigdata}, e o padrão que
+essa literatura descreve --- defeitos que nascem no dado e só aparecem no
+comportamento --- é o mesmo que a transposição do teste de mutação para RAG
+precisa capturar.
+
+\subsection{O problema do oráculo em software baseado em LLM}
+
+Decidir se uma saída está correta é o problema do oráculo, e respostas em
+linguagem natural o tornam agudo: não há uma única cadeia de caracteres correta,
+muitas formulações são igualmente válidas e a mesma entrada não produz a mesma
+saída duas vezes. Esse último ponto vale inclusive sob configurações
+nominalmente determinísticas: \citet{atil2025nondeterminism} mostram que
+temperatura zero e semente fixa não eliminam variação entre execuções, o que
+significa que um teste que falha não é, por si só, evidência de defeito.
+
+\citet{dobslaw2026challenges} organizam os desafios de testar software baseado
+em LLM em uma taxonomia facetada, e levantamentos da área~\cite{wang2024testing}
+mapeiam as técnicas empregadas. Duas lacunas dessa literatura afetam diretamente
+este estudo. A primeira é de granularidade: a taxonomia trata o sistema baseado
+em LLM como a unidade sob teste, sem subdividir a camada de recuperação, de modo
+que as dimensões que um praticante de RAG de fato configura --- versão do
+corpus, tamanho do trecho, modelo de projeção, top-$k$, piso de relevância ---
+não aparecem como facetas a controlar. A segunda é de custo: enumera-se o que
+pode ser testado e como, mas não o que o teste custa em tempo, dinheiro ou
+energia, embora a execução repetida seja a única resposta disponível ao
+não-determinismo e repetição seja precisamente o que custa.
+
+Na prática, quatro famílias de oráculo são usadas. A similaridade de cosseno
+entre a projeção da resposta e a de uma resposta de referência é a mais barata e
+a mais comum. Assertivas determinísticas sobre o texto da resposta --- presença
+ou ausência de um termo, uma expressão regular, um marcador de citação --- são
+ainda mais baratas, mas cobrem apenas o que pode ser enunciado como propriedade
+de superfície. Pacotes de métricas sem referência, como o
+RAGAS~\cite{es2024ragas}, decompõem a resposta em afirmações e checam cada uma
+contra o contexto recuperado. Por fim, um segundo modelo pode atuar como
+juiz~\cite{zheng2023judging}, ao custo de importar a inconsistência desse modelo
+e sua preferência documentada por texto produzido por modelos da própria
+família~\cite{panickssery2024llm}.
+
+Cada uma dessas famílias carrega suposições raramente declaradas. O oráculo de
+similaridade supõe que equivalência semântica é bem aproximada por proximidade
+no espaço de projeção, suposição que evidência adjacente já coloca em dúvida:
+representações baseadas em LLM capturam regularidades de superfície de código
+muito melhor do que capturam sua semântica~\cite{infsof2025codesemantics}. Os
+pacotes de métricas supõem que sua noção de fidelidade coincide com a noção de
+correção que o testador tem em mente. A Seção~\ref{sec:oraculos} relata o que
+acontece quando essas suposições são examinadas em vez de herdadas.
+
+\subsection{Teste de mutação para sistemas baseados em LLM}
+
+O teste de mutação responde a uma pergunta que a cobertura não responde: dada
+uma suíte que passa, ela notaria se o sistema estivesse errado? Defeitos pequenos
+são injetados, a suíte é executada contra cada versão defeituosa e a proporção
+detectada --- o escore de mutação --- estima a capacidade de detecção da
+suíte~\cite{demillo1978hints}. A técnica repousa sobre duas
+suposições~\cite{jia2011analysis}: que um mutante morto foi morto pelo defeito
+injetado e que mutantes que nenhuma suíte consegue matar são equivalentes ao
+original e podem ser identificados comparando comportamentos. Ambas são estáveis
+em software determinístico e nenhuma sobrevive ao contato com um assistente RAG.
+
+Três estudos recentes transpõem injeção de defeitos para sistemas baseados em
+LLM e, juntos, delimitam o que falta. \citet{braga2026mutation} aplicam
+operadores ao prompt de sistema de um chatbot e relatam a consequência de a
+primeira suposição falhar: um escore bruto de 0,86 cai para 0,38 quando cada
+morte é inspecionada e apenas as atribuíveis ao defeito injetado são contadas. O
+sistema sob teste deles não tem camada de recuperação, e a campanha para no
+primeiro caso que mata, o que oculta as demais causas de morte.
+\citet{cabral2026prompt} usam mutação para avaliar testes unitários gerados por
+LLMs sob cinco estratégias de prompt, repetindo cada geração cinco vezes para
+absorver não-determinismo e diagnosticando sobreviventes para derivar
+recomendações; ali, porém, o sistema sob teste é código Java determinístico e
+apenas o gerador de testes é estocástico. \citet{amorim2026trigger} tomam outro
+caminho para o mesmo obstáculo: em vez de injetar defeitos, aplicam relações
+metamórficas ao prompt de agentes com chamada de ferramentas e introduzem uma
+relação identidade cujo único propósito é medir quanto o agente varia sem
+transformação alguma, para que essa instabilidade intrínseca possa ser
+descontada antes de qualquer violação ser atribuída a uma transformação.
+
+Os três convergem para o prompt e para o código. Nenhum perturba o corpus, a
+segmentação, o índice ou os parâmetros de recuperação --- isto é, nenhum perturba
+os estágios onde quatro dos sete pontos de falha documentados se localizam.
+
+\subsection{Avaliação de assistentes inteligentes}
+
+Assistentes construídos sobre modelos de linguagem passaram a ser estudados como
+artefatos de software por direito próprio~\cite{muttillo2025modeling}, e o
+trabalho sobre engenharia de requisitos com LLMs coloca correção e
+confiabilidade dos artefatos gerados como preocupação
+central~\cite{infsof2025reroadmap}. O que essa linha estabelece é o objeto; o
+que ela deixa em aberto é como o veredito sobre esse objeto é alcançado.
+
+Três resultados afiam a pergunta. \citet{bonfim2026evaluator} mantêm os
+artefatos fixos --- os mesmos 300 \emph{patches} de reparo de programa --- e
+variam apenas o validador, obtendo oscilação de cerca de vinte pontos
+percentuais na eficácia relatada; a qualidade relatada de um sistema é,
+portanto, em parte propriedade do instrumento que a mediu. \citet{lima2026limits}
+relatam um resultado delimitador em que priorização de casos de teste baseada em
+LLM não supera linhas de base lexicais leves, e tratam custo como resultado de
+primeira classe, postura também adotada por ferramental de \emph{benchmark} para
+estratégias de provisão de contexto~\cite{vasconcelos2026llmcontextbench}.
+\citet{vergilio2026rag} mostram que ganhos de RAG medidos sobre trechos curados
+não se transferem para a escala de repositório, onde custo e manutenibilidade se
+tornam restritivos.
+
+Duas observações da prática industrial completam o quadro. \citet{franca2026genai}
+relatam que um assistente baseado em RAG identificou sete cenários de teste para
+um fluxo em que analistas humanos identificaram quarenta e oito, e atribuem a
+diferença a conhecimento que existe em conversas e nunca é escrito --- um limite
+que nenhum ajuste de recuperação remove. E nossa própria experiência com um
+assistente implantado no setor público~\cite{oliveira2026sast} produziu uma
+regressão cuja causa foi um documento normativo atualizado que permaneceu
+indexado em sua versão anterior: uma falha de corpus, invisível ao monitoramento
+de erros, detectada apenas porque as respostas mudaram.
+
+\subsection{Lacuna}
+
+Reunindo: os pontos de falha documentados de RAG concentram-se em recuperação e
+dado; as suítes escritas para esses sistemas inspecionam a resposta gerada; o
+teste de mutação, instrumento padrão para perguntar se uma suíte é adequada, foi
+transposto para o prompt e para o código gerado, mas não para o pipeline de
+recuperação; a suposição de que uma morte é atribuível ao defeito injetado não
+se sustenta sob não-determinismo, e a rota clássica para identificar mutantes
+equivalentes está indisponível porque o sistema não-mutado é ele próprio
+instável; e o veredito que decide uma morte vem de um oráculo cujas suposições
+são em geral herdadas em vez de testadas, ainda que trocar o oráculo seja
+reconhecidamente capaz de mudar o escore relatado.
+
+Nenhum estudo perguntou ainda quais camadas de um pipeline RAG produzem defeitos
+que sua suíte de testes deixa de detectar, nem quanto da resposta depende do
+oráculo usado para obtê-la.
+
+\section{Contexto do Estudo}
+\label{sec:contexto}
+
+\subsection{O assistente sob teste}
+
+O sistema sob teste é um assistente de código aberto cuja matéria é o teste de
+sistemas baseados em LLM e RAG. Ele é a implementação pública de referência da
+arquitetura de testes que relatamos para um assistente implantado no setor
+público~\cite{oliveira2026sast}; o corpus e o conjunto de referência do sistema
+original contêm informação operacional da organização parceira e não podem ser
+divulgados, o que motivou construir um sistema equivalente que possa.
+
+O pipeline roda inteiramente em modelos locais de pesos abertos. A geração usa
+\code{qwen3:8b} e a projeção usa \code{nomic-embed-text}, ambos servidos pelo
+Ollama; o armazenamento vetorial é o ChromaDB; o backend é uma aplicação FastAPI
+que expõe consulta, reingestão do corpus e métricas de execução. Cada interação
+é registrada com a pergunta, os trechos recuperados, a resposta e as métricas da
+invocação. O hardware é uma GPU de notebook de consumo com 8~GB de memória.
+
+Rodar localmente é escolha metodológica, não restrição de orçamento. Endpoints
+comerciais são revisados sem aviso, o que torna irreproduzível, após o fato, uma
+campanha de milhares de invocações; pesos abertos fixados por \emph{digest} não
+têm esse problema. O custo é capacidade de modelo, e voltamos a ele ao discutir
+validade externa.
+
+\subsection{Corpus}
+
+O corpus tem 8 documentos, 96 páginas e cerca de 164 mil tokens de literatura de
+pesquisa sobre teste de software. Duas decisões de preparo determinam o que o
+estudo pode observar.
+
+Primeiro, \emph{todo} documento é re-renderizado a partir do seu texto extraído,
+não apenas os que os operadores modificam. Se só os documentos mutados fossem
+re-renderizados, a diferença de extração entre um original e sua contraparte
+mutada entraria no resultado junto com o defeito injetado, e os dois seriam
+indistinguíveis.
+
+Segundo, a re-renderização repagina com orçamento de aproximadamente 1.800
+tokens por página. O assistente segmenta trechos em fronteiras de página, e um
+artigo em duas colunas rende páginas de cerca de 500 tokens; no tamanho de
+trecho configurado, um único trecho engoliria a página inteira e os quatro
+operadores de segmentação seriam inertes por construção --- não produziriam
+mudança observável, e a suíte pareceria não detectar defeitos que o desenho
+nunca permitiu que ela visse. Após a repaginação o índice tem 184 trechos para
+96 páginas, ou 1,9 trecho por página.
+
+A normalização de texto importou mais do que o esperado. As fontes Base-14 dos
+PDFs de origem codificam apenas Latin-1, de modo que 1.372 símbolos foram
+extraídos como pontos de interrogação, 677 deles em um único documento --- e
+notação estatística é precisamente o que os casos factuais citam. Normalização
+Unicode combinada com uma tabela de substituição para letras gregas e operadores
+matemáticos, aplicada caractere a caractere, recuperou 93\% deles.
+
+Três papéis foram atribuídos a documentos para que os operadores de corpus
+tenham alvo: um documento \emph{primário}, denso em valores factuais, do qual as
+variantes perturbadas derivam; um documento \emph{secundário} cujo terço final é
+prosa e não bibliografia, de modo que o truncamento remova conteúdo sobre o qual
+a suíte pergunta; e dois documentos \emph{recentes}, usados pelo operador que
+deixa corpus e índice fora de sincronia. Duas variantes do primário foram
+produzidas, uma representando versão superada e outra introduzindo valor
+conflitante, cada uma com 40 substituições distribuídas pelas páginas;
+marcadores de citação e entradas bibliográficas foram excluídos da perturbação,
+porque nenhum caso de teste pergunta sobre eles.
+
+O corpus é composto por artigos de pesquisa sobre teste de software, e alguns
+deles são trabalhos relacionados deste próprio artigo. A sobreposição é
+consequência do domínio do assistente e não entra no resultado: todo caso
+dependente do corpus pergunta por um valor factual enunciado em um documento ---
+uma contagem, um percentual, um limiar --- e nenhum pergunta por sua tese.
+
+\subsection{Suíte de testes}
+
+A suíte tem 30 casos derivados por particionamento em classes de equivalência
+sobre o corpus (Tabela~\ref{tab:classes}). As classes não são conveniência
+descritiva: existem para que cada camada do pipeline tenha ao menos um caso
+capaz de expor um defeito nela. Sem essa garantia o estudo mediria a suíte em
+vez do pipeline, e um mutante sobrevivente não poderia ser distinguido de uma
+lacuna de cobertura que o próprio desenho criou.
+
+\begin{table}[htb]
+\centering
+\caption{Classes de equivalência da suíte e o comportamento que cada uma
+exercita.}
+\label{tab:classes}
+\begin{tabular}{@{}lcl@{}}
+\toprule
+Classe & Casos & Comportamento esperado \\
+\midrule
+Fato direto          & 6  & Recuperar um valor explícito \\
+Fato distribuído     & 5  & Combinar evidência de dois ou mais trechos \\
+Filtro condicional   & 4  & Responder conforme uma condição enunciada \\
+Fora do corpus       & 5  & Abster-se \\
+Fora de escopo       & 3  & Recusar \\
+Ambíguo              & 3  & Pedir esclarecimento \\
+Rastreabilidade      & 4  & Citar o documento de origem \\
+\midrule
+Total                & 30 & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Cada resposta de referência foi conferida contra o trecho do índice do qual
+deriva. Os 19 casos dependentes do corpus foram primeiro rascunhados pelo modelo
+local a partir dos trechos indexados e depois verificados um a um contra a
+fonte; em quatro rodadas nenhum número foi inventado, mas o modelo regularmente
+anexava uma justificativa própria a um fato correto. Como a resposta de
+referência é ela própria o oráculo, tal afirmação penalizaria uma resposta
+correta do sistema; seis referências foram reescritas para conter apenas o
+literal.
+
+Duas verificações foram acrescentadas depois que casos iniciais reprovaram por
+razões alheias ao que deviam testar. A primeira verifica, para todo caso
+dependente do corpus, que a pergunta de fato recupera a \emph{página} que contém
+sua evidência: num corpus em que todo documento discute teste, uma pergunta
+genericamente formulada recupera o vizinho temático, e o caso reprovaria contra
+o sistema não-mutado e sairia da análise em silêncio. A segunda executa o
+oráculo determinístico contra as próprias respostas de referência e descarta
+qualquer assertiva que sua própria referência não satisfaça --- uma assertiva
+que falha no baseline remove o caso da análise com a mesma discrição.
+
+\subsection{Instrumentação}
+\label{sec:instrumentacao}
+
+Operadores de mutação para um pipeline RAG mudam configuração, não código-fonte,
+e vários dos parâmetros que eles mudam não existiam como valores configuráveis
+no assistente. Acrescentá-los exigiu 264 linhas de mudança, cada uma introduzida
+com um padrão que preserva o comportamento anterior: o prompt de sistema é
+emitido byte a byte como antes, e a suíte de API pré-existente, de 18 testes,
+passa inalterada.
+
+O arcabouço nunca reescreve um arquivo sob a aplicação. Ele aplica um delta de
+configuração em memória e o descarta quando o mutante é revertido, o que elimina
+o modo de falha mais caro de uma campanha de mutação --- um mutante que
+permaneceu parcialmente aplicado após a reversão, contaminando em silêncio toda
+medição subsequente. A campanha também usa ambiente virtual e índice vetorial
+próprios, de modo que executá-la não perturba o estado operacional do
+assistente.
+
+O baseline do estudo não é o padrão do repositório, e cada diferença existe para
+que algum operador tenha o que remover: trechos de 1.200 tokens com sobreposição
+de 200, porque os operadores de segmentação são definidos como deltas a partir
+desses valores; reordenação por relevância marginal máxima ligada, porque um
+operador a desliga; piso de relevância acima de zero, porque um operador o
+remove; instrução de citação ligada, porque um operador a remove; e temperatura
+fixada em 0,0 explicitamente, exceto no operador que a eleva. O arcabouço recusa
+aplicar um operador cujo valor coincida com o do baseline, de modo que um
+mutante equivalente por configuração não entra na campanha despercebido.
+
+Um parâmetro do servidor de modelos precisou ser declarado antes que qualquer
+medição fosse confiável, e ele não estava no protocolo. Sem uma janela de
+contexto explícita, o servidor usa 4.096 tokens e trunca silenciosamente todo
+prompt maior que a metade disso, preservando os quatro primeiros tokens e os
+2.046 últimos --- o que descarta o prompt de sistema e, com ele, as regras de
+ancoragem, abstenção e citação. O primeiro baseline completo deste estudo, com
+300 invocações, rodou assim; o servidor só reportou isso no seu próprio log, e
+todos os oráculos julgaram respostas fluentes produzidas por conhecimento
+paramétrico como se as regras tivessem sido desobedecidas. A janela passou a ser
+dimensionada pela configuração de recuperação de cada mutante,
+$\mathrm{num\_ctx} = \lceil (k \cdot s \cdot 1{,}25 + 1.024 +
+\mathrm{num\_predict}) / 1.024 \rceil \cdot 1.024$ para top-$k$ igual a $k$ e
+trecho de tamanho $s$, com o teto de geração explícito porque o limite de prompt
+do servidor é a diferença entre os dois. O arcabouço registra o tamanho do
+prompt de toda invocação e transforma em erro auditável um prompt no limite.
+
+Um parâmetro do baseline precisou ser calibrado antes de a campanha começar. O
+piso de relevância da recuperação era valor configurado mas não aplicado, e o
+operador que o remove só pode ter efeito se o baseline o aplicar. Escolher esse
+piso expôs uma assimetria que vale enunciar, porque o mesmo raciocínio governa o
+limiar calibrado na Seção~\ref{sec:oraculos}. Um piso alto demais rejeita uma
+pergunta que deveria ter sido respondida, o caso então reprova contra o sistema
+não-mutado e desaparece do denominador de toda questão de pesquisa sem que erro
+algum seja levantado. Um piso baixo demais apenas deixa passar uma pergunta
+inrespondível, o que a instrução de abstenção deve capturar e que é, portanto,
+visível nos resultados. Os dois erros não custam o mesmo, de modo que o piso foi
+posto com margem de 0,02 abaixo do caso legítimo mais fraco (0,428), mesmo com
+um valor ligeiramente maior pontuando melhor no critério otimizado.
+
+A calibração produziu também uma medida contra a qual os resultados devem ser
+lidos: seis dos oito casos negativos --- as cinco perguntas fora do corpus mais
+uma das três fora de escopo --- recuperam trechos \emph{acima} do piso, com
+similaridade máxima entre 0,486 e 0,608. Num corpus topicamente homogêneo, todo
+pergunta é do assunto, inclusive aquelas cuja resposta está ausente, e um piso
+global de similaridade não distingue "coberto" de "não coberto".
+
+\section{Operadores de Mutação para Pipelines RAG}
+\label{sec:operadores}
+
+\subsection{Derivação}
+
+O catálogo foi derivado dos pontos de falha da Seção~\ref{sec:fundamentacao}, e não do que era
+conveniente perturbar, sob cinco regras.
+
+\emph{Um defeito por operador.} Cada operador injeta um único defeito plausível
+em um único estágio do pipeline e é rastreado a um ponto de falha. Um operador
+que mudasse duas coisas de uma vez produziria mortes não atribuíveis.
+
+\emph{Todo defeito tem um reparo.} Dois operadores que se parecem são mantidos
+separados quando um praticante os corrigiria de modo diferente. C1 remove um
+documento do corpus, e o reparo é obter o documento de novo; E2 deixa o
+documento no corpus e fora do índice, e o reparo é rodar a reingestão. A
+distinção é exatamente a que importa a quem mantém o assistente.
+
+\emph{Configuração, não código.} Defeitos de RAG são, em sua maioria, defeitos
+de configuração e de dado: um tamanho de trecho escolhido para outro corpus, uma
+reindexação que não rodou, um piso de relevância que nunca foi aplicado. Todo
+operador é, portanto, um delta sobre a configuração do assistente ou sobre os
+arquivos que ele ingere, nunca uma edição em seu código-fonte.
+
+\emph{Dois operadores replicam incidentes.} C2, em que a versão superada de um
+documento permanece indexada, e E2, em que o corpus mudou e o índice não, são as
+duas falhas que observamos em operação com um assistente implantado no setor
+público~\cite{oliveira2026sast}. A presença deles ancora o catálogo no que de
+fato quebra, e não apenas no que poderia quebrar.
+
+\emph{Um operador de controle.} P4 eleva a temperatura de geração de 0 para 0,8.
+É o único operador sem ponto de falha associado: não injeta erro de conteúdo,
+injeta instabilidade. Existe para checar o próprio protocolo --- se a regra do
+conjunto avaliável faz o que promete, P4 deve aparecer como perda de vereditos
+estáveis, e não como mortes coerentes.
+
+\subsection{O catálogo}
+
+A Tabela~\ref{tab:operadores} lista os 18 operadores por camada, com o defeito
+que cada um injeta, o ponto de falha a que é rastreado, o delta de configuração
+que o implementa e o número de casos de teste desenhados para poder matá-lo.
+
+\begin{table}[htb]
+\centering
+\small
+\caption{Catálogo de operadores de mutação. FP indica o ponto de falha de
+\citet{barnett2024seven}. "Casos" é quantos casos da suíte foram desenhados para
+poder matar o operador.}
+\label{tab:operadores}
+\begin{tabular}{@{}llllc@{}}
+\toprule
+Op. & Camada & Defeito injetado & Baseline $\rightarrow$ mutante & Casos \\
+\midrule
+C1 & Corpus       & Documento ausente (FP1)          & primário removido do corpus e do índice & 4 \\
+C2 & Corpus       & Versão superada indexada (FP1)   & primário na variante anterior (40 trocas) & 2 \\
+C3 & Corpus       & Extração perde o final (FP1)     & secundário com 70\% das páginas & 3 \\
+C4 & Corpus       & Duplicata conflitante (FP4)      & variante conflitante como novo documento & 1 \\
+K1 & Segmentação  & Perda de contexto local (FP3)    & trecho 1.200 $\rightarrow$ 400 tokens & 5 \\
+K2 & Segmentação  & Queda de precisão (FP2)          & trecho 1.200 $\rightarrow$ 3.000 tokens & 4 \\
+K3 & Segmentação  & Conceito partido (FP3)           & sobreposição 200 $\rightarrow$ 0 & 3 \\
+K4 & Segmentação  & Corte no meio de regra (FP3)     & fronteiras deslocadas em $+600$ tokens & 5 \\
+E1 & Índice       & Degradação de recall (FP2)       & projeção 768 $\rightarrow$ 384 dimensões & 7 \\
+E2 & Índice       & Índice obsoleto (FP1)            & documentos recentes fora do índice & 3 \\
+R1 & Recuperação  & Evidência não recuperada (FP2)   & top-$k$ 4 $\rightarrow$ 1 & 10 \\
+R2 & Recuperação  & Diluição de contexto (FP3)       & top-$k$ 4 $\rightarrow$ 12 & 7 \\
+R3 & Recuperação  & Trechos redundantes (FP2)        & reordenação por relevância desligada & 4 \\
+R4 & Recuperação  & Trecho irrelevante (FP1)         & piso de relevância 0,428 $\rightarrow$ 0 & 5 \\
+P1 & Prompt       & Conhecimento paramétrico (FP6)   & regra de ancoragem removida & 11 \\
+P2 & Prompt       & Inventa em vez de abster (FP6)   & regra de abstenção removida & 7 \\
+P3 & Prompt       & Perde rastreabilidade (FP5)      & regra de citação removida & 4 \\
+P4 & Prompt       & Variância (controle)             & temperatura 0,0 $\rightarrow$ 0,8 & 5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Dois detalhes de desenho merecem nota. K4 mantém tamanho e sobreposição e move
+apenas onde os cortes caem; é o controle que separa "o tamanho do trecho
+importa" de "a posição do corte importa". E1 troca o modelo de projeção do
+assistente, mas não o do oráculo de similaridade: se o instrumento de medida
+mudasse junto com o sistema medido, o operador seria inobservável por
+construção.
+
+\subsection{Aplicação, reversão e fidelidade}
+
+Aplicar um operador sempre parte de uma cópia limpa do corpus e das fontes do
+índice, de modo que nenhum operador herde resíduo de outro. Um portão executado
+antes da campanha aplica cada operador, reverte-o e compara a cópia de trabalho
+com a assinatura limpa: os 18 revertem sem resíduo.
+
+Reverter sem resíduo não mostra que o mutante \emph{é} o que o catálogo diz. Um
+delta de configuração pode ser aceito pelo sistema e não mudar nada --- porque o
+parâmetro não é aplicado, porque o corpus não tem conteúdo no ponto em que o
+operador incide, ou porque o baseline já tinha o valor que o operador define.
+Acoplamos, portanto, a cada operador uma checagem executável de fidelidade que
+observa o efeito no estágio que o operador deveria alterar. O critério é o que
+toda checagem de fidelidade deveria satisfazer: a sonda precisa \emph{falhar no
+baseline e passar no mutante}. Exemplos do que se observa: 184 $\rightarrow$ 790
+trechos em K1; 913 $\rightarrow$ 0 caracteres compartilhados na primeira
+fronteira em K3; dimensão de vetor 768 $\rightarrow$ 384 em E1; zero trechos
+devolvidos no baseline e quatro no mutante para a pergunta abaixo do piso em R4.
+
+Duas sondas precisaram ser endurecidas depois da primeira versão, e a razão é a
+mesma nas duas: uma checagem que passa pelo motivo errado é pior que checagem
+nenhuma. A sonda de R4 usava a primeira pergunta fora do corpus da lista, cujo
+melhor trecho já superava o piso; baseline e mutante devolviam quatro trechos e
+a checagem passava sem observar nada. A sonda de K3 contava trechos, que não
+mudam quando a sobreposição é removida --- o que muda é o conteúdo.
+
+\subsection{Equivalência sob não-determinismo: o conjunto avaliável}
+
+Em software determinístico, um mutante equivalente é aquele que nenhum teste
+distingue do original, e ele é detectado comparando comportamentos. Um
+assistente RAG não oferece comportamento fixo para comparar: o original responde
+de modo diferente a cada execução, e "comporta-se como o original" não tem
+testemunha única. Substituímos a noção por outra, computável.
+
+Seja $\Cset$ a suíte e $v_o(m, c, r) \in \{\aprova, \reprova\}$ o veredito do
+oráculo $o$ sobre o caso $c$ na execução $r$ contra o sistema $m$, com $m = b$
+denotando o baseline não-mutado. O \emph{conjunto avaliável} do oráculo $o$ é o
+conjunto de casos em que o baseline é ao mesmo tempo estável e correto ao longo
+de suas $N_b$ execuções:
+\begin{equation}
+\label{eq:avaliavel}
+\Sset_o = \bigl\{\, c \in \Cset \;:\; v_o(b, c, r) = \aprova \ \text{para todo}\
+r = 1, \dots, N_b \,\bigr\}.
+\end{equation}
+
+Todo denominador do estudo é restrito a $\Sset_o$. Um caso instável no baseline
+produziria mortes não atribuíveis a mutação alguma; um caso que reprova
+estavelmente no baseline reprovaria em todo mutante e inflaria a taxa de mortes
+sem carregar informação sobre o defeito injetado. As duas exclusões são
+relatadas separadamente, porque significam coisas diferentes: a primeira mede a
+instabilidade intrínseca do sistema, a segunda mede onde a suíte e o sistema
+não-mutado já discordam.
+
+O conjunto é por oráculo, e não global, porque a mesma execução pode ser estável
+sob uma assertiva determinística e instável sob um juiz. É isso que permite à
+QP2 comparar oráculos sobre artefatos idênticos: cada um é pontuado sobre o seu
+próprio terreno estável.
+
+O conjunto é também o que separa um mutante sobrevivente de um mutante que caso
+algum poderia ter matado. Três fontes de equivalência por construção foram
+encontradas e removidas antes da campanha, e cada uma generaliza além deste
+estudo. \emph{Por estrutura do corpus}: C3 trunca os últimos 30\% de um
+documento, e em um artigo de pesquisa o terço final é quase sempre a lista de
+referências, sobre a qual nenhum caso pergunta. \emph{Por configuração do
+baseline}: três operadores removem algo que o padrão do repositório nunca teve.
+\emph{Por ingestão}: os quatro operadores de segmentação eram inertes sobre a
+paginação original. A observabilidade de um operador de corpus depende da
+estrutura interna do documento sobre o qual ele age, e essa dependência não
+aparece em um catálogo; um catálogo de operadores para RAG precisa, portanto,
+viajar acompanhado de um critério de adequação do corpus, sob pena de o estudo
+reportar "a suíte não detecta" onde a verdade é "o desenho não permitia
+detectar".
+
+\section{Oráculos e Calibração}
+\label{sec:oraculos}
+
+Todo oráculo é função dos mesmos quatro artefatos registrados no log --- a
+pergunta, sua resposta de referência, a resposta gerada e o contexto recuperado
+--- e devolve \aprova{} ou \reprova. Os oráculos foram escolhidos para cobrir as
+quatro famílias da Seção~\ref{sec:fundamentacao} e para serem os que um praticante de fato implanta,
+na forma em que os implanta. O custo deles é deliberadamente assimétrico: os
+dois baratos e sua conjunção são aplicados a toda execução, e os dois caros são
+aplicados uma vez por par (mutante, caso), sobre a resposta modal das execuções.
+A assimetria reduz as chamadas de juiz de 13.500 para 2.700; ela é parte do
+resultado de custo, não um atalho escondido dele.
+
+\textbf{O1 --- similaridade de cosseno à referência.} Aprova quando a
+similaridade entre a projeção da resposta gerada e a da referência atinge um
+limiar $\tau^\ast$. O modelo de projeção é fixo, independentemente da
+configuração do sistema sob teste; se o oráculo seguisse o modelo do sistema, o
+operador E1 mudaria o instrumento de medida junto com o objeto medido.
+
+\textbf{O2 --- assertivas determinísticas.} Um conjunto de assertivas sobre o
+texto da resposta, e apenas sobre ele. Os 30 casos carregam 71 assertivas de dez
+tipos: termos exigidos, termos proibidos, expressão regular para condição
+enunciada, limite de comprimento, presença ou ausência da frase de abstenção,
+comportamentos de recusa e de esclarecimento e, na classe de rastreabilidade,
+citação de documento e de página. O2 nunca faz assertiva sobre os trechos
+recuperados. A restrição é deliberada: a hipótese por trás da QP1 é que uma
+suíte típica testa a saída e não a recuperação, e uma suíte já instrumentada com
+assertivas de recuperação responderia à QP1 por construção.
+
+\textbf{O3 --- pacote de métricas sem referência.} Aplica as três métricas do
+RAGAS que uma avaliação de RAG costuma relatar~\cite{es2024ragas} --- fidelidade,
+relevância da resposta e precisão do contexto --- computadas por um juiz local
+sobre a resposta e o contexto recuperado, aprovando quando as três atingem 0,7.
+
+\textbf{O4 --- modelo como juiz.} Pergunta a um segundo modelo se a resposta
+gerada é aceitável dada a pergunta e a referência. Três mitigações limitam o que
+se pode atribuir ao juiz: ele é de família distinta da do gerador, contra a
+preferência documentada de avaliadores por texto da própria
+família~\cite{panickssery2024llm}; cada par é julgado cinco vezes e decidido por
+maioria simples; e o juiz responde em um esquema JSON restrito, com veredito,
+causa predominante e justificativa curta, de modo que sua saída possa ser lida
+sem interpretação.
+
+Uma instrução do prompt do juiz foi acrescentada após o piloto e é, ela própria,
+um achado. O juiz não vê o documento de origem; vê a pergunta, a referência e a
+resposta. Ele não tem, portanto, como saber se um detalhe ausente da referência
+é verdadeiro, e só pode julgar se a resposta \emph{contradiz} a referência. A
+primeira versão do prompt pedia que não houvesse "afirmação não sustentada", e o
+juiz leu "não sustentada" como "ausente da referência": uma resposta correta e
+mais detalhada que a referência reprovava por "acrescentar informação". O prompt
+passou a declarar que a referência é o mínimo que uma resposta aceitável precisa
+conter, não o máximo. Um juiz baseado em referência carrega viés estrutural
+contra respostas \emph{melhores} que a referência, e esse viés só se torna
+visível quando o sistema sob teste é bom.
+
+\textbf{O5 --- conjunção.} $\mathrm{O5}(c) = \mathrm{O1}(c) \wedge \bigwedge_i
+\mathrm{O2}_i(c)$. Não é "oráculos em paralelo": uma violação determinística
+reprova o caso qualquer que seja o escore de similaridade, e uma falha semântica
+o reprova qualquer que seja a assertiva. O5 é a forma a que um praticante chega
+depois do primeiro falso positivo de um oráculo de similaridade, e é o oráculo
+primário da análise da QP1.
+
+\subsection{Calibração do limiar de similaridade}
+
+Um limiar de similaridade escolhido por intuição é um oráculo não declarado. O
+protocolo fixou, portanto, um procedimento de calibração antes de existir
+qualquer dado de campanha: construir um conjunto rotulado de pares de respostas,
+varrer $\tau \in [0{,}60; 0{,}95]$ em passos de 0,01 e tomar o $\tau^\ast$ que
+maximiza o $F_1$ da classe de respostas corretas.
+
+Cada par é uma resposta de referência e uma candidata. As candidatas da classe
+\textsc{equiv} são paráfrases da referência produzidas por um modelo de família
+distinta da do gerador e revisadas individualmente: as 115 paráfrases foram
+lidas, 111 aprovadas e 4 rejeitadas, por degeneração ou por relação alterada. As
+candidatas da classe \textsc{erro} são a referência com um fato corrompido por
+regra programática --- um número substituído por outro valor plausível, uma
+entidade nomeada trocada por outra do corpus, ou uma condição enunciada
+invertida --- de modo que o que mudou seja conhecido por construção. Os oito
+casos cuja referência é a frase fixa de abstenção foram excluídos: não existe
+versão errada plausível de uma abstenção. O conjunto final tem 247 pares (111
+\textsc{equiv}, 136 \textsc{erro}) sobre 22 casos.
+
+A varredura devolveu $\tau^\ast = 0{,}60$, o mínimo da grade, com $F_1 = 0{,}62$
+e área sob a curva ROC de 0,485. O $F_1$ máximo é obtido aceitando tudo: nenhum
+limiar separa paráfrase correta de erro injetado. A média de similaridade das
+duas classes é 0,970 para \textsc{equiv} e 0,967 para \textsc{erro}.
+
+Não é defeito de medição. Controles diretos sobre uma mesma referência: idêntica
+1,0000; paráfrase correta 0,9907; \emph{sentença negada} 0,9912; \emph{número
+trocado} 0,9184; entidade trocada 0,8095; assunto alheio 0,5973; outro idioma
+0,4165. Uma sentença com o sentido invertido pontua acima de uma paráfrase
+legítima.
+
+A AUC agregada esconde dois regimes opostos (Tabela~\ref{tab:auc}). Para
+substituição de entidade o oráculo funciona. Para números trocados e condições
+invertidas ele \emph{se inverte}: o erro injetado pontua mais alto que a
+paráfrase correta em 75\% e 91\% das comparações, respectivamente. O padrão se
+replica em um segundo modelo de projeção, de família diferente e metade da
+dimensionalidade, de modo que o achado é sobre o \emph{método} --- cosseno
+contra referência --- e não sobre a escolha de modelo deste estudo.
+
+\begin{table}[htb]
+\centering
+\caption{Similaridade dos erros injetados por tipo, contra as 111 paráfrases
+corretas. AUC abaixo de 0,5 significa que o erro é ordenado acima da paráfrase
+correta.}
+\label{tab:auc}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Classe da candidata & $n$ & Média & AUC (nomic) & AUC (MiniLM) \\
+\midrule
+Condição invertida        & 20  & 0,995 & 0,091 & 0,174 \\
+Número trocado            & 53  & 0,988 & 0,248 & 0,140 \\
+\emph{Paráfrase correta}  & \emph{111} & \emph{0,970} & --- & --- \\
+Entidade substituída      & 63  & 0,942 & 0,808 & 0,752 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A razão é estrutural. O erro injetado é a referência com um token trocado,
+textualmente quase idêntica; a paráfrase é uma reescrita honesta, com outro
+verbo e outra ordem. O cosseno mede proximidade de superfície, e por isso
+prefere a corrupção mínima à reformulação legítima. O defeito que mais importa
+em RAG --- um número errado numa sentença correta --- é exatamente o que o
+oráculo mais barato e mais comum não vê.
+
+O1 é mantido na campanha em $\tau^\ast = 0{,}60$, porque o estudo mede o que os
+oráculos que praticantes implantam detectam, e é isso que esse oráculo detecta.
+Duas limitações são declaradas: a classe \textsc{erro} é gerada
+programaticamente e pode ser mais fácil de detectar que os erros que um modelo
+comete naturalmente, e as paráfrases revisadas saíram conservadoras. As duas
+empurram na mesma direção: $\tau^\ast$ e a AUC são limites superiores do
+desempenho do oráculo, pelos dois lados.
+
+\section{Desenho do Estudo}
+
+O desenho foi registrado antes da execução: operadores, suíte, oráculos,
+limiares, repetições, métricas e testes estatísticos foram fixados e
+versionados. Seguimos a estrutura de relato para estudo de caso em engenharia de
+software~\cite{runeson2009guidelines}, já que o objeto é um sistema estudado em
+profundidade e não uma amostra de sistemas.
+
+\subsection{Métricas}
+
+Seja $V_o(m, c)$ o veredito do oráculo $o$ sobre o caso $c$ contra o mutante
+$m$, agregado sobre as $N_m$ execuções. Com $\Sset_o$ como na
+Equação~\eqref{eq:avaliavel}, a \emph{taxa de morte} de um mutante é a proporção
+de casos avaliáveis que reprovam sobre ele,
+\begin{equation}
+\label{eq:taxa}
+\taxa_o(m) = \frac{\bigl|\{\, c \in \Sset_o : V_o(m, c) = \reprova \,\}\bigr|}
+{|\Sset_o|},
+\end{equation}
+relatada com intervalo de confiança de Wilson a 95\%. Um mutante é \emph{morto}
+sob $o$ quando $\taxa_o(m) > 0$, e o \emph{escore de mutação} da suíte sob $o$ é
+a proporção de mutantes mortos, $\MS_o = |\{ m : \taxa_o(m) > 0 \}| / |M|$, com
+$M$ o conjunto dos 18 mutantes.
+
+As duas leituras são mantidas separadas de propósito. Com um mutante por
+operador, um escore de mutação por operador seria 0 ou 1 e seu intervalo de
+confiança nada diria; a taxa de morte sobre casos tem denominador
+($|\Sset_o|$) e intervalo interpretável, e é ela que entra na comparação entre
+camadas. O escore de mutação é propriedade da suíte sob um oráculo, e é sobre
+ele que a \emph{oscilação} da QP2 é calculada:
+$\max_o \MS_o - \min_o \MS_o$.
+
+\subsection{Protocolo de execução}
+
+O baseline é executado $N_b = 10$ vezes por caso (300 invocações) e cada um dos
+18 mutantes $N_m = 5$ vezes por caso (2.700 invocações), totalizando 3.000
+invocações do assistente. A geração roda a temperatura 0,0 em todos os casos
+exceto sob P4, e a semente da execução $r$ é o próprio $r$. A campanha não para
+no primeiro caso que mata: todo caso roda contra todo mutante, porque a causa de
+cada morte é um resultado e parar cedo a esconderia.
+
+Dentro de cada repetição, a ordem dos casos é embaralhada com o índice da
+repetição como semente. A razão é um achado do baseline: a temperatura 0 a
+semente não muda nada, mas a resposta depende do prompt que a precedeu no slot
+do servidor, por reuso de prefixo no cache de chaves e valores. Em ordem fixa,
+as repetições 2 a 10 de um caso seguem sempre o mesmo antecessor e saem byte a
+byte iguais, enquanto a repetição 1 difere; dez repetições amostram dois
+estados. Embaralhar dá a cada invocação um antecessor diferente, que é o que
+repetir deveria significar em um servidor que mantém cache.
+
+Os oráculos nunca rodam durante a campanha. Eles leem o log depois, e cada
+veredito registra qual oráculo, qual nível de rigor e de quantas execuções foi
+derivado. Essa separação é o que torna gratuito recalibrar um limiar, trocar a
+implementação de um oráculo ou reexecutar o juiz.
+
+\subsection{Níveis de rigor e custo}
+
+A QP3 compara três níveis derivados do mesmo log. L1 é execução única: o
+veredito da primeira execução, sem conjunto avaliável --- é o que um protocolo
+que executa cada caso uma vez teria relatado, e é o que a maioria das suítes na
+prática relata. L2 é o protocolo registrado da campanha: cinco execuções por par
+com veredito por maioria, e $\Sset_o$ a partir das dez execuções do baseline. L3
+acrescenta 30 execuções de baseline sobre um subconjunto de dez casos, para
+estimar quanto o juízo de estabilidade de L2 mudaria com seis vezes mais
+repetições.
+
+Custo é medido, não estimado. Para cada invocação, o arcabouço registra tempo de
+parede, tokens de prompt e de resposta e, amostrando a GPU pela biblioteca de
+gerenciamento do fabricante durante a chamada, GPU-segundo e energia em
+watts-hora. Os oráculos são medidos do mesmo modo.
+
+\subsection{Análise estatística}
+
+Todos os testes foram fixados antes da coleta, a $\alpha = 0{,}05$; nenhuma
+proporção é relatada sem intervalo de Wilson a 95\% e nenhuma diferença de média
+sem intervalo por \emph{bootstrap} percentílico a 95\%. Para a QP1, as taxas de
+morte por operador são agrupadas por camada e comparadas por Kruskal-Wallis, com
+$\eta^2$ como tamanho de efeito e comparações de Dunn sob correção de
+Holm~\cite{holm1979simple}. Para a QP2, os vereditos binários dos oráculos sobre
+os mesmos pares são comparados pelo $Q$ de Cochran~\cite{cochran1950comparison},
+seguido de testes de McNemar par a par sob Holm, e a concordância é resumida por
+$\kappa$ de Fleiss e por $\kappa$ de Cohen par a par. Para a QP3, o custo por
+mutante morto em cada nível é relatado com seu intervalo por \emph{bootstrap}.
+
+\subsection{Desvios do protocolo registrado}
+
+Cinco desvios ocorreram, todos antes de qualquer resultado de mutante ser
+examinado.
+
+\emph{Janela de contexto.} O primeiro baseline completo rodou com o prompt
+truncado, como descrito na Seção~\ref{sec:instrumentacao}. As 300 invocações foram arquivadas, não
+descartadas, e repetidas com a janela dimensionada por configuração.
+
+\emph{Checagem de recuperação em nível de página.} Um diagnóstico que não depende
+de geração mostrou que em dez dos 19 casos factuais o documento certo era
+recuperado, mas não a página que contém a evidência, e que isso é propriedade da
+pergunta e não da configuração. A checagem foi estendida de documento para
+página, e oito perguntas foram reescritas com termos do trecho da evidência.
+Três casos não têm formulação natural que vença as páginas vizinhas do mesmo
+documento; permanecem como estão, marcados como lacuna aceita, e saem de
+$\Sset_o$ pela Equação~\eqref{eq:avaliavel}.
+
+\emph{Instrução de citação.} Solicitado a citar "no formato [documento, pág.
+N]", o gerador copiava a palavra \emph{documento} literalmente. Uma regra que o
+baseline não consegue cumprir torna equivalente por construção o operador que a
+remove, de modo que a regra passou a nomear o arquivo e a dar um exemplo.
+
+\emph{Oráculo O3.} Nenhuma das duas implementações do pacote de métricas
+produziu vereditos utilizáveis com o juiz local. A implementação de referência
+não consegue interpretar a saída do juiz em seis de nove avaliações. A
+implementação alternativa avalia tudo, mas devolve fidelidade 0,0 para uma
+resposta ancorada e 1,0 para uma resposta que inventa um número sobre um tópico
+ausente do contexto recuperado. Com um juiz do dobro do tamanho, a resposta
+inventada continua com fidelidade 1,0: a métrica conta afirmações que não
+\emph{contradizem} o contexto, e uma afirmação sobre tópico ausente não
+contradiz nada. O ponto cego é por definição, não por tamanho de modelo, e o
+defeito que o operador P2 injeta --- responder em vez de abster-se --- é
+invisível a ele. A contingência registrada foi aplicada: a campanha rodou com
+quatro oráculos, e O3 é relatado como ponto cego medido em vez de instrumento
+produtor de vereditos. Como julgar é separado de executar, a escolha é
+reversível sem gastar GPU novamente.
+
+\emph{Teto de geração.} Quarenta e uma invocações da campanha (1,5\%) gastaram
+todo o orçamento de geração de 4.096 tokens no traço de raciocínio e devolveram
+resposta vazia. São registradas como erro e excluídas dos vereditos ---
+reprová-las atribuiria ao mutante um efeito do nosso próprio teto --- e
+reexecutadas uma vez por uma passada explícita de repetição, após a qual todas
+completaram. A passada de repetição é um desvio que vale nomear: ela reexecuta
+apenas o que falhou, de modo que, se o estouro do teto fosse correlacionado ao
+efeito de um mutante, o procedimento enviesaria contra detectá-lo. As 41
+concentram-se em três casos, e um deles está fora de $\Sset_o$ para todo oráculo
+de qualquer modo.
+
+A regra de corte do cronograma --- descartar os cinco operadores marcados como
+cortáveis, ou reduzir a suíte para 20 casos --- \emph{não} foi aplicada: o
+desenho completo de $18 \times 30 \times 5$ rodou, e o custo é relatado como
+resultado em vez de absorvido como corte.
+
+\section{Resultados}
+\label{sec:resultados}
+
+\subsection{O conjunto avaliável}
+
+A campanha são 3.000 invocações do assistente: 300 do baseline não-mutado e
+2.700 dos mutantes, sem invocação falha no log final. A
+Tabela~\ref{tab:avaliavel} reporta, por oráculo, quanto da suíte o protocolo
+consegue medir.
+
+\begin{table}[htb]
+\centering
+\caption{Conjunto avaliável por oráculo. Um caso sai de $\Sset_o$ ou porque seu
+veredito de baseline é instável ao longo das dez execuções, ou porque reprova
+estavelmente no sistema não-mutado.}
+\label{tab:avaliavel}
+\begin{tabular}{@{}lcccl@{}}
+\toprule
+Oráculo & $|\Sset_o|$ & Instáveis & Reprovam & Flakiness [IC 95\%] \\
+\midrule
+O1 cosseno      & 26 & 1 & 3 & 0,033 [0,006; 0,167] \\
+O2 assertivas   & 20 & 3 & 7 & 0,100 [0,035; 0,256] \\
+O4 juiz         & 22 & 0 & 8 & 0,000 [0,000; 0,114] \\
+O5 conjunção    & 20 & 3 & 7 & 0,100 [0,035; 0,256] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Três leituras importam. Primeiro, os oráculos discordam sobre o que é mensurável
+antes de julgar um único mutante: o de similaridade mantém 26 dos 30 casos e o
+determinístico mantém 20, porque um oráculo mais estrito reprova mais casos no
+sistema não-mutado. Um estudo que relatasse adequação sem relatar $|\Sset_o|$
+estaria comparando escores calculados sobre denominadores diferentes.
+
+Segundo, a instabilidade residual do sistema sob teste é pequena mas não nula, e
+depende do oráculo: um caso para O1, três para O2 e O5, nenhum para O4. O zero
+do juiz é propriedade do juiz, não do assistente --- ele agrega a resposta modal
+e vê um único texto por par, de modo que não observa a variação que os oráculos
+por execução observam.
+
+Terceiro, os casos que reprovam estavelmente no baseline reprovam por razões que
+sabemos nomear, e nomeá-las é o que mantém a exclusão honesta: três recuperam o
+documento certo mas não a página da evidência; um pergunta sobre uma tabela com
+nove irmãs quase idênticas no mesmo documento; um é respondido de forma
+incompleta; três fazem pergunta ambígua e recebem abstenção em vez de pedido de
+esclarecimento --- o prompt do assistente não tem regra de esclarecimento --- e
+um copia o exemplo dado na regra de citação em vez do nome do documento. Nenhum
+é defeito que a campanha injetou.
+
+\subsection{QP1 --- adequação por camada}
+
+Sob o oráculo primário, a suíte mata 17 dos 18 mutantes ($\MS_{O5} = 0{,}944$,
+IC 95\% [0,742; 0,990]). O único sobrevivente é R4, o operador que remove o piso
+de relevância da recuperação.
+
+O escore de mutação, porém, é o número menos informativo da
+Tabela~\ref{tab:taxa}. O que a taxa de morte mostra é que a suíte detecta cada
+defeito por pouquíssimos de seus casos: o operador mediano é morto por 2,5 dos
+20 casos avaliáveis, e apenas três operadores --- P2, com a regra de abstenção
+removida (0,450); C1, com o documento primário removido (0,400); e R1, com
+top-$k$ reduzido a um (0,400) --- são detectados por mais de um terço da suíte.
+Um defeito injetado no corpus ou no índice é visível a uma suíte que julga
+respostas apenas pelos casos cuja evidência ele por acaso toca.
+
+\begin{table}[htb]
+\centering
+\caption{Taxa de morte por operador sob O5, sobre os 20 casos avaliáveis, com
+intervalo de Wilson a 95\%.}
+\label{tab:taxa}
+\begin{tabular}{@{}llcl@{}}
+\toprule
+Op. & Camada & Casos & Taxa de morte [IC 95\%] \\
+\midrule
+P2 & Prompt       & 9 & 0,450 [0,258; 0,658] \\
+C1 & Corpus       & 8 & 0,400 [0,219; 0,613] \\
+R1 & Recuperação  & 8 & 0,400 [0,219; 0,613] \\
+E1 & Índice       & 6 & 0,300 [0,145; 0,519] \\
+K4 & Segmentação  & 5 & 0,250 [0,112; 0,469] \\
+K2 & Segmentação  & 4 & 0,200 [0,081; 0,416] \\
+P3 & Prompt       & 4 & 0,200 [0,081; 0,416] \\
+E2 & Índice       & 3 & 0,150 [0,052; 0,360] \\
+R2 & Recuperação  & 3 & 0,150 [0,052; 0,360] \\
+C3 & Corpus       & 2 & 0,100 [0,028; 0,301] \\
+K1 & Segmentação  & 2 & 0,100 [0,028; 0,301] \\
+P1 & Prompt       & 2 & 0,100 [0,028; 0,301] \\
+R3 & Recuperação  & 2 & 0,100 [0,028; 0,301] \\
+C2 & Corpus       & 1 & 0,050 [0,009; 0,236] \\
+C4 & Corpus       & 1 & 0,050 [0,009; 0,236] \\
+K3 & Segmentação  & 1 & 0,050 [0,009; 0,236] \\
+P4 & Prompt       & 1 & 0,050 [0,009; 0,236] \\
+R4 & Recuperação  & 0 & 0,000 [0,000; 0,161] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Agrupadas por camada, as taxas não diferem: índice 0,225; prompt 0,200;
+recuperação 0,163; corpus 0,150; segmentação 0,150, com Kruskal-Wallis
+$H = 1{,}368$, $p = 0{,}850$ sobre cinco grupos de no máximo quatro operadores,
+e nenhuma comparação par a par sobrevivendo a Holm. A hipótese de que os
+sobreviventes se concentrariam nas camadas de dado e recuperação não se
+sustenta; com no máximo quatro operadores por camada o teste tem pouco poder, de
+modo que a leitura honesta é que este desenho não separa as camadas, e não que
+as camadas sejam equivalentes.
+
+Dois operadores merecem relato próprio, porque em ambos o número esconde o
+mecanismo.
+
+\emph{R4 sobrevive por uma razão que o corpus explica.} Os cinco casos que o
+miram são as perguntas fora do corpus, e a Seção~\ref{sec:instrumentacao} já mostrou que, num corpus
+topicamente homogêneo, essas perguntas recuperam quatro trechos bem acima de
+qualquer piso que preserve os casos legítimos. Remover o piso, portanto, não
+muda nada: o mutante é equivalente \emph{neste corpus}, e o sobrevivente é
+propriedade do corpus e da suíte, não lacuna do teste do assistente. Um estudo
+que relatasse R4 como defeito não detectado estaria relatando um artefato.
+
+\emph{E1 não degrada a recuperação, ele a interrompe.} Trocar o modelo de
+projeção por um menor e de outra família deixa 95 de suas 150 invocações com
+\emph{zero} trechos recuperados e prompt mediano de 302 tokens, contra 4.646 no
+baseline. A causa é o piso de relevância: 0,428 foi calibrado na escala de
+similaridade de um modelo, e a escala do outro modelo é diferente. O piso é
+propriedade do par (corpus, modelo de projeção), não do corpus, e uma
+atualização de rotina do modelo o invalida em silêncio. É o achado da
+Seção~\ref{sec:instrumentacao}
+visto do outro lado: lá o piso deixava de rejeitar uma pergunta que deveria
+rejeitar; aqui ele rejeita a evidência que deveria manter.
+
+\subsection{QP2 --- viés de oráculo}
+
+Sobre os 342 pares (mutante, caso) avaliáveis nos quatro oráculos, os quatro
+discordam ($Q$ de Cochran $= 58{,}62$, $p = 1{,}2 \times 10^{-12}$), com
+$\kappa$ de Fleiss $= 0{,}681$ --- concordância substancial na leitura usual ---
+e ainda assim uma oscilação de 22,2 pontos percentuais no escore de mutação
+relatado (Tabela~\ref{tab:vies}). A mesma suíte, as mesmas 3.000 invocações, os
+mesmos artefatos: 0,722 sob o oráculo mais barato e 0,944 sob o determinístico.
+A oscilação é da mesma ordem dos vinte pontos relatados para validadores de
+reparo de programa~\cite{bonfim2026evaluator} sobre outra tarefa, o que sugere
+efeito de avaliação baseada em referência, e não deste pipeline.
+
+\begin{table}[htb]
+\centering
+\caption{Adequação por oráculo sobre artefatos idênticos. Oscilação $= \max -
+\min = 0{,}222$.}
+\label{tab:vies}
+\begin{tabular}{@{}lccl@{}}
+\toprule
+Oráculo & $|\Sset_o|$ & Mortos & $\MS$ [IC 95\%] \\
+\midrule
+O1 cosseno    & 26 & 13/18 & 0,722 [0,491; 0,875] \\
+O4 juiz       & 22 & 16/18 & 0,889 [0,672; 0,969] \\
+O2 assertivas & 20 & 17/18 & 0,944 [0,742; 0,990] \\
+O5 conjunção  & 20 & 17/18 & 0,944 [0,742; 0,990] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Os testes par a par dizem algo mais forte que a oscilação. Em 32 pares o oráculo
+determinístico reprova onde o de similaridade aprova, e em \emph{zero} pares o
+inverso ocorre (McNemar, $p < 10^{-4}$ após Holm): neste corpus, O1 é
+estritamente dominado por O2. A conjunção O5, definida como
+$\mathrm{O1} \wedge \mathrm{O2}$, é portanto idêntica a O2 em cada um dos 342
+pares --- seu componente de similaridade nunca contribui um veredito. A forma
+prática a que um praticante chega depois do primeiro falso positivo de um
+oráculo de similaridade é, neste corpus, as assertivas sozinhas.
+
+O juiz fica entre os dois, e não por ser versão fraca de nenhum: reprova 4 pares
+que as assertivas aprovam e aprova 22 que elas reprovam ($p = 0{,}002$ após
+Holm). Lendo esses 22: a assertiva exige um valor literal e o juiz aceita uma
+resposta que enuncia o valor em outra forma ou omite um segundo número menos
+central. Nenhum instrumento está certo em abstrato --- eles codificam noções
+diferentes de "correto", e a noção é o que um estudo precisa declarar.
+
+A discordância não é uniforme ao longo da suíte. Ela se concentra em
+rastreabilidade (0,222 dos pares) e em recusa fora de escopo (0,167), e é menor
+na classe fora do corpus (0,056), onde o marcador de abstenção torna o veredito
+mecânico para todos os oráculos ao mesmo tempo. Prevíamos abstenção e
+rastreabilidade; rastreabilidade se confirma e abstenção é a classe em que os
+oráculos mais concordam, porque a frase fixa de abstenção é exatamente o tipo de
+propriedade de superfície que assertiva, escore de similaridade e juiz leem do
+mesmo modo.
+
+\subsection{QP3 --- custo do rigor}
+
+A campanha no nível de rigor registrado custou 33,9 horas de tempo de parede,
+13,6 milhões de tokens, 47.326 GPU-segundos e 1,08 kWh, medidos por invocação
+pelos contadores da própria GPU. A unidade é 27 segundos e 0,36 watt-hora por
+invocação do assistente; o traço de raciocínio que o gerador emite antes de cada
+resposta é a maior parte disso.
+
+Normalizado pelo que comprou (Tabela~\ref{tab:custo}), um mutante morto custa
+cerca de duas horas de parede e 63 watts-hora sob o oráculo determinístico, e um
+terço a mais sob o de similaridade, que mata quatro mutantes a menos pela mesma
+execução. O juiz acrescenta 11.109 segundos e 98 watts-hora próprios ao longo da
+campanha --- 9\% sobre o custo do assistente --- pelos dois mutantes que o
+oráculo de similaridade não vê.
+
+\begin{table}[htb]
+\centering
+\caption{Custo da campanha e custo por mutante morto. A execução é compartilhada
+por todos os oráculos; apenas o juiz acrescenta custo próprio mensurável.}
+\label{tab:custo}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Oráculo & Parede (h) & GPU-s & Wh & Wh por morte \\
+\midrule
+O1 & 33,9 & 47.326 & 1.079 & 83,0 \\
+O2 & 33,9 & 47.326 & 1.079 & 63,5 \\
+O4 & 37,0 & 51.183 & 1.177 & 73,5 \\
+O5 & 33,9 & 47.326 & 1.079 & 63,5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussão}
+
+\subsection{Adequação é propriedade do par (suíte, oráculo)}
+
+A mesma suíte, as mesmas 3.000 invocações, os mesmos 342 pares: escore de
+mutação de 0,722 se o veredito vem da similaridade de cosseno e de 0,944 se vem
+das assertivas determinísticas. Vinte e dois pontos de adequação são propriedade
+do instrumento, não do assistente, e a direção foi prevista pela calibração
+antes de a campanha rodar --- O1 não consegue reprovar um número errado, e o
+juiz o reprova em todo controle. Um escore de mutação para assistente RAG
+relatado sem o oráculo que o produziu não é interpretável, e sugerimos que
+estudos de sistemas baseados em LLM relatem adequação por oráculo como prática
+corrente, como estudos de reparo de programa começaram a relatar eficácia por
+validador~\cite{bonfim2026evaluator}.
+
+\subsection{Para que serve o oráculo mais barato}
+
+A similaridade de cosseno a uma referência não é inútil; ela está mal
+especificada como oráculo de correção. Nos nossos dados ela separa tópico com
+folga e é quase cega a valor e a polaridade. Detecta, portanto, as falhas que
+mudam \emph{sobre o que} a resposta é --- uma abstenção onde cabia resposta, um
+desvio para assunto vizinho, uma recusa --- e perde as que mudam o que a resposta
+\emph{diz}. A forma prática é a conjunção: um portão de similaridade para
+desvio e assertivas determinísticas para cada valor de que o caso depende. Onde
+existe resposta de referência, os números nela são as assertivas.
+
+\subsection{A resposta de referência é o oráculo}
+
+Três das verificações acrescentadas durante este estudo existem porque uma
+resposta de referência não é documentação, é instrumento. Uma referência com
+justificativa que o modelo anexou a um fato correto penaliza uma resposta
+correta; uma assertiva que sua própria referência não satisfaz remove o caso da
+análise em silêncio; um juiz que lê a referência como teto reprova respostas
+melhores que ela. As três são invisíveis até que o oráculo seja executado contra
+o sistema não-mutado, e as três enviesam na mesma direção --- para reprovar o
+baseline, o que, pela Equação~\eqref{eq:avaliavel}, encolhe o denominador sem
+levantar erro. A prática mais útil que podemos recomendar a quem constrói uma
+suíte para assistente RAG é executar todo oráculo contra o baseline antes de
+confiar nele contra qualquer outra coisa.
+
+\subsection{Operadores de mutação precisam de um critério de corpus}
+
+Um operador de mutação para código-fonte carrega sua própria observabilidade: um
+operador alterado é exercitado se a linha é executada. Um operador de mutação
+para corpus não. Se truncar um documento remove algo sobre o que a suíte
+pergunta, se uma mudança de tamanho de trecho move alguma fronteira, se um piso
+de similaridade rejeita alguma coisa --- tudo isso depende do corpus, da
+paginação e da configuração do baseline. Três dos nossos dezoito operadores eram
+inertes na primeira versão do corpus e nenhum deles teria reportado erro; eles
+sobreviveriam, e a sobrevivência seria lida como lacuna da suíte. Um catálogo de
+operadores para RAG é, portanto, metade do instrumento; a outra metade é o
+conjunto de medidas --- densidade de fatos por página, trechos por página,
+distribuição das similaridades dos casos negativos --- que estabelece, antes da
+campanha, que cada operador tem sobre o que agir.
+
+\subsection{Corpus homogêneo e o piso de relevância}
+
+Um assistente sobre corpus de um único domínio é o caso industrial comum: as
+normas de um órgão, os manuais de um produto, os artigos de uma área. Num corpus
+assim toda pergunta é do assunto, inclusive aquelas cuja resposta está ausente,
+e um piso global de similaridade não distingue cobertura de proximidade
+temática. A consequência para o teste é que a classe fora do corpus de uma suíte
+exercita a instrução de abstenção do prompt muito mais do que o piso de
+recuperação, de modo que uma suíte que parece testar o \emph{fallback} de
+recuperação está, na verdade, testando conformidade de prompt. A consequência
+para a engenharia é que abstenção precisa ser propriedade da geração, e não da
+recuperação, em qualquer corpus com essa forma. E o piso é frágil nos dois
+sentidos: o operador E1 mostrou que trocar o modelo de projeção o transforma em
+um filtro que rejeita tudo. Ele pertence à família de propriedades do dado que
+são invisíveis até que se construa um instrumento para procurá-las, e, como
+elas, é barato de medir uma vez e caro de descobrir em produção.
+
+\subsection{O parâmetro que ninguém declara}
+
+A janela de contexto do servidor de modelos não está na lista de parâmetros a
+controlar da literatura de RAG, e não estava no nosso protocolo. Ela decidiu o
+resultado de 318 invocações antes que lêssemos uma linha de log. Uma suíte que
+julga respostas não consegue vê-la, porque o modelo responde fluentemente a
+partir do que memorizou quando as regras e a evidência são cortadas; uma
+checagem de fidelidade sobre os operadores também não, porque os operadores
+funcionaram --- sobre um prompt que o modelo nunca leu. O único instrumento que
+a teria capturado no primeiro dia é o que acrescentamos depois: uma regra
+sentinela no prompt de sistema cuja ausência na resposta significa que o prompt
+não chegou. Sugerimo-lo como checagem permanente para qualquer estudo de sistema
+baseado em LLM, ao lado da declaração da própria janela.
+
+\subsection{Que camadas a suíte não vê}
+
+A hipótese que registramos --- que os sobreviventes se concentrariam nas camadas
+de dado e de recuperação --- não é o que a campanha mostra. Dezessete de dezoito
+mutantes morrem, as camadas não se separam, e o único sobrevivente é explicado
+pelo corpus e não pela suíte. O resultado que a substitui é sobre \emph{quão
+fino} é o fio da detecção: o operador mediano é pego por 2,5 de 20 casos, e um
+defeito em FP1 ou FP2 só se torna visível pelos casos cuja evidência ele por
+acaso toca. C1 remove o documento primário inteiro: quatro casos foram
+desenhados para pegá-lo e oito notam. C2 substitui esse mesmo documento por uma
+versão superada e \emph{um} caso nota, porque só um pergunta por um valor em que
+as duas versões discordam. O assistente que estudamos em
+produção~\cite{oliveira2026sast} falhou exatamente do segundo modo --- documento
+normativo atualizado na origem e deixado indexado na versão anterior --- e uma
+suíte com esta forma tinha um caso em vinte que poderia tê-lo visto.
+
+Esta é a leitura prática da QP1, e ela não depende da comparação entre camadas:
+um escore de mutação perto de um pode conviver com uma suíte que detecta cada
+defeito de camada de dado por uma única pergunta. Relatar a taxa de morte ao
+lado do escore é o que torna a diferença visível, e não custa nada --- o
+denominador já está ali.
+
+\section{Ameaças à Validade}
+
+Seguimos as quatro categorias usuais~\cite{runeson2009guidelines} e distinguimos
+as ameaças que antecipamos daquelas que o estudo demonstrou; estas últimas são
+enunciadas com a evidência, porque uma ameaça demonstrada é também um resultado.
+
+\textbf{Validade de constructo.} O constructo central é "a suíte detecta o
+defeito", e ele é operacionalizado por um oráculo. A Seção~\ref{sec:oraculos}
+mostra que o oráculo mais barato não mede correção neste corpus, mas proximidade
+temática, e que o pacote de métricas padrão não mede invenção sobre tópico
+ausente. Não tratamos isso como ameaça a mitigar, e sim como achado; mitigamos a
+ameaça de constructo relatando adequação por oráculo e nunca como número único.
+Dois instrumentos permanecem como limites superiores: $\tau^\ast$ foi calibrado
+sobre referências corrompidas programaticamente e paráfrases conservadoras, e o
+juiz vê a referência e não o documento, de modo que só pode detectar contradição
+e não invenção compatível com a referência. As respostas de referência são elas
+próprias um constructo: foram rascunhadas por um modelo e conferidas uma a uma
+contra a fonte, e seis foram reescritas para remover justificativas que o modelo
+havia acrescentado.
+
+\textbf{Validade interna.} Uma morte precisa ser atribuível ao defeito injetado.
+Três mecanismos tratam disso: a checagem de fidelidade de cada operador, que
+descarta um mutante que não muda nada; a checagem de resíduo, que descarta um
+mutante que contamina o seguinte; e o conjunto avaliável, que descarta mortes
+sobre casos que o sistema não-mutado não responde de forma estável. O juiz é de
+família distinta da do gerador, contra autopreferência; o parafraseador do
+conjunto de calibração é de família distinta da do gerador, contra
+circularidade; ambos são da mesma família entre si, e esse é risco residual que
+declaramos. O baseline truncado é a ameaça interna mais séria que o estudo
+encontrou, e não foi capturada por nenhum oráculo, portão ou teste: todos os
+instrumentos julgavam a resposta, e o defeito estava no que o modelo recebia.
+Relatamo-lo porque uma replicação em outro servidor ou modelo encontraria o
+mesmo padrão silencioso.
+
+\textbf{Validade externa.} O estudo é de um assistente, um corpus de oito
+documentos em um domínio, uma suíte de 30 casos e um par de modelos de pesos
+abertos de 8 e 4 bilhões de parâmetros em hardware de consumo. O catálogo e o
+protocolo pretendem transferir; os números, não. Dois dos achados foram
+checados quanto à dependência do instrumento e resistiram: a inversão do oráculo
+de similaridade se replica em um segundo modelo de projeção de outra família, e
+o ponto cego do pacote de métricas persiste sob um juiz do dobro do tamanho. O
+corpus é topicamente homogêneo, que é o caso industrial comum e também o que
+derrota um piso global de relevância; um corpus heterogêneo moveria detecções da
+camada de prompt para a de recuperação, e o resultado da QP1 deve ser lido com
+isso em mente.
+
+\textbf{Validade de conclusão.} Há um mutante por operador, de modo que o escore
+de mutação por operador é uma única observação binária; toda afirmação
+inferencial é feita sobre a taxa de morte por casos, cujo denominador é
+$|\Sset_o|$ e cujo intervalo é relatado. A suíte tem 30 casos e as classes têm
+entre três e seis; a comparação por camada agrupa no máximo quatro operadores, e
+Kruskal-Wallis sobre grupos desse tamanho tem pouco poder, o que relatamos como
+tal em vez de compensar. Um operador é mirado por um único caso, e qualquer
+afirmação sobre ele repousa sobre uma observação. As cinco repetições por
+mutante não são sorteios independentes da distribuição de respostas do sistema:
+a temperatura 0 elas diferem apenas pelo estado do cache do servidor, que a
+ordem embaralhada varia mas não aleatoriza, e a estabilidade que medem é um
+limite inferior da instabilidade que uma implantação veria entre sessões.
+
+\section{Conclusão}
+
+Perguntamos quais camadas de um pipeline RAG produzem defeitos que uma suíte de
+testes representativa deixa de detectar, quanto da resposta depende do oráculo e
+quanto o rigor custa. Sobre 3.000 invocações de um assistente de código aberto
+do domínio de engenharia de software, mutado por 18 operadores cobrindo corpus,
+segmentação, indexação, recuperação e prompt, a suíte matou 17 dos 18 mutantes
+--- e detectou o mediano por 2,5 dos seus 20 casos avaliáveis. Adequação perto
+de um e detecção tão fina não são contradição: são o que um escore de mutação
+esconde quando é relatado sem a taxa de morte ao lado.
+
+O teste de mutação transfere para esses sistemas, mas não por analogia. Os
+operadores precisam agir sobre o corpus, a segmentação, o índice e a
+recuperação, onde as falhas documentadas estão; cada um precisa carregar uma
+checagem de que age de fato; e o escore precisa ser calculado sobre os casos que
+o sistema não-mutado responde de forma estável, porque não há outro terreno
+sobre o qual uma morte possa ser atribuída. O que a transposição então revela é
+que o número depende de a quem se pergunta: o oráculo mais difundido na prática
+não consegue ver um número errado numa sentença correta, e a métrica que a área
+trata como padrão não consegue ver uma invenção sobre um tópico que o contexto
+não contém. Não se trata de critério de desempate entre instrumentos, e sim de
+22 pontos de diferença no número de manchete, com o instrumento mais barato
+estritamente dominado por aquele que não custa nada para executar.
+
+\section*{Disponibilidade dos dados}
+
+O pacote de replicação --- sistema sob teste, corpus com hashes de conteúdo e
+script de reconstrução, suíte de testes, operadores com suas checagens de
+fidelidade, pares de calibração e sua revisão, log bruto de execução, vereditos
+e scripts de análise --- será depositado com DOI sob licença Apache-2.0.
+
+\bibliographystyle{plainnat}
+\bibliography{refes}
+
+\end{document}

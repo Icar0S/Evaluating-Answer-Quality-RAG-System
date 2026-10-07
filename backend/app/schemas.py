@@ -119,5 +119,5 @@ class StatsResponse(BaseModel):
     vector_store_documents: int
     average_latency_ms: float | None = None
     grounded_rate: float | None = None
-    ragas_faithfulness_avg: float | None = None
-    ragas_note: str = "Disponível após a Fase 2 (avaliação RAGAS)."
+    deepeval_faithfulness_avg: float | None = None
+    deepeval_note: str = "Disponível após rodar tests/deepeval (avaliação DeepEval, Fase 2)."

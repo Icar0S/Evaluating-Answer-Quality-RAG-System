@@ -9,13 +9,13 @@ export default defineConfig({
   retries: 0,
   reporter: "list",
   use: {
-    baseURL: "http://localhost:5500",
+    baseURL: "http://localhost:5510",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "python -m http.server 5500 --directory ..",
-    url: "http://localhost:5500/index.html",
+    command: "python -m http.server 5510 --directory ..",
+    url: "http://localhost:5510/index.html",
     reuseExistingServer: true,
     timeout: 15_000,
   },

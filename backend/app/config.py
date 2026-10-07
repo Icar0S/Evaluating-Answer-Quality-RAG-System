@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Mapping
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Raiz do projeto (dois níveis acima de backend/app/)
@@ -37,10 +39,27 @@ class Settings(BaseSettings):
     # Chunking
     chunk_size_tokens: int = 800
     chunk_overlap_tokens: int = 120
+    # Desloca todas as fronteiras de chunk em N tokens (o primeiro chunk da
+    # pagina fica menor, os seguintes ficam alinhados N tokens adiante). 0 = sem
+    # deslocamento, que e o comportamento historico. Existe para o operador de
+    # mutacao K4 (tests/mutation/), que injeta "corte no meio de regra".
+    chunk_boundary_offset_tokens: int = 0
 
     # Retrieval
     top_k: int = 4
+    # Piso de similaridade (0..1) para um chunk entrar no contexto. 0.0 = sem
+    # filtro. Acima de 0, uma pergunta fora do corpus tende a chegar na geracao
+    # com contexto vazio, o que dispara a frase de abstencao em vez de uma
+    # resposta apoiada em trecho irrelevante.
     min_similarity_score: float = 0.0
+    # MMR (Maximal Marginal Relevance) na selecao final dos chunks: busca
+    # top_k * retrieval_fetch_multiplier candidatos e escolhe top_k balanceando
+    # relevancia e diversidade. Desligado por padrao para preservar o
+    # comportamento historico do assistente; a configuracao do estudo de
+    # mutacao (tests/mutation/config/study.yaml) liga.
+    retrieval_use_mmr: bool = False
+    retrieval_mmr_lambda: float = 0.7
+    retrieval_fetch_multiplier: int = 3
 
     # Paths (relativos à raiz do projeto)
     source_pdfs_dir: str = "data/source_pdfs"
@@ -48,13 +67,61 @@ class Settings(BaseSettings):
     vector_store_collection: str = "rag_test_specialist"
     logs_dir: str = "logs"
 
+    # Geracao
+    # None = nao envia `options` ao Ollama (mantem o default do modelo, que e o
+    # comportamento historico). Fixar em 0.0 nao torna a geracao deterministica,
+    # mas evita amplificar a variancia -- e o que o protocolo do estudo pede.
+    generation_temperature: float | None = None
+    generation_seed: int | None = None
+    # Janela de contexto e teto de geracao enviados ao Ollama. None = nao envia
+    # (comportamento historico). Descoberto no estudo de mutacao (21/09/2026):
+    # sem `num_ctx` o servidor usa 4096 e TRUNCA o prompt em num_ctx/2 tokens,
+    # descartando o inicio -- o system prompt inteiro e os primeiros chunks.
+    # 288 truncagens silenciosas no baseline antes de alguem olhar o log do
+    # servidor. "auto" dimensiona pela configuracao de recuperacao:
+    #   num_ctx = ceil_1024(top_k * chunk_size_tokens * 1.25 + 1024 + num_predict)
+    # O limite efetivo de prompt no Ollama e num_ctx - num_predict, por isso
+    # `num_predict` precisa ser explicito quando `num_ctx` e.
+    generation_num_ctx: int | str | None = None
+    generation_num_predict: int | None = None
+    # Campo `think` do /api/chat do Ollama. None = nao envia (comportamento
+    # historico: modelos de raciocinio como o qwen3 pensam antes de responder).
+    # False corta esse raciocinio -- medido em 07/10/2026 com o prompt real e o
+    # qwen3:8b: 727 -> 224 tokens gerados, 54s -> 10s. Em maquina sem GPU e o
+    # que separa responder de estourar GENERATION_TIMEOUT_SECONDS.
+    generation_think: bool | None = None
+
+    # Prompt: cada bloco de regra do system prompt e ligavel/desligavel, porque
+    # os operadores de mutacao P1-P3 removem exatamente um bloco cada.
+    # Os defaults reproduzem o prompt historico (v1).
+    prompt_require_grounding: bool = True
+    prompt_require_abstention: bool = True
+    prompt_require_citation: bool = False
+
     # Prompt versioning
     prompt_version: str = "v1"
 
     # API
     api_host: str = "0.0.0.0"
-    api_port: int = 8000
-    cors_origins: str = "http://localhost:5500,http://127.0.0.1:5500,http://localhost:8000"
+    api_port: int = 8010
+    cors_origins: str = "http://localhost:5510,http://127.0.0.1:5510,http://localhost:8010"
+
+    # O .env.example traz estes campos vazios ("GENERATION_SEED=") para documentar
+    # que existem; vazio significa "nao definido", nao string invalida. Sem isto,
+    # `copy .env.example .env` derrubava o backend no boot com erro de validacao.
+    # (Nao da para usar env_ignore_empty: os testes dependem de REMOTE_API_*=""
+    # sobrescrever o .env real do usuario.)
+    @field_validator(
+        "generation_temperature",
+        "generation_seed",
+        "generation_num_ctx",
+        "generation_num_predict",
+        "generation_think",
+        mode="before",
+    )
+    @classmethod
+    def _vazio_e_none(cls, value: Any) -> Any:
+        return None if isinstance(value, str) and not value.strip() else value
 
     @property
     def source_pdfs_path(self) -> Path:
@@ -73,6 +140,26 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
+# Sobrescritas em memoria aplicadas por cima do .env/ambiente. Existem para o
+# harness de mutacao (tests/mutation/runner/sut.py), que precisa reconfigurar o
+# pipeline entre mutantes sem reescrever o .env do usuario nem subir um processo
+# novo por mutante. Nao sao usadas pela API em producao: quem nao chamar
+# set_settings_overrides() ve exatamente o comportamento de antes.
+_overrides: dict[str, Any] = {}
+
+
+def set_settings_overrides(values: Mapping[str, Any] | None = None) -> None:
+    """Substitui o conjunto de sobrescritas e invalida o cache de Settings."""
+    global _overrides
+    _overrides = dict(values or {})
+    get_settings.cache_clear()
+
+
+def get_settings_overrides() -> dict[str, Any]:
+    return dict(_overrides)
+
+
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    # Argumentos de init tem precedencia sobre env e .env no pydantic-settings.
+    return Settings(**_overrides)

@@ -20,6 +20,9 @@ logs/*.jsonl
 !logs/.gitkeep
 
 # Testes
+tests/deepeval/results/*
+!tests/deepeval/results/.gitkeep
+.deepeval/
 tests/ragas/results/*
 !tests/ragas/results/.gitkeep
 tests/human_review/annotations/*
@@ -32,3 +35,23 @@ tests/e2e/playwright-report/
 .vscode/
 .DS_Store
 .aider*
+
+# Estudo de mutação (tests/mutation/, ver o README de lá)
+tests/mutation/.venv/
+tests/mutation/work/
+tests/mutation/results/*
+!tests/mutation/results/.gitkeep
+# O índice de proveniência dos logs é versionado; os logs, não (ver o próprio arquivo).
+!tests/mutation/results/PROVENANCE.md
+tests/mutation/suite/drafts.jsonl
+# Os PDFs do corpus ficam de fora ENQUANTO as licenças não estiverem resolvidas
+# em corpus/sources.yaml — o corpus precisa ser redistribuível para ir ao pacote
+# de replicação. Resolvidas as licenças, remova estas duas linhas e versione o
+# corpus: ele é artefato do estudo, não subproduto. O manifesto e o registro das
+# variantes continuam versionados de qualquer forma (são pequenos e é o que
+# permite auditar o que mudou).
+tests/mutation/corpus/base/
+tests/mutation/corpus/variants/*.pdf
+
+# Saida de analise ad-hoc; o artefato reproduzivel e oracle_diagnostic.json
+tests/mutation/calibration/scores.json

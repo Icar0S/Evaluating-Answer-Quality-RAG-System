@@ -23,6 +23,17 @@ def get_client() -> chromadb.ClientAPI:
     return _client
 
 
+def reset_client() -> None:
+    """Descarta o cliente em cache para que o proximo acesso releia o caminho da configuracao.
+
+    Necessario quando VECTOR_STORE_DIR muda dentro do mesmo processo -- o caso do
+    harness de mutacao, que aponta o estudo para um indice proprio em
+    tests/mutation/work/ para nunca tocar em data/vector_store.
+    """
+    global _client
+    _client = None
+
+
 def get_collection(reset: bool = False):
     """Retorna (criando se necessário) a coleção usada pelo RAG.
 
@@ -68,11 +79,26 @@ def add_chunks(
         )
 
 
-def query(embedding: list[float], top_k: int) -> dict[str, Any]:
+def query(embedding: list[float], top_k: int, include_embeddings: bool = False) -> dict[str, Any]:
+    """Busca os top_k chunks mais proximos.
+
+    include_embeddings=True devolve tambem os vetores dos candidatos, necessarios
+    para reordenacao por MMR em app/rag/retrieval.py (o Chroma nao devolve
+    embeddings por padrao).
+    """
+    empty: dict[str, Any] = {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
+    if include_embeddings:
+        empty["embeddings"] = [[]]
+
     collection = get_collection()
     if collection.count() == 0:
-        return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
+        return empty
+
+    include = ["documents", "metadatas", "distances"]
+    if include_embeddings:
+        include = include + ["embeddings"]
     return collection.query(
         query_embeddings=[embedding],
         n_results=min(top_k, collection.count()),
+        include=include,
     )

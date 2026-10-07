@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -216,10 +218,29 @@ async def ws_metrics(websocket: WebSocket) -> None:
         pass
 
 
+DEEPEVAL_RESULTS_DIR = Path(__file__).resolve().parent.parent.parent / "tests" / "deepeval" / "results"
+
+
+def _latest_deepeval_faithfulness_avg() -> float | None:
+    """Lê tests/deepeval/results/<timestamp>.json mais recente (gerado por
+    tests/deepeval/run_and_export.py) e devolve a média de Faithfulness, se houver."""
+    if not DEEPEVAL_RESULTS_DIR.is_dir():
+        return None
+    result_files = sorted(DEEPEVAL_RESULTS_DIR.glob("*.json"))
+    if not result_files:
+        return None
+    try:
+        data = json.loads(result_files[-1].read_text(encoding="utf-8"))
+        return data.get("metrics_avg", {}).get("Faithfulness")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 @app.get("/stats", response_model=StatsResponse)
 async def get_stats() -> StatsResponse:
     records = await asyncio.to_thread(read_interactions)
     doc_count = await asyncio.to_thread(vector_store.collection_count)
+    deepeval_faithfulness_avg = await asyncio.to_thread(_latest_deepeval_faithfulness_avg)
 
     total = len(records)
     avg_latency = None
@@ -237,4 +258,5 @@ async def get_stats() -> StatsResponse:
         vector_store_documents=doc_count,
         average_latency_ms=avg_latency,
         grounded_rate=grounded_rate,
+        deepeval_faithfulness_avg=deepeval_faithfulness_avg,
     )

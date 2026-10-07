@@ -52,6 +52,7 @@ export default function StatsBoard() {
   const interactions = reading(stats?.total_interactions, offline, "count");
   const latency = reading(stats?.average_latency_ms, offline, "latency");
   const grounded = reading(stats?.grounded_rate, offline, "percent");
+  const deepevalFaithfulness = reading(stats?.deepeval_faithfulness_avg, offline, "percent");
 
   return (
     <AnimatedContent>
@@ -62,13 +63,15 @@ export default function StatsBoard() {
         <StatCard id="stat-grounded" label="respostas fundamentadas no contexto" {...grounded} />
       </div>
 
-      {/* Fora da grade de propósito: não existe leitura a exibir. Uma métrica que
-          ainda não é medida não deve ganhar a mesma cerimônia de uma que é. */}
+      {/* Fora da grade de propósito: a grade é 4/2/1 colunas pra nunca deixar
+          card órfão numa linha (ver home.css). Uma 5ª métrica quebraria isso
+          em qualquer breakpoint, então fica como nota — não por ser menos
+          real que as outras, só por não caber no ritmo 4/2/1. */}
       <p className="stats-pending-note">
-        <span className="stat-value-pending" id="stat-ragas">
-          {stats?.ragas_faithfulness_avg ?? "em breve"}
+        <span className="stat-value-pending" id="stat-deepeval">
+          {deepevalFaithfulness.plain === "—" ? "em breve" : deepevalFaithfulness.plain}
         </span>
-        <span>fidelidade média (RAGAS) — chega com a Fase 2</span>
+        <span>fidelidade média (DeepEval, Fase 2)</span>
       </p>
     </AnimatedContent>
   );

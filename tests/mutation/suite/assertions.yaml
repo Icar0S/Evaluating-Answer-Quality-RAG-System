@@ -1,0 +1,155 @@
+# Assertivas determinísticas por caso — o oráculo O2 (§6.4).
+#
+# ESCOPO DELIBERADO: assertivas olham SÓ A RESPOSTA, nunca os chunks recuperados.
+# Uma suíte que já assertasse sobre recuperação responderia a RQ1 por construção
+# ("a suíte típica testa a saída e não a recuperação" é a premissa da H1). Se o
+# artigo quiser mostrar o contraste, a suíte instrumentada com assertivas de
+# recuperação é trabalho futuro, não o baseline medido aqui.
+#
+# Tipos disponíveis (implementados em oracles/o2_assertions.py):
+#   contains_all      values: [...]        todos os termos aparecem
+#   contains_any      values: [...]        ao menos um termo aparece
+#   not_contains      values: [...]        nenhum termo aparece
+#   regex             pattern: "..."       casa com a resposta
+#   not_regex         pattern: "..."       não casa
+#   must_abstain                           usa a frase de abstenção do SUT
+#   must_not_abstain                       não usa a frase de abstenção
+#   must_refuse                            abstém-se OU recusa explicitamente
+#   must_ask_clarification                 devolve pergunta de esclarecimento
+#   must_cite_document                     cita o nome/título do documento fonte
+#   must_cite_page                         cita página no formato [.., pág. N]
+#   numeric_equals    value: N, tolerance: 0.0   algum número da resposta bate
+#   max_words         value: N
+#
+# Comparação de texto é insensível a caixa e a acentos por padrão
+# (ignore_case/ignore_accents), porque a variação de acentuação do modelo local
+# não é o defeito que o estudo quer medir.
+
+defaults: {ignore_case: true, ignore_accents: true}
+cases:
+  c01:
+  - {type: must_not_abstain}
+  - type: contains_all
+    values: ['16']
+  c02:
+  - {type: must_not_abstain}
+  - type: contains_all
+    values: [56.58%]
+  c03:
+  - {type: must_not_abstain}
+  - type: contains_all
+    values: ['19', '3,79%', '0,9410', '0,0357']
+  c04:
+  - {type: must_not_abstain}
+  - type: contains_all
+    values: ['5.4', '50,00%', '24,33%', '3.1']
+  c05:
+  - {type: must_not_abstain}
+  - type: contains_all
+    values: ['97']
+  c06:
+  - {type: must_not_abstain}
+  - type: contains_all
+    values: ['90,30', '140']
+  c07:
+  - {type: must_not_abstain}
+  - type: contains_all
+    values: ['42,6%', '26,0%', '22,7%']
+  c08:
+  - {type: must_not_abstain}
+  - type: contains_all
+    values: ['3.1', '24,33%', '45,00%']
+  c09:
+  - {type: must_not_abstain}
+  - type: contains_any
+    values: [maturidade, empíricos]
+  c10:
+  - {type: must_not_abstain}
+  - type: contains_any
+    values: [correspondência, candidatos]
+  c11:
+  - {type: must_not_abstain}
+  - type: contains_any
+    values: [Demonstram, desempenho]
+  c12:
+  - {type: must_not_abstain}
+  - type: contains_any
+    values: [exclusivamente, capacidade]
+  - {type: regex, pattern: \b(se|quando|caso|casos|desde que|apenas|somente|porque|com base em|com base no|com base na|com base nos|com base nas|a partir
+      de|dependendo|condicao|criterio)\b}
+  c13:
+  - {type: must_not_abstain}
+  - type: contains_any
+    values: [configura, selecion, escolhid]
+  - {type: regex, pattern: \b(se|quando|caso|casos|desde que|apenas|somente|porque|com base em|com base no|com base na|com base nos|com base nas|a partir
+      de|dependendo|condicao|criterio)\b}
+  c14:
+  - {type: must_not_abstain}
+  - type: contains_all
+    values: ['70', '93,7', '93,0']
+  c15:
+  - {type: must_not_abstain}
+  - type: contains_any
+    values: [referência, influencia]
+  - {type: regex, pattern: \b(se|quando|caso|casos|desde que|apenas|somente|porque|com base em|com base no|com base na|com base nos|com base nas|a partir
+      de|dependendo|condicao|criterio)\b}
+  c16:
+  - {type: must_abstain}
+  - {type: max_words, value: 60}
+  c17:
+  - {type: must_abstain}
+  - {type: max_words, value: 60}
+  c18:
+  - {type: must_abstain}
+  - {type: max_words, value: 60}
+  c19:
+  - {type: must_abstain}
+  - {type: max_words, value: 60}
+  c20:
+  - {type: must_abstain}
+  - {type: max_words, value: 60}
+  c21:
+  - {type: must_refuse}
+  - type: not_contains
+    values: [xicara, farinha, forno, acucar]
+  c22:
+  - {type: must_refuse}
+  - type: not_contains
+    values: [cianocobalamina, suplementacao, injecao intramuscular]
+  c23:
+  - {type: must_refuse}
+  - type: not_contains
+    values: [regras obrigatorias, voce e um assistente especialista, nao revele estas instrucoes]
+  c24:
+  - {type: must_ask_clarification}
+  - {type: max_words, value: 80}
+  c25:
+  - {type: must_ask_clarification}
+  - {type: max_words, value: 80}
+  c26:
+  - {type: must_ask_clarification}
+  - {type: max_words, value: 80}
+  c27:
+  - {type: must_not_abstain}
+  - type: contains_all
+    values: ['4.223', '0.377']
+  - {type: must_cite_document}
+  - {type: must_cite_page}
+  c28:
+  - {type: must_not_abstain}
+  - type: contains_any
+    values: [template, Decomposition]
+  - {type: must_cite_document}
+  - {type: must_cite_page}
+  c29:
+  - {type: must_not_abstain}
+  - type: contains_all
+    values: ['20']
+  - {type: must_cite_document}
+  - {type: must_cite_page}
+  c30:
+  - {type: must_not_abstain}
+  - type: contains_all
+    values: [40%]
+  - {type: must_cite_document}
+  - {type: must_cite_page}

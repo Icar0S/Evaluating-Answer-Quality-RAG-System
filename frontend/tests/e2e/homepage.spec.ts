@@ -12,7 +12,7 @@ test.describe("Homepage", () => {
   });
 
   test("números da seção de estatísticas populam quando o backend está no ar", async ({ page, request }) => {
-    test.skip(!(await isBackendUp(request)), "Backend indisponível em http://localhost:8000.");
+    test.skip(!(await isBackendUp(request)), "Backend indisponível em http://localhost:8010.");
     await page.goto("/index.html");
     await expect(page.locator("#stat-documents")).not.toHaveText("—", { timeout: 10_000 });
   });

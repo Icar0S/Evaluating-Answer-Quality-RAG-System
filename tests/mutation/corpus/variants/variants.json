@@ -1,0 +1,501 @@
+{
+  "generated_at": "2026-09-16T01:15:27.495887+00:00",
+  "variants": [
+    {
+      "document": "does_prompt_engineering_really_impact_llm_genera.pdf",
+      "variant": "prev",
+      "file": "does_prompt_engineering_really_impact_llm_genera__prev.pdf",
+      "sha256": "9983edf06e6a32a0298b2a8b5e52d406c5e1a047d79291936f8755697ab92145",
+      "substitutions": [
+        {
+          "page": 1,
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 1,
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 1,
+          "original": "2026",
+          "replacement": "2024",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 1,
+          "original": "11",
+          "replacement": "9",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 2,
+          "original": "2026",
+          "replacement": "2024",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 2,
+          "original": "32%",
+          "replacement": "22%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 2,
+          "original": "21%",
+          "replacement": "11%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 2,
+          "original": "89.5%",
+          "replacement": "79.5%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 3,
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 3,
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 3,
+          "original": "75",
+          "replacement": "60",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 3,
+          "original": "10",
+          "replacement": "8",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 4,
+          "original": "75",
+          "replacement": "60",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 4,
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 4,
+          "original": "75",
+          "replacement": "60",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 4,
+          "original": "10",
+          "replacement": "8",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 5,
+          "original": "56.58%",
+          "replacement": "46.58%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 5,
+          "original": "7.17%",
+          "replacement": "0.00%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 5,
+          "original": "95%",
+          "replacement": "85%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 5,
+          "original": "47.23%",
+          "replacement": "37.23%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 6,
+          "original": "90.3%",
+          "replacement": "80.3%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 6,
+          "original": "88.4%",
+          "replacement": "78.4%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 6,
+          "original": "17.28%",
+          "replacement": "7.28%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 6,
+          "original": "17.17%",
+          "replacement": "7.17%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 7,
+          "original": "16",
+          "replacement": "13",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 7,
+          "original": "42.6%",
+          "replacement": "32.6%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 7,
+          "original": "26.0%",
+          "replacement": "16.0%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 7,
+          "original": "22.7%",
+          "replacement": "12.7%",
+          "rule": "prev:score5"
+        },
+        {
+          "page": 8,
+          "original": "2025",
+          "replacement": "2023",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 8,
+          "original": "2025",
+          "replacement": "2023",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 8,
+          "original": "2023",
+          "replacement": "2021",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 8,
+          "original": "2022",
+          "replacement": "2020",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 9,
+          "original": "2025",
+          "replacement": "2023",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 9,
+          "original": "31",
+          "replacement": "25",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 9,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev:score4"
+        },
+        {
+          "page": 9,
+          "original": "2025",
+          "replacement": "2023",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 10,
+          "original": "33",
+          "replacement": "26",
+          "rule": "prev:score0"
+        },
+        {
+          "page": 10,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev:score0"
+        },
+        {
+          "page": 10,
+          "original": "2024",
+          "replacement": "2022",
+          "rule": "prev:score2"
+        },
+        {
+          "page": 10,
+          "original": "10",
+          "replacement": "8",
+          "rule": "prev:score2"
+        }
+      ]
+    },
+    {
+      "document": "does_prompt_engineering_really_impact_llm_genera.pdf",
+      "variant": "conflict",
+      "file": "does_prompt_engineering_really_impact_llm_genera__conflict.pdf",
+      "sha256": "7d1e8e6f975101af6c6d880f4e8c4a758e94b368c5a9105f34a828a62414d31d",
+      "substitutions": [
+        {
+          "page": 1,
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 1,
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 1,
+          "original": "2026",
+          "replacement": "2029",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 1,
+          "original": "11",
+          "replacement": "15",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 2,
+          "original": "2026",
+          "replacement": "2029",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 2,
+          "original": "32%",
+          "replacement": "47%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 2,
+          "original": "21%",
+          "replacement": "36%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 2,
+          "original": "89.5%",
+          "replacement": "100.0%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 3,
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 3,
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 3,
+          "original": "75",
+          "replacement": "101",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 3,
+          "original": "10",
+          "replacement": "14",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 4,
+          "original": "75",
+          "replacement": "101",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 4,
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 4,
+          "original": "75",
+          "replacement": "101",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 4,
+          "original": "10",
+          "replacement": "14",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 5,
+          "original": "56.58%",
+          "replacement": "71.58%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 5,
+          "original": "7.17%",
+          "replacement": "22.17%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 5,
+          "original": "95%",
+          "replacement": "100%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 5,
+          "original": "47.23%",
+          "replacement": "62.23%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 6,
+          "original": "90.3%",
+          "replacement": "100.0%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 6,
+          "original": "88.4%",
+          "replacement": "100.0%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 6,
+          "original": "17.28%",
+          "replacement": "32.28%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 6,
+          "original": "17.17%",
+          "replacement": "32.17%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 7,
+          "original": "16",
+          "replacement": "22",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 7,
+          "original": "42.6%",
+          "replacement": "57.6%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 7,
+          "original": "26.0%",
+          "replacement": "41.0%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 7,
+          "original": "22.7%",
+          "replacement": "37.7%",
+          "rule": "conflict:score5"
+        },
+        {
+          "page": 8,
+          "original": "2025",
+          "replacement": "2028",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 8,
+          "original": "2025",
+          "replacement": "2028",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 8,
+          "original": "2023",
+          "replacement": "2026",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 8,
+          "original": "2022",
+          "replacement": "2025",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 9,
+          "original": "2025",
+          "replacement": "2028",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 9,
+          "original": "31",
+          "replacement": "42",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 9,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict:score4"
+        },
+        {
+          "page": 9,
+          "original": "2025",
+          "replacement": "2028",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 10,
+          "original": "33",
+          "replacement": "45",
+          "rule": "conflict:score0"
+        },
+        {
+          "page": 10,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict:score0"
+        },
+        {
+          "page": 10,
+          "original": "2024",
+          "replacement": "2027",
+          "rule": "conflict:score2"
+        },
+        {
+          "page": 10,
+          "original": "10",
+          "replacement": "14",
+          "rule": "conflict:score2"
+        }
+      ]
+    }
+  ]
+}
