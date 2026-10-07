@@ -12,7 +12,7 @@
 >
 > 📄 **Camera-ready:** [docs/paper.pdf](docs/paper.pdf)
 
-Assistente de RAG 100% local, especializado em teste de sistemas baseados em LLM/RAG, com arquitetura de testes (RAGAS + Playwright) construída ao redor dele. Base experimental de um projeto de pesquisa sobre avaliação de qualidade de resposta em RAG usando LLM-as-a-Judge com Human-in-the-Loop.
+Assistente de RAG 100% local, especializado em teste de sistemas baseados em LLM/RAG, com arquitetura de testes (pytest, Playwright, DeepEval e RAGAS) construída ao redor dele. Base experimental de um projeto de pesquisa sobre avaliação de qualidade de resposta em RAG usando LLM-as-a-Judge com Human-in-the-Loop.
 
 Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e o racional por trás delas.
 
@@ -334,9 +334,10 @@ imediatamente — é o que mantém a suíte headless determinística.
 
 ## Testes
 
-Três suítes. As duas primeiras rodam em paralelo pelo CI
+Quatro suítes. As duas primeiras rodam em paralelo pelo CI
 ([.github/workflows/ci.yml](.github/workflows/ci.yml)) a cada push na `main`
-e em todo pull request; a terceira (DeepEval) roda só localmente — ver abaixo.
+e em todo pull request. As duas de qualidade de resposta (DeepEval e RAGAS)
+rodam só localmente, como explicado abaixo.
 
 **API (pytest)** — roteamento por provider, métricas do monitor e log estruturado.
 Herméticos: sem Ollama, sem GPU, sem rede. Rodam em ~1s. Ver
@@ -388,13 +389,30 @@ não só pass/fail no terminal — use `tests\deepeval\run_and_export.py` (gera
 HTML autocontido, arquivo de verdade em `tests/deepeval/results/`, sem
 servidor nem domínio externo.
 
+**Qualidade da resposta ([RAGAS](https://docs.ragas.io/))**: as mesmas cinco
+dimensões, sobre os **mesmos goldens** do DeepEval, para comparar os dois
+frameworks. O juiz é local, via Ollama. Antes das notas, a suíte roda
+controles que validam o próprio juiz (por exemplo, uma alucinação conhecida
+precisa receber faithfulness baixa). Ver
+[tests/ragas/README.md](tests/ragas/README.md), que explica por que o juiz não
+usa a integração padrão do ragas:
+
+```powershell
+python -m venv tests\ragas\.venv
+tests\ragas\.venv\Scripts\pip install -r tests\ragas\requirements.txt
+ollama pull qwen3:8b   # juiz (o gemma3:4b reprova nos controles)
+tests\ragas\.venv\Scripts\python.exe -m pytest tests/ragas
+tests\ragas\.venv\Scripts\python.exe tests\ragas\run_and_export.py   # JSON + CSV em tests/ragas/results/
+```
+
 Todas as interações são logadas em `logs/interactions.jsonl` (JSON Lines), uma linha por interação, com pergunta, contexto recuperado, resposta, métricas e metadados — isso alimenta a suíte DeepEval e a escrita do artigo.
 
 ## Fase 2 — Arquitetura de testes
 
 Testes de API (pytest), testes E2E (Playwright/TypeScript) e avaliação de qualidade de
-resposta ([DeepEval](https://deepeval.com/docs/introduction), ver seção "Testes" acima e
-[tests/deepeval/README.md](tests/deepeval/README.md)) — implementados. Em aberto: ingestão de
+resposta ([DeepEval](https://deepeval.com/docs/introduction) e [RAGAS](https://docs.ragas.io/)
+sobre os mesmos goldens, ver seção "Testes" acima, [tests/deepeval/README.md](tests/deepeval/README.md)
+e [tests/ragas/README.md](tests/ragas/README.md)) — implementados. Em aberto: ingestão de
 corpus de teste via ZIP e geração de dataset sintético assistida por LLM (o dataset atual é
 curado manualmente, ver `tests/deepeval/goldens/dataset.json`). Detalhes em `docs/ARCHITECTURE.md`.
 
@@ -441,7 +459,9 @@ data/vector_store/        Índice ChromaDB persistido (não versionado)
 scripts/                  Setup do Ollama, ingestão via CLI e os .bat de ambiente
 scripts/start_dev.bat        sobe tudo em modo local + roda as duas suítes
 scripts/start_dev_remote.bat sobe tudo gerando pelo servidor, sem LLM local
-tests/                    API, RAGAS, revisão humana (Fase 2/3)
+tests/                    API, qualidade de resposta e revisão humana (Fase 2/3)
+tests/deepeval/           Qualidade de resposta com DeepEval (goldens em goldens/dataset.json)
+tests/ragas/              Qualidade de resposta com RAGAS, mesmos goldens; juiz local validado por controles
 tests/mutation/           Estudo de mutação para RAG (Fase 4) — operadores, oráculos, campanha e análise
 logs/                     interactions.jsonl (log estruturado, não versionado)
 docs/ARCHITECTURE.md      Decisões técnicas e racional

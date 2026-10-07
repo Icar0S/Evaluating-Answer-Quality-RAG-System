@@ -429,6 +429,34 @@ fundamentadas (`grounded=False`) da amostra de Faithfulness, e (b) recalibrar th
 por métrica em vez de um valor único, com mais dados. Documentado aqui em vez de ajustado
 às pressas: o valor de uma primeira calibração é justamente expor isso.
 
+### Avaliação de qualidade (RAGAS, out/2026)
+
+O RAGAS voltou como **segunda** camada de qualidade, não como substituta do DeepEval: as
+mesmas cinco dimensões, sobre os mesmos goldens, para comparar os frameworks (ver
+[tests/ragas/README.md](../tests/ragas/README.md)). Decisões:
+
+**Juiz próprio em vez de `llm_factory`.** O estudo de mutação tinha concluído que o
+`ragas` "não parseia a saída de nenhum juiz local" (ragas 0.2.14 com `ChatOllama`). A
+causa estava no encanamento, não no tamanho do juiz: sem `num_ctx`, o Ollama usa 4096 e
+corta o *início* de prompts maiores, que é onde ficam as instruções e o schema de saída.
+A integração padrão do ragas 0.4 fala com o endpoint compatível com OpenAI, que não
+aceita `num_ctx`. Por isso `OllamaJudge` implementa a interface das métricas sobre o
+`/api/chat` nativo, com `num_ctx=8192`, saída restrita ao JSON schema e `think: false`
+(o mesmo trio que a suíte DeepEval já usava). No piloto: zero falhas de parse.
+
+**Controles do juiz antes das notas.** `test_judge_controls.py` usa casos com resposta
+certa conhecida. Foi o que reprovou o `gemma3:4b` como juiz: ele marca a resposta de
+referência como evasiva e zera `answer_relevancy`. O juiz padrão é `qwen3:8b`. Um dos
+controles é a alucinação sobre tópico ausente (§4.9 do estudo de mutação), que a
+`FaithfulnessMetric` do DeepEval aprova com 1,0. A faithfulness do ragas, que exige
+afirmação *inferível* do contexto, dá 0,0.
+
+**Duas alterações nos prompts de fábrica, registradas em cada export.** Ambas em
+`AnswerRelevancy`: `strictness=1` (em temperatura 0 as três perguntas geradas saíam
+idênticas) e uma instrução de idioma (o prompt em inglês fazia o juiz gerar a pergunta
+em inglês, e ela era comparada por embedding com a original em português: 0,68 contra
+0,83 numa resposta correta).
+
 ## Fase 3 — Human-in-the-loop (a documentar caso confirmado)
 
 ## Camada de movimento e ilha React na homepage
