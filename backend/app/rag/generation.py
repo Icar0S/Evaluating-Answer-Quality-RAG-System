@@ -140,6 +140,9 @@ def prompt_token_limit() -> int | None:
 
 def _generate_ollama(provider: providers.Provider, messages: list[dict], timeout: int) -> dict:
     payload = {"model": provider.generation_model, "messages": messages, "stream": False}
+    think = get_settings().generation_think
+    if think is not None:
+        payload["think"] = think
     options = _ollama_options()
     if options:
         payload["options"] = options

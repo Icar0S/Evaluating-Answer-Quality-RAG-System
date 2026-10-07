@@ -5,6 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Mapping
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Raiz do projeto (dois níveis acima de backend/app/)
@@ -83,6 +84,12 @@ class Settings(BaseSettings):
     # `num_predict` precisa ser explicito quando `num_ctx` e.
     generation_num_ctx: int | str | None = None
     generation_num_predict: int | None = None
+    # Campo `think` do /api/chat do Ollama. None = nao envia (comportamento
+    # historico: modelos de raciocinio como o qwen3 pensam antes de responder).
+    # False corta esse raciocinio -- medido em 07/10/2026 com o prompt real e o
+    # qwen3:8b: 727 -> 224 tokens gerados, 54s -> 10s. Em maquina sem GPU e o
+    # que separa responder de estourar GENERATION_TIMEOUT_SECONDS.
+    generation_think: bool | None = None
 
     # Prompt: cada bloco de regra do system prompt e ligavel/desligavel, porque
     # os operadores de mutacao P1-P3 removem exatamente um bloco cada.
@@ -98,6 +105,23 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     cors_origins: str = "http://localhost:5500,http://127.0.0.1:5500,http://localhost:8000"
+
+    # O .env.example traz estes campos vazios ("GENERATION_SEED=") para documentar
+    # que existem; vazio significa "nao definido", nao string invalida. Sem isto,
+    # `copy .env.example .env` derrubava o backend no boot com erro de validacao.
+    # (Nao da para usar env_ignore_empty: os testes dependem de REMOTE_API_*=""
+    # sobrescrever o .env real do usuario.)
+    @field_validator(
+        "generation_temperature",
+        "generation_seed",
+        "generation_num_ctx",
+        "generation_num_predict",
+        "generation_think",
+        mode="before",
+    )
+    @classmethod
+    def _vazio_e_none(cls, value: Any) -> Any:
+        return None if isinstance(value, str) and not value.strip() else value
 
     @property
     def source_pdfs_path(self) -> Path:
