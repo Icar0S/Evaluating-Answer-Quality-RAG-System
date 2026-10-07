@@ -37,7 +37,7 @@ test.describe("Painel de Monitor na sidebar", () => {
   });
 
   test("métricas populam quando o backend está no ar", async ({ page, request }) => {
-    test.skip(!(await isBackendUp(request)), "Backend indisponível em http://localhost:8000.");
+    test.skip(!(await isBackendUp(request)), "Backend indisponível em http://localhost:8010.");
     await page.click('.rail-btn[data-sidebar="monitor"]');
     await expect(page.locator("#metric-model")).not.toHaveText("—", { timeout: 10_000 });
     await expect(page.locator("#metric-cpu")).not.toHaveText("—", { timeout: 10_000 });

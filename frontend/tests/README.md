@@ -35,8 +35,8 @@ npx playwright install chromium
 npm test
 ```
 
-Isso já sobe o servidor estático do frontend (`python -m http.server 5500`)
-automaticamente. **A API precisa estar rodando à parte** em `http://localhost:8000`
+Isso já sobe o servidor estático do frontend (`python -m http.server 5510`)
+automaticamente. **A API precisa estar rodando à parte** em `http://localhost:8010`
 (`uvicorn app.main:app` no backend, com o Ollama no ar) — sem ela, os testes que
 dependem de resposta real do backend são pulados automaticamente (não falham),
 com uma mensagem indicando o motivo.

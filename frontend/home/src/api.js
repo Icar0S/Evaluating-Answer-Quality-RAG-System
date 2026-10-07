@@ -1,6 +1,6 @@
 // window.__RAG_API_BASE_URL__ é o override usado pelos testes Playwright —
 // mesmo contrato de components/chat.js e components/monitor.js.
-export const API_BASE_URL = window.__RAG_API_BASE_URL__ || "http://localhost:8000";
+export const API_BASE_URL = window.__RAG_API_BASE_URL__ || "http://localhost:8010";
 
 export async function getJson(path) {
   const response = await fetch(`${API_BASE_URL}${path}`);

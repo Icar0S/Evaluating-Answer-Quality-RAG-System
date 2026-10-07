@@ -36,7 +36,7 @@ test.describe("Composer da mensagem", () => {
   });
 
   test("mostra o modelo ativo no rodapé quando o backend está no ar", async ({ page, request }) => {
-    test.skip(!(await isBackendUp(request)), "Backend indisponível em http://localhost:8000.");
+    test.skip(!(await isBackendUp(request)), "Backend indisponível em http://localhost:8010.");
     await expect(page.locator("#hint-model")).not.toHaveText("—", { timeout: 10_000 });
   });
 });

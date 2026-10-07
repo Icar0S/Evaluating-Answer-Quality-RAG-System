@@ -103,8 +103,8 @@ class Settings(BaseSettings):
 
     # API
     api_host: str = "0.0.0.0"
-    api_port: int = 8000
-    cors_origins: str = "http://localhost:5500,http://127.0.0.1:5500,http://localhost:8000"
+    api_port: int = 8010
+    cors_origins: str = "http://localhost:5510,http://127.0.0.1:5510,http://localhost:8010"
 
     # O .env.example traz estes campos vazios ("GENERATION_SEED=") para documentar
     # que existem; vazio significa "nao definido", nao string invalida. Sem isto,

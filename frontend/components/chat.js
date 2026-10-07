@@ -1,6 +1,6 @@
 // Chat RAG: histórico de sessões (localStorage), bolhas com reações, filtro por fundamentação.
 // Override de URL da API via window.__RAG_API_BASE_URL__ (usado pelos testes Playwright).
-const API_BASE_URL = window.__RAG_API_BASE_URL__ || "http://localhost:8000";
+const API_BASE_URL = window.__RAG_API_BASE_URL__ || "http://localhost:8010";
 
 const SESSIONS_KEY = "rag_sessions_v1";
 const ACTIVE_SESSION_KEY = "rag_active_session_v1";

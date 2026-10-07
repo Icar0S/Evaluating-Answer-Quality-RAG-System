@@ -25,8 +25,8 @@ REM Uso: scripts\start_dev_remote.bat
 cd /d "%~dp0.."
 set "PROJECT_ROOT=%CD%"
 set "VENV_PY=%PROJECT_ROOT%\backend\.venv\Scripts\python.exe"
-set "BACKEND_URL=http://localhost:8000"
-set "FRONTEND_URL=http://localhost:5500"
+set "BACKEND_URL=http://localhost:8010"
+set "FRONTEND_URL=http://localhost:5510"
 set "CFG=%TEMP%\rag_cfg.txt"
 set "JSON=%TEMP%\rag_remote.json"
 
@@ -153,18 +153,20 @@ REM precedencia sobre o .env no pydantic-settings, entao o backend ja sobe com
 REM o provider remoto ativo.
 set "ACTIVE_PROVIDER=remote"
 
-curl.exe -s -o nul --max-time 3 "%BACKEND_URL%/health"
+call :backend_ok
 if !errorlevel! equ 0 (
     echo    Ja estava no ar em %BACKEND_URL%
     echo    ^(vou trocar o provider ativo em runtime, sem reiniciar^)
 ) else (
+    call :porta_ocupada "%BACKEND_URL%/" "backend" 8010
+    if !errorlevel! neq 0 goto :erro
     echo    Subindo em %BACKEND_URL% com ACTIVE_PROVIDER=remote ...
-    start "RAG backend (remoto)" /d "%PROJECT_ROOT%\backend" cmd /k ""%VENV_PY%" -m uvicorn app.main:app --port 8000"
+    start "RAG backend (remoto)" /d "%PROJECT_ROOT%\backend" cmd /k ""%VENV_PY%" -m uvicorn app.main:app --port 8010"
     set BACKEND_OK=0
     for /l %%i in (1,1,30) do (
         if !BACKEND_OK! equ 0 (
             ping -n 2 127.0.0.1 >nul
-            curl.exe -s -o nul --max-time 3 "%BACKEND_URL%/health"
+            call :backend_ok
             if !errorlevel! equ 0 set BACKEND_OK=1
         )
     )
@@ -208,17 +210,19 @@ del "%JSON%" >nul 2>&1
 REM ------------------------------------------------------------- 5/5 frontend
 echo.
 echo == 5/5  Frontend ==
-curl.exe -s -o nul --max-time 3 "%FRONTEND_URL%/chat.html"
+call :frontend_ok
 if !errorlevel! equ 0 (
     echo    Ja estava no ar em %FRONTEND_URL%
 ) else (
+    call :porta_ocupada "%FRONTEND_URL%/" "frontend" 5510
+    if !errorlevel! neq 0 goto :erro
     echo    Subindo em %FRONTEND_URL% ...
-    start "RAG frontend" /d "%PROJECT_ROOT%\frontend" cmd /k ""%VENV_PY%" -m http.server 5500"
+    start "RAG frontend" /d "%PROJECT_ROOT%\frontend" cmd /k ""%VENV_PY%" -m http.server 5510"
     set FRONTEND_OK=0
     for /l %%i in (1,1,15) do (
         if !FRONTEND_OK! equ 0 (
             ping -n 2 127.0.0.1 >nul
-            curl.exe -s -o nul --max-time 3 "%FRONTEND_URL%/chat.html"
+            call :frontend_ok
             if !errorlevel! equ 0 set FRONTEND_OK=1
         )
     )
@@ -258,6 +262,31 @@ echo.
 start "" "%FRONTEND_URL%/index.html"
 pause
 exit /b 0
+
+REM ------------------------------------------------------------- subrotinas
+REM Checam que quem responde na porta e ESTE projeto, e nao so "algo respondeu":
+REM curl sem -f devolve 0 ate para um 404, e a 8000/5500 de antes viviam ocupadas
+REM por outros servicos (Django em Docker, Live Server do VS Code) -- o script
+REM dizia "ja estava no ar" e seguia contra o servico errado.
+
+:backend_ok
+curl.exe -s -f --max-time 3 "%BACKEND_URL%/health" 2>nul | findstr /c:"ollama_reachable" >nul
+exit /b !errorlevel!
+
+:frontend_ok
+curl.exe -s -f --max-time 3 "%FRONTEND_URL%/chat.html" 2>nul | findstr /c:"components/chat.js" >nul
+exit /b !errorlevel!
+
+:porta_ocupada
+REM %1 = URL, %2 = nome do servico. Se algo responde ali, nao e nosso (quem
+REM chama ja testou isso) -- para com uma mensagem em vez de seguir no escuro.
+curl.exe -s -o nul --max-time 3 "%~1" 2>nul
+if !errorlevel! neq 0 exit /b 0
+echo.
+echo    [ERRO] A porta de %~1 ja esta ocupada por OUTRO servico ^(nao e o %~2 deste projeto^).
+echo           Descubra quem e com:  netstat -ano ^| findstr LISTENING ^| findstr :%~3
+echo           e feche esse processo, ou troque a porta deste projeto ^(ver README, "Problemas comuns"^).
+exit /b 1
 
 :erro
 echo.

@@ -1,4 +1,4 @@
-const API_BASE_URL = window.__RAG_API_BASE_URL__ || "http://localhost:8000";
+const API_BASE_URL = window.__RAG_API_BASE_URL__ || "http://localhost:8010";
 
 const hudDot = document.getElementById("hud-dot");
 const hudText = document.getElementById("hud-text");

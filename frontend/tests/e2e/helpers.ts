@@ -1,6 +1,6 @@
 import { APIRequestContext } from "@playwright/test";
 
-export const API_BASE_URL = process.env.RAG_API_BASE_URL || "http://localhost:8000";
+export const API_BASE_URL = process.env.RAG_API_BASE_URL || "http://localhost:8010";
 
 export async function isBackendUp(request: APIRequestContext): Promise<boolean> {
   try {
