@@ -1,0 +1,31 @@
+# Avaliação de qualidade com RAGAS (tests/ragas/, ver README.md desta pasta).
+#
+# Venv PRÓPRIO (tests/ragas/.venv), pelo mesmo motivo de tests/deepeval e
+# tests/mutation: ragas exige pydantic mais novo que o pydantic==2.10.4 pinado
+# em backend/requirements.txt, e o pip se recusa a resolver os dois juntos. Por
+# isso este arquivo NÃO herda de requirements.txt: repete só o que o pipeline do
+# SUT importa de fato (retrieval/generation/vector_store), sem pinar pydantic.
+#
+#   python -m venv tests\ragas\.venv
+#   tests\ragas\.venv\Scripts\pip install -r tests\ragas\requirements.txt
+
+# --- o que o SUT precisa para ser invocado in-process ---
+chromadb==1.5.9
+httpx==0.28.1
+pydantic-settings
+PyMuPDF==1.25.1
+tiktoken==0.8.0
+
+# --- ragas ---
+ragas==0.4.3
+# ragas 0.4.3 declara langchain-* SEM teto de versão, mas importa
+# langchain_community.chat_models.vertexai, que saiu no langchain-community 0.4.
+# Sem estes pins o pip resolve a linha 1.x e `import ragas` quebra com
+# ModuleNotFoundError. Ficar na linha 0.3 até o ragas acompanhar.
+langchain==0.3.30
+langchain-core==0.3.86
+langchain-community==0.3.31
+langchain-openai==0.3.35
+langchain-ollama==0.3.10
+
+pytest==9.1.1

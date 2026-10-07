@@ -23,6 +23,8 @@ logs/*.jsonl
 tests/deepeval/results/*
 !tests/deepeval/results/.gitkeep
 .deepeval/
+tests/ragas/results/*
+!tests/ragas/results/.gitkeep
 tests/human_review/annotations/*
 !tests/human_review/annotations/.gitkeep
 node_modules/
