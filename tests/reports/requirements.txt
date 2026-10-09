@@ -1,0 +1,13 @@
+# Relatório consolidado das avaliações de qualidade (tests/reports/, ver README.md).
+#
+# Só lê os JSONs que as suítes já gravaram — não importa ragas, deepeval nem o
+# backend. Por isso o venv é pequeno e não conflita com nenhum outro:
+#
+#   python -m venv tests\reports\.venv
+#   tests\reports\.venv\Scripts\pip install -r tests\reports\requirements.txt
+
+matplotlib==3.11.2   # gráficos (PNG) e a fonte DejaVu Sans usada no PDF
+openpyxl==3.1.5      # planilha .xlsx
+reportlab==5.0.1     # PDF
+
+pytest==9.1.1        # testes do próprio gerador (test_build_report.py)

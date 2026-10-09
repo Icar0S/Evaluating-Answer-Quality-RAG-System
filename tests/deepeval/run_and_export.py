@@ -31,6 +31,7 @@ print a cada passo, os quatro problemas somem de uma vez.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import threading
@@ -140,10 +141,13 @@ def _metrics_avg(cases: list[dict]) -> dict[str, float]:
     return {name: round(sum(s) / len(s), 4) for name, s in scores_by_metric.items() if s}
 
 
-def _build_output(cases: list[dict], n: int, i: int, settings) -> dict:
+def _build_output(cases: list[dict], n: int, i: int, settings, answers_meta: dict | None = None) -> dict:
+    answers_meta = answers_meta or {}
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generation_model": settings.generation_model,
+        # Com --answers, o modelo que gerou é o do arquivo, não o do .env atual.
+        "generation_model": answers_meta.get("generation_model", settings.generation_model),
+        "answers_source": answers_meta.get("_source"),
         "judge_model": EVAL_JUDGE_MODEL,
         "threshold": THRESHOLD,
         "n_cases": n,
@@ -163,6 +167,15 @@ def _write_outputs(output: dict, json_path: Path) -> Path:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Avaliação DeepEval dos goldens, com export JSON/HTML.")
+    parser.add_argument(
+        "--answers", type=Path, default=None,
+        help="respostas já geradas (tests/generate_answers.py): julga estas em vez de chamar o assistente",
+    )
+    parser.add_argument("--limit", type=int, default=None, help="avalia só os N primeiros goldens")
+    parser.add_argument("--no-open", action="store_true", help="não abre o painel no navegador ao terminar")
+    args = parser.parse_args()
+
     reason = stack_status()
     if reason:
         print(f"Stack real não está pronta, abortando: {reason}", file=sys.stderr)
@@ -170,6 +183,18 @@ def main() -> None:
 
     judge_model = build_judge_model()
     goldens = load_goldens()
+    answers_meta: dict = {}
+    answers_by_name: dict[str, dict] = {}
+    if args.answers:
+        # Respostas compartilhadas entre frameworks (tests/run_all.py): julgar o
+        # MESMO texto é o que torna a comparação DeepEval x RAGAS uma comparação
+        # de métodos, e não de rodadas.
+        answers_meta = json.loads(args.answers.read_text(encoding="utf-8"))
+        answers_meta["_source"] = str(args.answers)
+        answers_by_name = {a["name"]: a for a in answers_meta.get("answers", [])}
+        goldens = [g for g in goldens if g.name in answers_by_name]
+    if args.limit:
+        goldens = goldens[: args.limit]
 
     from app.config import get_settings
 
@@ -188,7 +213,8 @@ def main() -> None:
     json_path = RESULTS_DIR / f"{timestamp}.json"
 
     n = len(goldens)
-    _log(f"Avaliando {n} perguntas — gerador {settings.generation_model}, juiz {EVAL_JUDGE_MODEL}")
+    origem = f"respostas de {args.answers.name}" if args.answers else f"gerador {settings.generation_model}"
+    _log(f"Avaliando {n} perguntas — {origem}, juiz {EVAL_JUDGE_MODEL}")
     _log(f"Progresso salvo a cada caso em {json_path.name} / .html — dá pra abrir no meio da rodada.\n")
 
     cases: list[dict] = []
@@ -197,7 +223,7 @@ def main() -> None:
         case_start = time.monotonic()
         elapsed_total = case_start - run_start
         _log(f"[{i}/{n}] {golden.name} ({elapsed_total:.0f}s decorridos)")
-        _log("      recuperando + gerando...")
+        _log("      usando a resposta do arquivo..." if args.answers else "      recuperando + gerando...")
 
         # A geração (não só o julgamento) também pode travar/dar timeout no
         # Ollama — visto na prática num caso real (httpx.ReadTimeout depois
@@ -208,7 +234,11 @@ def main() -> None:
         # inteiro como erro e segue pro próximo em vez de derrubar a rodada.
         answer = retrieval_context = None
         gen_error: str | None = None
-        for attempt in (1, 2):
+        if args.answers:
+            record = answers_by_name[golden.name]
+            answer, retrieval_context = record.get("actual_output"), list(record.get("retrieval_context") or [])
+            gen_error = record.get("error") or (None if answer is not None else "sem resposta no arquivo")
+        for attempt in (1, 2) if not args.answers else ():
             try:
                 answer, retrieval_context = run_pipeline(golden.input)
                 gen_error = None
@@ -251,7 +281,7 @@ def main() -> None:
             }
         )
 
-        output = _build_output(cases, n, i, settings)
+        output = _build_output(cases, n, i, settings, answers_meta)
         _write_outputs(output, json_path)
         _log(f"    concluído em {time.monotonic() - case_start:.0f}s\n")
 
@@ -262,7 +292,8 @@ def main() -> None:
 
     latest_path = _write_outputs(output, json_path)
     _log(f"Painel salvo em {json_path.with_suffix('.html')} (e {latest_path})")
-    webbrowser.open(latest_path.resolve().as_uri())
+    if not args.no_open:
+        webbrowser.open(latest_path.resolve().as_uri())
 
 
 if __name__ == "__main__":
