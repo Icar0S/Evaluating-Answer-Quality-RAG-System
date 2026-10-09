@@ -25,6 +25,8 @@ tests/deepeval/results/*
 .deepeval/
 tests/ragas/results/*
 !tests/ragas/results/.gitkeep
+tests/reports/out/*
+!tests/reports/out/.gitkeep
 tests/human_review/annotations/*
 !tests/human_review/annotations/.gitkeep
 node_modules/
