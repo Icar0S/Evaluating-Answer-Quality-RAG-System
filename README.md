@@ -339,6 +339,53 @@ Quatro suítes. As duas primeiras rodam em paralelo pelo CI
 e em todo pull request. As duas de qualidade de resposta (DeepEval e RAGAS)
 rodam só localmente, como explicado abaixo.
 
+### Rodar tudo de uma vez
+
+```powershell
+scripts\run_all_tests.bat                 # todas as suítes + relatório (de ~40 min a horas; ver abaixo)
+scripts\run_all_tests.bat --rapido        # só API, gerador de relatório e E2E (minutos)
+scripts\run_all_tests.bat --limite 2      # qualidade em só 2 goldens, para conferir que tudo roda
+scripts\run_all_tests.bat --pular e2e deepeval --abrir
+```
+
+O script ([tests/run_all.py](tests/run_all.py)) roda, nesta ordem:
+
+1. API e gerador de relatório (herméticas).
+2. E2E. Se o backend não estiver no ar, o script sobe e derruba ele sozinho.
+3. Gera as respostas do assistente **uma vez só**.
+4. RAGAS (controles do juiz + avaliação) e DeepEval julgam **as mesmas
+   respostas**. Por isso a comparação entre eles no relatório é uma comparação
+   de métodos, não de rodadas.
+5. Gera o relatório consolidado, com uma seção de execução (o que passou,
+   falhou ou foi pulado, e por quê).
+
+**Quanto tempo leva.** Medido nesta máquina (RTX 4060, 8 GB):
+
+| Etapa | Duração |
+|---|---|
+| API, gerador de relatório e E2E | ~3 min |
+| Respostas compartilhadas | ~2 min |
+| RAGAS (controles + 10 goldens) | ~16 min |
+| DeepEval (10 goldens) | de ~20 min a algumas horas |
+
+O DeepEval pode demorar muito mais: na rodada de teste, 1 golden levou 18 min
+porque uma métrica (`Contextual Relevancy`) passou bem do teto de 300 s que o
+`run_and_export.py` dele tenta impor. Para uma execução rápida, use
+`--pular deepeval` ou `--limite N`.
+
+O que não estiver instalado (um venv, o Playwright) ou sem pré-requisito (o
+Ollama fora do ar) é pulado com a instrução de como resolver, em vez de
+derrubar a execução. A campanha do estudo de mutação fica de fora (leva
+horas e tem protocolo próprio).
+
+Cada execução fica em `tests/reports/out/<data>/`, com o relatório, os logs
+de cada suíte e as respostas avaliadas. Nenhuma execução apaga as anteriores:
+
+- [tests/reports/out/HISTORICO.md](tests/reports/README.md#histórico) indexa
+  todas;
+- o relatório traz a evolução das métricas ao longo das execuções;
+- o mais recente fica sempre em `tests/reports/out/ultimo/relatorio.pdf`.
+
 **API (pytest)** — roteamento por provider, métricas do monitor e log estruturado.
 Herméticos: sem Ollama, sem GPU, sem rede. Rodam em ~1s. Ver
 [tests/api/README.md](tests/api/README.md):
@@ -405,6 +452,20 @@ tests\ragas\.venv\Scripts\python.exe -m pytest tests/ragas
 tests\ragas\.venv\Scripts\python.exe tests\ragas\run_and_export.py   # JSON + CSV em tests/ragas/results/
 ```
 
+**Relatório consolidado ([tests/reports/](tests/reports/README.md))**: depois
+de rodar o `run_and_export.py` das suítes de qualidade, este comando junta os
+resultados num relatório só, separado por framework. O relatório traz a
+comparação entre os frameworks, avisos do que impede compará-los (respostas e
+trechos diferentes entre rodadas, juízes diferentes) e as divergências de
+veredito. Ele é gerado em Markdown, PDF, planilha `.xlsx` e CSV:
+
+```powershell
+python -m venv tests\reports\.venv
+tests\reports\.venv\Scripts\pip install -r tests\reports\requirements.txt
+tests\reports\.venv\Scripts\python.exe tests\reports\build_report.py            # tudo em tests/reports/out/<data>/
+tests\reports\.venv\Scripts\python.exe tests\reports\build_report.py --formats pdf xlsx --open
+```
+
 Todas as interações são logadas em `logs/interactions.jsonl` (JSON Lines), uma linha por interação, com pergunta, contexto recuperado, resposta, métricas e metadados — isso alimenta a suíte DeepEval e a escrita do artigo.
 
 ## Fase 2 — Arquitetura de testes
@@ -462,6 +523,9 @@ scripts/start_dev_remote.bat sobe tudo gerando pelo servidor, sem LLM local
 tests/                    API, qualidade de resposta e revisão humana (Fase 2/3)
 tests/deepeval/           Qualidade de resposta com DeepEval (goldens em goldens/dataset.json)
 tests/ragas/              Qualidade de resposta com RAGAS, mesmos goldens; juiz local validado por controles
+tests/reports/            Relatório consolidado das suítes de qualidade (MD, PDF, XLSX, CSV) e o histórico
+tests/run_all.py          Roda todas as suítes e gera o relatório (atalho: scripts/run_all_tests.bat)
+tests/generate_answers.py Gera as respostas do assistente uma vez, para todos os frameworks julgarem as mesmas
 tests/mutation/           Estudo de mutação para RAG (Fase 4) — operadores, oráculos, campanha e análise
 logs/                     interactions.jsonl (log estruturado, não versionado)
 docs/ARCHITECTURE.md      Decisões técnicas e racional
