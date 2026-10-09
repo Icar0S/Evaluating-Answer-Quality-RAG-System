@@ -67,7 +67,15 @@ seção de resultados do artigo, em vez do `assert_test` (que só dá pass/fail)
 
 ```powershell
 tests\deepeval\.venv\Scripts\python.exe tests\deepeval\run_and_export.py
+tests\deepeval\.venv\Scripts\python.exe tests\deepeval\run_and_export.py --limit 2 --no-open
+tests\deepeval\.venv\Scripts\python.exe tests\deepeval\run_and_export.py --answers respostas.json
 ```
+
+`--answers` julga respostas já geradas (`tests/generate_answers.py`) em vez de
+chamar o assistente. É assim que `tests/run_all.py` faz o DeepEval e o RAGAS
+julgarem **o mesmo texto**, condição para a comparação entre os dois no
+relatório consolidado ([tests/reports/](../reports/README.md)) ser uma
+comparação de métodos.
 
 Salva `results/<timestamp>.json` e `results/<timestamp>.html` (mesmo nome),
 mais um `results/latest.html` estável; `backend/app/main.py::get_stats` lê

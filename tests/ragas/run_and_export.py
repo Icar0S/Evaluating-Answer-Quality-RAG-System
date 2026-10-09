@@ -17,6 +17,10 @@ Rodar da raiz do repo:
     tests\\ragas\\.venv\\Scripts\\python.exe tests\\ragas\\run_and_export.py
     tests\\ragas\\.venv\\Scripts\\python.exe tests\\ragas\\run_and_export.py --limit 2
     tests\\ragas\\.venv\\Scripts\\python.exe tests\\ragas\\run_and_export.py --only ragas-definicao
+
+Com --answers <arquivo> (gerado por tests/generate_answers.py), julga respostas
+já prontas em vez de chamar o assistente — é como tests/run_all.py faz o RAGAS e
+o DeepEval julgarem exatamente o mesmo texto.
 """
 from __future__ import annotations
 
@@ -59,6 +63,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Avaliação RAGAS dos goldens, com export JSON/CSV.")
     parser.add_argument("--limit", type=int, default=None, help="avalia só os N primeiros goldens")
     parser.add_argument("--only", action="append", default=[], help="nome de um golden (repetível)")
+    parser.add_argument(
+        "--answers", type=Path, default=None,
+        help="respostas já geradas (tests/generate_answers.py): julga estas em vez de chamar o assistente",
+    )
     args = parser.parse_args()
 
     reason = shared.stack_status()
@@ -68,6 +76,14 @@ def main() -> int:
 
     settings, rs = get_settings(), shared.get_ragas_settings()
     goldens = shared.load_goldens()
+    answers_meta: dict = {}
+    answers_by_name: dict[str, dict] = {}
+    if args.answers:
+        # Respostas compartilhadas entre frameworks: julgar o MESMO texto é o
+        # que torna a comparação RAGAS x DeepEval uma comparação de métodos.
+        answers_meta = json.loads(args.answers.read_text(encoding="utf-8"))
+        answers_by_name = {a["name"]: a for a in answers_meta.get("answers", [])}
+        goldens = [g for g in goldens if g.name in answers_by_name]
     if args.only:
         goldens = [g for g in goldens if g.name in set(args.only)]
     if args.limit:
@@ -89,8 +105,9 @@ def main() -> int:
         "framework": "ragas",
         "ragas_version": ragas.__version__,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "provider": active.name,
-        "generation_model": active.generation_model,
+        "provider": answers_meta.get("provider", active.name),
+        "generation_model": answers_meta.get("generation_model", active.generation_model),
+        "answers_source": str(args.answers) if args.answers else None,
         "embedding_model": settings.embedding_model,
         "judge_model": rs.ragas_judge_model,
         "judge_num_ctx": rs.ragas_judge_num_ctx,
@@ -102,7 +119,8 @@ def main() -> int:
     }
 
     _log(
-        f"RAGAS {ragas.__version__} | geração: {active.generation_model} ({active.name}) | "
+        f"RAGAS {ragas.__version__} | geração: {output['generation_model']} "
+        f"({'respostas de ' + args.answers.name if args.answers else active.name}) | "
         f"juiz: {rs.ragas_judge_model} | {len(goldens)} goldens x {len(metrics)} métricas"
     )
     started = time.perf_counter()
@@ -110,12 +128,18 @@ def main() -> int:
     for i, golden in enumerate(goldens, start=1):
         _log(f"\n[{i}/{len(goldens)}] {golden.name}")
         t0 = time.perf_counter()
-        try:
-            answer, contexts = shared.run_pipeline(golden.input)
-            gen_error = None
-        except Exception as exc:  # noqa: BLE001 - um golden com SUT quebrado não derruba a rodada
-            answer, contexts, gen_error = "", [], f"{type(exc).__name__}: {exc}"
-        sut_seconds = round(time.perf_counter() - t0, 1)
+        if args.answers:
+            record = answers_by_name[golden.name]
+            answer, contexts = record.get("actual_output") or "", list(record.get("retrieval_context") or [])
+            gen_error = record.get("error") or (None if record.get("actual_output") is not None else "sem resposta")
+            sut_seconds = record.get("seconds", 0.0)
+        else:
+            try:
+                answer, contexts = shared.run_pipeline(golden.input)
+                gen_error = None
+            except Exception as exc:  # noqa: BLE001 - um golden com SUT quebrado não derruba a rodada
+                answer, contexts, gen_error = "", [], f"{type(exc).__name__}: {exc}"
+            sut_seconds = round(time.perf_counter() - t0, 1)
 
         case_metrics = []
         for name, metric in metrics.items():

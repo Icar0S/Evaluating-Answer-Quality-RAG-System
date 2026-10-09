@@ -46,7 +46,13 @@ tests\ragas\.venv\Scripts\python.exe -m pytest tests/ragas/test_judge_controls.p
 tests\ragas\.venv\Scripts\python.exe tests\ragas\run_and_export.py
 tests\ragas\.venv\Scripts\python.exe tests\ragas\run_and_export.py --limit 2
 tests\ragas\.venv\Scripts\python.exe tests\ragas\run_and_export.py --only ragas-definicao
+
+# julga respostas já geradas (tests/generate_answers.py), as mesmas do DeepEval
+tests\ragas\.venv\Scripts\python.exe tests\ragas\run_and_export.py --answers respostas.json
 ```
+
+Para rodar esta suíte junto com as outras e sair com o relatório consolidado,
+use `scripts\run_all_tests.bat` (README da raiz, "Rodar tudo de uma vez").
 
 O JSON tem o mesmo formato do export do DeepEval: `cases[]` com `name`,
 `input`, `actual_output`, `expected_output`, `retrieval_context` e
