@@ -468,6 +468,74 @@ tests\reports\.venv\Scripts\python.exe tests\reports\build_report.py --formats p
 
 Todas as interações são logadas em `logs/interactions.jsonl` (JSON Lines), uma linha por interação, com pergunta, contexto recuperado, resposta, métricas e metadados — isso alimenta a suíte DeepEval e a escrita do artigo.
 
+## Demonstração E2E ao vivo (Docker + Playwright)
+
+Para mostrar a uma turma o sistema sendo testado de ponta a ponta, o RAG
+inteiro sobe em containers e os testes Playwright rodam com o **navegador
+visível**. São os mesmos testes de `frontend/tests/e2e`, mais um que mostra
+que **quem responde não é quem julga**.
+
+```powershell
+scripts\demo_e2e.bat          # sobe tudo e roda os 20 testes com o navegador visível (~2 min)
+scripts\demo_e2e.bat ui       # o mesmo no modo UI do Playwright (lista de testes, linha do tempo, DOM)
+scripts\demo_e2e.bat subir    # só sobe os containers: chat em http://localhost:5510/chat.html
+scripts\demo_e2e.bat parar    # derruba os containers (índice e modelos ficam nos volumes)
+```
+
+Ao terminar, `cd frontend\tests && npm run demo:report` abre o relatório HTML
+com vídeo e trace de cada teste, para rever passo a passo.
+
+| Container ([docker-compose.yml](docker-compose.yml)) | O que faz |
+|---|---|
+| `ollama` | Embeddings (`nomic-embed-text`), gerador (`gemma3:4b`) e juiz (`qwen3:8b`), com GPU via `docker-compose.gpu.yml` |
+| `models` | Baixa os modelos que faltarem e sai |
+| `ingest` | Calcula os embeddings dos PDFs de `data/source_pdfs` e popula o índice, se estiver vazio |
+| `backend` | API em `http://localhost:8010` |
+| `frontend` | nginx servindo o frontend em `http://localhost:5510` |
+
+**Quem responde não é quem julga.** O teste `judge-vs-generator.spec.ts`:
+
+1. Faz uma pergunta pelo chat e confere na tela que quem respondeu foi o
+   gerador.
+2. Entrega a pergunta, os trechos recuperados e a resposta a **outro modelo**,
+   o juiz, que diz se a resposta é fiel aos trechos.
+3. Mostra os dois papéis e o veredito num painel na página.
+
+Se gerador e juiz forem o mesmo modelo (*self-grading*), o teste falha. Os
+modelos da demonstração vêm de `DEMO_GENERATION_MODEL` e `DEMO_JUDGE_MODEL`
+(padrões `gemma3:4b` e `qwen3:8b`), e não do `.env`, para valerem em
+qualquer máquina. Durante a demonstração, uma faixa no canto de cada página
+mostra o teste em execução e os dois modelos.
+
+**Requisitos:**
+
+- Docker Desktop (WSL2 no Windows).
+- GPU NVIDIA: opcional, mas sem ela gerador e juiz ficam lentos demais para
+  uma aula. O script detecta a GPU (`nvidia-smi`) e a usa.
+- Os PDFs em `data/source_pdfs`.
+- Node.js 18+. O script instala o Playwright na primeira vez.
+- Espaço em disco: a imagem do Ollama tem ~9,3 GB e os três modelos, ~8,4 GB.
+
+**Primeira vez:**
+
+1. Se a máquina já tem os modelos no Ollama dela, o script copia **só os três
+   da demonstração** para um volume do Docker (~2,5 min; nada é baixado).
+2. Faz o build do backend.
+3. Indexa os PDFs dentro do Docker (~1 min para 39 PDFs).
+
+Nas vezes seguintes, sobe em segundos. Por que copiar em vez de montar a
+pasta do Windows no container: lido do volume, o `gemma3:4b` carrega em ~44 s;
+pela pasta montada, a primeira resposta levou ~1 min 50 s. Isso pesa porque
+gerador e juiz não cabem juntos em 8 GB de VRAM, e o gerador é recarregado a
+cada julgamento. Para montar a pasta mesmo assim, defina `OLLAMA_MODELS_DIR`.
+
+**Portas:**
+
+- 8010 e 5510 são as mesmas do ambiente local: feche o `start_dev.bat` antes.
+- 11435 é o Ollama do container. O Ollama da máquina continua na 11434.
+
+O relatório consolidado e o `scripts\run_all_tests.bat` continuam iguais.
+
 ## Fase 2 — Arquitetura de testes
 
 Testes de API (pytest), testes E2E (Playwright/TypeScript) e avaliação de qualidade de
@@ -526,6 +594,9 @@ tests/ragas/              Qualidade de resposta com RAGAS, mesmos goldens; juiz 
 tests/reports/            Relatório consolidado das suítes de qualidade (MD, PDF, XLSX, CSV) e o histórico
 tests/run_all.py          Roda todas as suítes e gera o relatório (atalho: scripts/run_all_tests.bat)
 tests/generate_answers.py Gera as respostas do assistente uma vez, para todos os frameworks julgarem as mesmas
+docker-compose.yml        Demonstração ao vivo: Ollama, ingestão, backend e frontend em containers
+docker/                   Dockerfile do backend e a cópia dos modelos para o volume do Docker
+scripts/demo_e2e.bat      Sobe a stack em Docker e roda os testes E2E com o navegador visível
 tests/mutation/           Estudo de mutação para RAG (Fase 4) — operadores, oráculos, campanha e análise
 logs/                     interactions.jsonl (log estruturado, não versionado)
 docs/ARCHITECTURE.md      Decisões técnicas e racional

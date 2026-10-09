@@ -30,7 +30,20 @@ def main() -> None:
         action="store_true",
         help="Não apagar a coleção existente antes de ingerir",
     )
+    parser.add_argument(
+        "--if-empty",
+        action="store_true",
+        help="Só ingere se o índice estiver vazio (usado pelo docker compose a cada subida)",
+    )
     args = parser.parse_args()
+
+    if args.if_empty:
+        from app.rag.vector_store import collection_count
+
+        existing = collection_count()
+        if existing:
+            print(f"Índice já populado ({existing} chunks) — nada a fazer.")
+            return
 
     source_dir = Path(args.source) if args.source else None
     result = ingest_documents(source_dir=source_dir, reset=not args.no_reset)

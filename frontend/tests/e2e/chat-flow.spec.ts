@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { isBackendUp } from "./helpers";
 
 // Estes testes fazem chamadas reais ao Ollama via backend — são os mais lentos
