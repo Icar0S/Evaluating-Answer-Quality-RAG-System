@@ -138,6 +138,9 @@ def _isolated_settings(monkeypatch, tmp_path):
     # Caminhos absolutos em tmp: nada é escrito em logs/ ou data/ do projeto.
     monkeypatch.setenv("LOGS_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("VECTOR_STORE_DIR", str(tmp_path / "vector_store"))
+    # Vazio = sem versão de índice; um RAG_INDEX no .env da máquina trocaria a
+    # coleção e o modelo de embedding por baixo dos testes.
+    monkeypatch.setenv("RAG_INDEX", "")
 
     get_settings.cache_clear()
     monkeypatch.setattr(providers, "_active_name", None)
