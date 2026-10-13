@@ -1,6 +1,14 @@
 // Chat RAG: histórico de sessões (localStorage), bolhas com reações, filtro por fundamentação.
-// Override de URL da API via window.__RAG_API_BASE_URL__ (usado pelos testes Playwright).
-const API_BASE_URL = window.__RAG_API_BASE_URL__ || "http://localhost:8010";
+// Override de URL da API via window.__RAG_API_BASE_URL__ (usado pelos testes Playwright)
+// ou via ?api= na URL da página, para conversar com outro backend local; na
+// demonstração em Docker, o RAG dos Markdown: chat.html?api=http://localhost:8011
+const API_BASE_URL = window.__RAG_API_BASE_URL__ || apiFromQuery() || "http://localhost:8010";
+
+function apiFromQuery() {
+  const api = new URLSearchParams(window.location.search).get("api");
+  // Só backend local: um link não pode mandar as perguntas para outro servidor.
+  return api && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(api) ? api : null;
+}
 
 const SESSIONS_KEY = "rag_sessions_v1";
 const ACTIVE_SESSION_KEY = "rag_active_session_v1";
@@ -272,7 +280,9 @@ function buildMessageRow(message) {
       message.sources.forEach((source) => {
         const chip = document.createElement("div");
         chip.className = "source-chip";
-        chip.textContent = `${source.document} (pág. ${source.page ?? "?"}) — similaridade ${source.similarity_score.toFixed(3)}`;
+        // Trecho de Markdown não tem página (índice md-v1): sem "(pág. ?)".
+        const where = source.page != null ? `${source.document} (pág. ${source.page})` : source.document;
+        chip.textContent = `${where} — similaridade ${source.similarity_score.toFixed(3)}`;
         details.appendChild(chip);
       });
       row.appendChild(details);
@@ -281,7 +291,9 @@ function buildMessageRow(message) {
     if (message.metadata) {
       const meta = document.createElement("div");
       meta.className = "msg-meta";
-      meta.textContent = `${message.metadata.model} · ${Math.round(message.metadata.latency_ms)}ms`;
+      // Com dois RAGs no ar (demonstração em Docker), o índice diz qual respondeu.
+      const index = message.metadata.rag_index ? ` · ${message.metadata.rag_index}` : "";
+      meta.textContent = `${message.metadata.model}${index} · ${Math.round(message.metadata.latency_ms)}ms`;
       row.appendChild(meta);
     }
 
@@ -442,7 +454,7 @@ async function checkHealth() {
     railStatusDot.classList.toggle("ok", data.ollama_reachable);
     railStatusDot.classList.toggle("down", !data.ollama_reachable);
     railStatusDot.title = data.ollama_reachable ? "API e Ollama disponíveis" : "Ollama indisponível";
-    hintModelEl.textContent = data.generation_model;
+    hintModelEl.textContent = data.rag_index ? `${data.generation_model} · RAG ${data.rag_index}` : data.generation_model;
   } catch {
     railStatusDot.classList.remove("ok");
     railStatusDot.classList.add("down");

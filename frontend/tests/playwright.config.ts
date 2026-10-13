@@ -2,6 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  // Perguntas de referência para o relatório de qualidade: só na demonstração
+  // em Docker (playwright.demo.config.ts), que tem os dois RAGs no ar.
+  testIgnore: "**/goldens.spec.ts",
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

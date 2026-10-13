@@ -457,6 +457,85 @@ idênticas) e uma instrução de idioma (o prompt em inglês fazia o juiz gerar 
 em inglês, e ela era comparada por embedding com a original em português: 0,68 contra
 0,83 numa resposta correta).
 
+### Versões do índice: pdf-v1 × md-v1 (out/2026)
+
+O acervo do RAG passou a ter versões (`backend/app/config.py`, `RAG_INDICES`;
+`RAG_INDEX` escolhe qual o assistente usa). Cada versão é uma pasta de documentos
+numa coleção própria do Chroma: `pdf-v1` é a coleção histórica, sem mudança
+nenhuma, e `md-v1` são os 22 Markdown de `data/new_papers_marks`. Decisões:
+
+**O modelo de embedding faz parte da versão.** Um índice só pode ser consultado
+com o modelo que o construiu; vetores de modelos diferentes não se comparam, e a
+busca erra sem dar erro. `RAG_INDEX` fixa a coleção, a pasta e o
+`EMBEDDING_MODEL`.
+
+**Mesmo corte nos dois formatos.** O Markdown usa o mesmo chunker (800/120
+tokens) dos PDFs, sem página. A normalização é só de sintaxe: tabelas viram
+texto, e nada de "consertar" conteúdo (hifenização, carimbos do arXiv), o que
+favoreceria um formato na comparação. Cada ingestão grava um manifesto
+(arquivos com SHA-256, parâmetros, modelo) em
+`data/vector_store/manifests/<coleção>.json`.
+
+**Prompt v1 intocado.** O cabeçalho dos trechos omite a página quando não há
+página (Markdown). Para PDF, o texto sai byte a byte igual, porque o estudo de
+mutação depende disso.
+
+**O que o diagnóstico mostrou** (`tests/retrieval_diagnostic.py`, só embeddings):
+
+- No `md-v1`, o documento certo veio entre os 4 trechos em 2 de 10 perguntas
+  em português e em 10 de 10 em inglês. Com o `nomic-embed-text`, a pergunta
+  em português puxa o único documento em português do acervo, seja qual for o
+  assunto. É o mesmo efeito que tirou o MetaRAG da recuperação no `pdf-v1`. O
+  idioma pesa mais do que a qualidade do texto: em inglês, até documentos com
+  25% de palavras grudadas pela conversão PDF → Markdown vieram em 1º lugar.
+- Comparar `pdf-v1` e `md-v1` é comparar acervos diferentes (nenhum Markdown é
+  um dos PDFs), não formatos.
+
+**O que a avaliação mostrou** (`tests/compare_indices.py`, RAGAS com juiz
+`qwen3:8b`, 13/10/2026):
+
+- Nas perguntas do próprio acervo, o `md-v1` com as perguntas em inglês teve
+  fidelidade 0,89, e 6 de 10 casos passaram em todas as dimensões. Com as
+  perguntas em português, foram 0,57 e 3 de 10. O `pdf-v1` teve 0,90 e 1 de 10.
+- Fora do próprio acervo, os dois RAGs quase não se abstêm (1 e 2 vezes em
+  10). Nas outras perguntas, atribuem ao artigo perguntado o conteúdo de outro.
+  A fidelidade do RAGAS não pega esse erro, porque confere se a afirmação está
+  no trecho, não de qual trabalho ela é.
+- O `context_recall` do juiz deu 1,00 a conjuntos de trechos sem os fatos da
+  referência (conferido à mão em três casos). Para escolher entre índices, o
+  sinal mais firme é o diagnóstico de recuperação, que não usa juiz. As notas
+  de contexto pedem um juiz mais estrito.
+
+Próximas versões naturais: uma `md-v2` reconvertida dos mesmos PDFs por uma
+ferramenta melhor, e versões com embedding multilíngue (por exemplo,
+`bge-m3`) para atacar o idioma.
+
+### Demonstração E2E com os dois RAGs (out/2026)
+
+O `scripts\demo_e2e.bat` sobe os dois índices ao mesmo tempo e compara a
+qualidade deles no fim. Decisões:
+
+**Um backend por índice, não um índice por requisição.** O `docker-compose.yml`
+sobe `backend` (`pdf-v1`, porta 8010) e `backend-md` (`md-v1`, porta 8011) da
+mesma imagem, cada um com o seu `RAG_INDEX` e o seu volume de índice. O backend
+continua servindo uma versão por processo, como antes, e nenhum processo
+divide o banco do Chroma com outro. O `/health` e os metadados do `/chat`
+passaram a dizer o índice (`rag_index`), e os testes conferem isso antes de
+atribuir uma resposta a um RAG.
+
+**O relatório julga o que a turma viu.** As perguntas de referência são feitas
+pelo chat, no navegador (`frontend/tests/e2e/goldens.spec.ts`), e cada
+resposta é gravada com os trechos que o chat devolveu. O `tests/demo_e2e.py`
+entrega essas respostas ao RAGAS, sem gerar outras por fora. A posição do
+documento certo também sai desses trechos, então mede a mesma busca que
+alimentou a resposta.
+
+**O gerador sai da memória antes do julgamento.** No ensaio de 13/10/2026, com
+gerador, juiz e embeddings carregados juntos, a VM do Docker (7,6 GB) matou o
+processo do modelo duas vezes, e o juiz devolveu erro 500 nessas chamadas.
+Depois que as respostas estão gravadas, o gerador não é mais usado, e o
+orquestrador o descarrega (`keep_alive: 0`).
+
 ## Fase 3 — Human-in-the-loop (a documentar caso confirmado)
 
 ## Camada de movimento e ilha React na homepage

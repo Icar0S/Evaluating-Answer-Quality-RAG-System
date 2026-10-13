@@ -1,15 +1,16 @@
 import { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { API_BASE_URL, DEMO, JUDGE_MODEL, JUDGE_OLLAMA_URL, isBackendUp } from "./helpers";
+import { DEMO, JUDGE_MODEL, JUDGE_OLLAMA_URL, isBackendUp } from "./helpers";
 
 // LLM-as-a-judge de ponta a ponta, na frente de quem assiste:
 //   1. o juiz é OUTRO modelo, nunca o que gera as respostas (self-grading);
 //   2. o gerador responde a uma pergunta pelo chat, como um usuário faria;
 //   3. o juiz recebe a pergunta, os trechos recuperados e a resposta, e diz se
 //      a resposta está apoiada nos trechos (fidelidade);
-//   4. um painel na página mostra quem respondeu, quem julgou e o veredito.
+//   4. um painel na página mostra o RAG, quem respondeu, quem julgou e o veredito.
 // O veredito em si não é assertado (é opinião de um LLM); o que o teste garante
-// é a separação dos papéis e que o julgamento aconteceu.
+// é a separação dos papéis e que o julgamento aconteceu. Na demonstração em
+// Docker, roda uma vez por RAG: a mesma pergunta, acervos diferentes.
 
 const QUESTION = "O que é o RAGAS e que tipo de avaliação ele propõe para sistemas RAG?";
 
@@ -40,6 +41,7 @@ function judgePrompt(question: string, contexts: string[], answer: string): stri
 }
 
 type PanelState = {
+  rag: string;
   generator: string;
   judge: string;
   step: string;
@@ -59,7 +61,7 @@ async function showPanel(page: Page, state: PanelState): Promise<void> {
         // teste), acima da faixa do teste: assim não cobre a conversa.
         position: "fixed",
         left: "12px",
-        bottom: "128px",  // folga para a faixa do teste, mesmo com título de 4 linhas
+        bottom: "150px",  // folga para a faixa do teste, mesmo com título longo e a linha do RAG
         zIndex: "2147483647",
         width: "336px",
         padding: "16px 18px",
@@ -88,6 +90,7 @@ async function showPanel(page: Page, state: PanelState): Promise<void> {
     }
     box.innerHTML =
       `<div style="font-weight:700;font-size:15px;margin-bottom:8px">LLM-as-a-judge: quem responde não julga</div>` +
+      row("RAG", s.rag) +
       row("Responde (gerador)", s.generator) +
       row("Julga (juiz)", s.judge) +
       `<div style="margin-top:8px;color:#52514e">${s.step}</div>` +
@@ -96,8 +99,13 @@ async function showPanel(page: Page, state: PanelState): Promise<void> {
 }
 
 test.describe("Quem responde não é quem julga (LLM-as-a-judge)", () => {
-  test("a resposta do chat é julgada por um modelo diferente do que a gerou", async ({ page, request }, testInfo) => {
-    test.skip(!(await isBackendUp(request)), `Backend indisponível em ${API_BASE_URL}.`);
+  test("a resposta do chat é julgada por um modelo diferente do que a gerou", async ({
+    page,
+    request,
+    rag,
+    apiBaseURL,
+  }, testInfo) => {
+    test.skip(!(await isBackendUp(request, apiBaseURL)), `Backend indisponível em ${apiBaseURL}.`);
     const tags = await request.get(`${JUDGE_OLLAMA_URL}/api/tags`, { timeout: 10_000 }).catch(() => null);
     test.skip(!tags || !tags.ok(), `Ollama do juiz indisponível em ${JUDGE_OLLAMA_URL}.`);
     const models: string[] = ((await tags!.json()).models ?? []).map((m: { name: string }) => m.name);
@@ -107,8 +115,14 @@ test.describe("Quem responde não é quem julga (LLM-as-a-judge)", () => {
     );
     test.setTimeout(420_000);
 
-    const generator: string = (await (await request.get(`${API_BASE_URL}/health`)).json()).generation_model;
-    testInfo.annotations.push({ type: "gerador", description: generator }, { type: "juiz", description: JUDGE_MODEL });
+    const health = await (await request.get(`${apiBaseURL}/health`)).json();
+    const generator: string = health.generation_model;
+    const ragName = rag ? `${rag.label} (${rag.index})` : (health.rag_index ?? "—");
+    testInfo.annotations.push(
+      { type: "RAG", description: ragName },
+      { type: "gerador", description: generator },
+      { type: "juiz", description: JUDGE_MODEL },
+    );
 
     await test.step(`o juiz (${JUDGE_MODEL}) é um modelo diferente do gerador (${generator})`, async () => {
       expect(
@@ -120,7 +134,7 @@ test.describe("Quem responde não é quem julga (LLM-as-a-judge)", () => {
     await page.goto("/chat.html");
     await page.evaluate(() => localStorage.clear());
     await page.reload();
-    const panel: PanelState = { generator, judge: JUDGE_MODEL, step: "1/3 · enviando a pergunta pelo chat…" };
+    const panel: PanelState = { rag: ragName, generator, judge: JUDGE_MODEL, step: "1/3 · enviando a pergunta pelo chat…" };
     await showPanel(page, panel);
 
     const chat = await test.step(`o gerador (${generator}) responde pelo chat`, async () => {

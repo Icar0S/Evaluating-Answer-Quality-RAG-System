@@ -35,6 +35,11 @@ descartável) a cada mudança. Cobre os bugs que já apareceram uma vez:
   `qwen3:8b`), num Ollama em `RAG_JUDGE_OLLAMA_URL` (padrão
   `http://localhost:11434`). Sem esse Ollama, ou sem o modelo baixado, o teste
   se auto-pula.
+- `goldens.spec.ts`: as **perguntas de referência** (goldens dos PDFs e dos
+  Markdown), feitas pelo chat a cada RAG. Cada resposta, com os trechos que o
+  chat devolveu, vai para um arquivo que o RAGAS julga depois
+  (`tests/demo_e2e.py`). Só roda na demonstração com relatório
+  (`scripts\demo_e2e.bat`); o `npm test` e o `npm run demo` o deixam de fora.
 
 ## Setup (uma vez)
 
@@ -70,16 +75,36 @@ npm run demo:ui       # modo UI do Playwright: lista de testes, linha do tempo, 
 npm run demo:report   # relatório HTML com vídeo e trace de cada teste
 ```
 
+A demonstração testa **dois RAGs**, o dos PDFs e o dos Markdown (os dois
+backends do `docker-compose.yml`), em três projetos do Playwright:
+
+| Projeto | Specs | Backend |
+|---|---|---|
+| `interface` | `composer`, `homepage`, `monitor`, `providers` | `http://localhost:8010` |
+| `RAG pdf-v1 (PDFs)` | `chat-flow`, `goldens`, `judge-vs-generator` | `http://localhost:8010` |
+| `RAG md-v1 (Markdown)` | os mesmos três | `http://localhost:8011` |
+
+Num projeto de RAG, antes de cada teste, `e2e/fixtures.ts`:
+
+- pula o teste se o backend daquele RAG estiver fora do ar ou com o índice
+  vazio;
+- confere no `/health` que o backend serve mesmo aquele índice, porque uma
+  porta trocada mediria o RAG errado;
+- aponta o chat da página para ele (`window.__RAG_API_BASE_URL__`).
+
 Em modo demonstração, cada página ganha uma faixa no canto com o teste em
-execução e os dois modelos: o que **responde** (lido do `/health` do backend)
-e o que **julga** (`e2e/fixtures.ts`). Fora dele, a faixa não aparece. A
-faixa ignora o mouse e não muda o layout, então não interfere nos testes.
+execução, o RAG e os dois modelos: o que **responde** (lido do `/health` do
+backend) e o que **julga**. Fora dele, a faixa não aparece. A faixa ignora o
+mouse e não muda o layout, então não interfere nos testes.
 
 | Variável | Para quê | Padrão |
 |---|---|---|
 | `DEMO_SLOWMO` | Milissegundos entre ações | `400` |
 | `RAG_JUDGE_MODEL` | Modelo juiz | `qwen3:8b` |
 | `RAG_JUDGE_OLLAMA_URL` | Ollama do juiz | `http://localhost:11434` |
+| `DEMO_PDF_API_URL` / `DEMO_MD_API_URL` | API de cada RAG | `http://localhost:8010` / `8011` |
+| `DEMO_ANSWERS_DIR` | Onde `goldens.spec.ts` grava as respostas; sem ela, o spec fica de fora | — |
+| `DEMO_GOLDENS` | Só as N primeiras perguntas de referência de cada acervo | todas |
 
 Para subir o sistema inteiro em Docker e rodar a demonstração num comando só,
 use `scripts\demo_e2e.bat` (README da raiz, "Demonstração E2E ao vivo").

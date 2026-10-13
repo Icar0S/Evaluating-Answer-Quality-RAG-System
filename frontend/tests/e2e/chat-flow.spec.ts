@@ -3,11 +3,15 @@ import { isBackendUp } from "./helpers";
 
 // Estes testes fazem chamadas reais ao Ollama via backend — são os mais lentos
 // da suíte (uma geração local pode levar 15-30s). Pulados automaticamente se a
-// API não estiver no ar em http://localhost:8010.
+// API não estiver no ar (http://localhost:8010, ou a do RAG sob teste na
+// demonstração em Docker, que roda este arquivo uma vez por RAG).
 
 test.describe("Fluxo real de chat (usa o backend/Ollama)", () => {
-  test.beforeEach(async ({ page, request }) => {
-    test.skip(!(await isBackendUp(request)), "Backend indisponível em http://localhost:8010 — inicie a API antes de rodar este teste.");
+  test.beforeEach(async ({ page, request, apiBaseURL }) => {
+    test.skip(
+      !(await isBackendUp(request, apiBaseURL)),
+      `Backend indisponível em ${apiBaseURL} — inicie a API antes de rodar este teste.`,
+    );
     await page.goto("/chat.html");
     await page.evaluate(() => localStorage.clear());
     await page.reload();
