@@ -56,6 +56,24 @@ raiz, em "Rodar tudo de uma vez". O relatório gerado assim ganha a seção
 **Execução dos testes**: o resultado de cada suíte, a duração, o motivo de
 cada uma pulada e o caminho do log.
 
+## Comparando versões do índice
+
+O relatório também compara **versões do índice** do RAG (por exemplo,
+`pdf-v1` × `md-v1`). Cada rodada traz no JSON o índice e o idioma das
+perguntas, e o relatório as identifica como "RAGAS · md-v1" ou
+"RAGAS · md-v1 · perguntas em inglês". O `tests\compare_indices.py` gera tudo
+num comando (README da raiz, "Versões do índice do RAG"). Quando as rodadas
+vêm de índices diferentes:
+
+- os avisos de comparabilidade param de reclamar de respostas e trechos
+  diferentes, que são o objeto da comparação, e continuam avisando de juiz,
+  gerador ou limiar diferentes;
+- a seção **Por origem da pergunta** separa as notas pelo acervo de onde a
+  pergunta veio, e conta as abstenções (no acervo alheio, se abster é o
+  comportamento certo);
+- a seção **Recuperação do documento certo** mostra, por golden, a posição do
+  documento-fonte entre os trechos, com a pergunta em português e em inglês.
+
 ## Histórico
 
 Nenhum relatório apaga o anterior. Em `tests/reports/out/`:

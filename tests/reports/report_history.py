@@ -52,6 +52,8 @@ def build_summary(
         "runs": [
             {
                 "framework": run.framework,
+                "name": run.name,
+                "rag_index": run.rag_index,
                 "label": run.label,
                 "run_generated_at": run.generated_at.isoformat() if run.generated_at else None,
                 "generation_model": run.generation_model,
@@ -115,7 +117,7 @@ def unique_runs(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: dict[tuple[str, str], dict[str, Any]] = {}
     for entry in entries:
         for run in entry.get("runs", []):
-            key = (run.get("framework"), run.get("run_generated_at") or run.get("source"))
+            key = (run.get("name") or run.get("framework"), run.get("run_generated_at") or run.get("source"))
             seen.setdefault(key, run)
     return sorted(seen.values(), key=lambda r: r.get("run_generated_at") or "")
 
@@ -142,7 +144,7 @@ def write_index(root: Path, entries: list[dict[str, Any]]) -> tuple[Path, Path]:
     for entry in reversed(entries):
         when = datetime.fromisoformat(entry["generated_at"]).strftime("%d/%m/%Y %H:%M")
         runs = "<br>".join(
-            f"**{r['framework']}**: {r['all_passed']}/{r['n_cases']} casos com todas ≥ limiar"
+            f"**{r.get('name') or r['framework']}**: {r['all_passed']}/{r['n_cases']} casos com todas ≥ limiar"
             + (" (respostas compartilhadas)" if r.get("shared_answers") else "")
             for r in entry.get("runs", [])
         )
@@ -187,7 +189,7 @@ def history_table_rows(runs: list[dict[str, Any]], limit: int = 15) -> list[list
         when = run.get("run_generated_at")
         when = datetime.fromisoformat(when).astimezone().strftime("%d/%m/%Y %H:%M") if when else "—"
         rows.append(
-            [when, run["framework"]]
+            [when, run.get("name") or run["framework"]]
             + [fmt(run["means"].get(d.key)) for d in DIMENSIONS]
             + [f"{run['all_passed']}/{run['n_cases']}", "sim" if run.get("shared_answers") else "não"]
         )

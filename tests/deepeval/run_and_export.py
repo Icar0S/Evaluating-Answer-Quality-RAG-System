@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from types import SimpleNamespace
 import threading
 import time
 import webbrowser
@@ -148,6 +149,8 @@ def _build_output(cases: list[dict], n: int, i: int, settings, answers_meta: dic
         # Com --answers, o modelo que gerou é o do arquivo, não o do .env atual.
         "generation_model": answers_meta.get("generation_model", settings.generation_model),
         "answers_source": answers_meta.get("_source"),
+        "rag_index": answers_meta.get("rag_index", settings.index_name),
+        "lang": answers_meta.get("lang", "pt"),
         "judge_model": EVAL_JUDGE_MODEL,
         "threshold": THRESHOLD,
         "n_cases": n,
@@ -192,7 +195,22 @@ def main() -> None:
         answers_meta = json.loads(args.answers.read_text(encoding="utf-8"))
         answers_meta["_source"] = str(args.answers)
         answers_by_name = {a["name"]: a for a in answers_meta.get("answers", [])}
-        goldens = [g for g in goldens if g.name in answers_by_name]
+        # Os casos vêm do arquivo de respostas (pergunta e referência de cada
+        # golden, inclusive de outros conjuntos); arquivos antigos, sem esses
+        # campos, caem nos goldens padrão pelo nome.
+        by_name = {g.name: g for g in goldens}
+        goldens = [
+            SimpleNamespace(
+                name=a["name"],
+                input=a["input"],
+                expected_output=a["expected_output"],
+                context=list(a.get("context") or []),
+            )
+            if "expected_output" in a
+            else by_name[a["name"]]
+            for a in answers_meta.get("answers", [])
+            if "expected_output" in a or a["name"] in by_name
+        ]
     if args.limit:
         goldens = goldens[: args.limit]
 
@@ -272,6 +290,7 @@ def main() -> None:
         cases.append(
             {
                 "name": golden.name,
+                "origin": answers_by_name.get(golden.name, {}).get("origin"),
                 "input": golden.input,
                 "actual_output": answer,
                 "expected_output": golden.expected_output,

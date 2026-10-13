@@ -24,8 +24,11 @@ from _ragas_shared import (
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _skip_without_real_stack() -> None:
-    reason = stack_status()
+def _skip_without_real_stack(request: pytest.FixtureRequest) -> None:
+    # Só os testes que chamam o SUT (sut_output) precisam do índice. Os
+    # controles do juiz, sozinhos, rodam sem ele (demonstração em Docker).
+    need_index = any("sut_output" in item.fixturenames for item in request.session.items)
+    reason = stack_status(need_index=need_index)
     if reason:
         pytest.skip(reason)
 

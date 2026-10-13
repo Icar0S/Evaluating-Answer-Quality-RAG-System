@@ -41,6 +41,7 @@ LONG_COLUMNS = [
     "Rodada",
     "Framework",
     "Data",
+    "Origem",
     "Caso",
     "Dimensão",
     "Métrica",
@@ -70,6 +71,7 @@ def long_rows(runs: list[Run]) -> list[list]:
                         run.label,
                         run.framework,
                         run.when,
+                        case.origin or "",
                         case.name,
                         dim.label,
                         NATIVE_METRIC.get(run.framework, {}).get(dim.key, dim.key),
@@ -284,14 +286,14 @@ def write_xlsx(
 
     # Notas (formato longo) --------------------------------------------------
     ws = wb.create_sheet(_sheet_name("Notas", taken))
-    end = _table(ws, LONG_COLUMNS, long_rows(runs), [30, 11, 17, 28, 22, 30, 8, 10, 10, 30, 80])
-    _diverging(ws, f"G2:G{end}", runs[0].threshold)
+    end = _table(ws, LONG_COLUMNS, long_rows(runs), [34, 11, 17, 9, 28, 22, 30, 8, 10, 10, 30, 80])
+    _diverging(ws, f"H2:H{end}", runs[0].threshold)
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:K{end}"
+    ws.auto_filter.ref = f"A1:L{end}"
 
     # Matriz por rodada ------------------------------------------------------
     for run in runs:
-        ws = wb.create_sheet(_sheet_name(f"Matriz {run.framework}", taken))
+        ws = wb.create_sheet(_sheet_name(f"Matriz {run.name}", taken))
         ws["A1"] = run.label
         ws["A1"].font = Font(bold=True)
         rows = [

@@ -21,6 +21,8 @@ from report_data import (
     dimension_stats,
     fmt,
     pct,
+    origin_stats,
+    origins,
     run_highlights,
     signed,
 )
@@ -104,7 +106,7 @@ def _run_table(runs: list[Run]) -> Table:
         measured = sum(s.n_measured for s in stats.values())
         rows.append(
             [
-                f"**{run.framework}**",
+                f"**{run.name}**",
                 run.when,
                 run.generation_model or "—",
                 run.judge_model or "—",
@@ -115,7 +117,7 @@ def _run_table(runs: list[Run]) -> Table:
             ]
         )
     return Table(
-        headers=["Framework", "Data", "Modelo de geração", "Juiz", "Limiar", "Casos", "Notas medidas", "Arquivo"],
+        headers=["Rodada", "Data", "Modelo de geração", "Juiz", "Limiar", "Casos", "Notas medidas", "Arquivo"],
         rows=rows,
         widths=[0.115, 0.11, 0.11, 0.10, 0.07, 0.07, 0.10, 0.325],
         align=["l", "l", "l", "l", "r", "r", "r", "l"],
@@ -149,7 +151,7 @@ def _means_table(runs: list[Run]) -> Table:
     stats = [dimension_stats(r) for r in runs]
     headers = ["Dimensão"]
     for run in runs:
-        headers += [f"{run.framework}: média", f"{run.framework}: ≥ limiar"]
+        headers += [f"{run.name}: média", f"{run.name}: ≥ limiar"]
     rows = []
     for dim in DIMENSIONS:
         row = [dim.label]
@@ -205,7 +207,7 @@ def _divergence_table(comp: Comparison) -> Table | None:
     ]
     extra = len(comp.divergences) - MAX_DIVERGENCES
     return Table(
-        headers=["Caso", "Dimensão", comp.a.framework, comp.b.framework, "Diferença"],
+        headers=["Caso", "Dimensão", comp.a.name, comp.b.name, "Diferença"],
         rows=rows,
         widths=[0.34, 0.26, 0.13, 0.13, 0.14],
         align=["l", "l", "r", "r", "r"],
@@ -300,7 +302,7 @@ def _execution_blocks(execution: dict) -> list[Block]:
     started = execution.get("started_at")
     when = datetime.fromisoformat(started).astimezone().strftime("%d/%m/%Y %H:%M") if started else "—"
     text = (
-        f"Execução de `tests/run_all.py` iniciada em {when}, com duração total de "
+        f"Execução de `{execution.get('tool', 'tests/run_all.py')}` iniciada em {when}, com duração total de "
         f"{_duration(execution.get('duration_seconds'))}."
     )
     shared = execution.get("shared_answers")
@@ -315,6 +317,8 @@ def _execution_blocks(execution: dict) -> list[Block]:
             " Sem avaliação nova nesta execução para parte dos frameworks: o relatório reaproveita o resultado "
             "mais recente de " + ", ".join(f"`{r}`" for r in reused) + " (veja a data de cada rodada)."
         )
+    if execution.get("note"):
+        text += f" {execution['note']}"
     rows = [
         [
             step["name"],
@@ -384,12 +388,75 @@ def _history_blocks(history: list[dict], figure: Path | None) -> list[Block]:
         )
     blocks.append(
         Table(
-            headers=["Data", "Framework"] + [d.short for d in DIMENSIONS] + ["Todas ≥ limiar", "Respostas comp."],
+            headers=["Data", "Rodada"] + [d.short for d in DIMENSIONS] + ["Todas ≥ limiar", "Respostas comp."],
             rows=history_table_rows(history),
             widths=[0.135, 0.095] + [0.11] * len(DIMENSIONS) + [0.10, 0.12],
             align=["l", "l"] + ["r"] * len(DIMENSIONS) + ["r", "c"],
             caption="Média por dimensão em cada rodada, mais recente primeiro (até 15). \"Respostas comp.\" = a "
             "rodada julgou as respostas compartilhadas da execução, as mesmas dos outros frameworks.",
+            small=True,
+        )
+    )
+    return blocks
+
+
+def _origin_table(runs: list[Run]) -> Table:
+    rows = []
+    for run in runs:
+        for o in origin_stats(run):
+            rows.append(
+                [run.name, o.origin, str(o.n_cases), pct(o.abstained, o.n_cases)]
+                + [fmt(o.means[d.key]) for d in DIMENSIONS]
+                + [pct(o.all_passed, o.n_cases)]
+            )
+    return Table(
+        headers=["Rodada", "Origem", "Casos", "Abstenções"] + [d.short for d in DIMENSIONS] + ["Todas ≥ limiar"],
+        rows=rows,
+        widths=[0.2, 0.07, 0.06, 0.09] + [0.095] * len(DIMENSIONS) + [0.105],
+        align=["l", "l", "r", "r"] + ["r"] * len(DIMENSIONS) + ["r"],
+        caption="Médias por dimensão separadas pela origem da pergunta.",
+        small=True,
+    )
+
+
+def _retrieval_blocks(diagnostic: dict) -> list[Block]:
+    """Tabela do diagnóstico de recuperação (tests/compare_indices.py): o documento certo veio entre os k trechos?"""
+    k = diagnostic.get("top_k", 4)
+    indices = diagnostic["indices"]
+    langs = diagnostic.get("langs", ["pt"])
+    lang_name = {"pt": "PT", "en": "EN"}
+    # Quem gera o diagnóstico pode dizer de onde ele veio (a demonstração E2E o
+    # tira dos trechos que o chat devolveu, não de uma busca à parte).
+    how = diagnostic.get("description") or (
+        "Só embeddings, sem LLM: mede a recuperação isolada do resto do pipeline. "
+        "A mesma pergunta em inglês separa o efeito do idioma do efeito do índice."
+    )
+    blocks: list[Block] = [
+        Para(
+            f"Para cada golden com documento-fonte conhecido, a posição do documento certo entre os {k} trechos "
+            f"recuperados (— = não veio). {how}"
+        )
+    ]
+    totals = []
+    for index in indices:
+        for lang in langs:
+            hits = sum(1 for row in diagnostic["rows"] if row["ranks"].get(index, {}).get(lang))
+            totals.append(f"**{index}**, perguntas em {lang_name.get(lang, lang)}: {hits}/{len(diagnostic['rows'])}")
+    blocks.append(Bullets(totals))
+    headers = ["Golden", "Conversão"] + [f"{i} {lang_name.get(lang, lang)}" for i in indices for lang in langs]
+    rows = [
+        [row["name"], row.get("conversion") or "—"]
+        + [str(row["ranks"].get(i, {}).get(lang) or "—") for i in indices for lang in langs]
+        for row in diagnostic["rows"]
+    ]
+    n = len(indices) * len(langs)
+    blocks.append(
+        Table(
+            headers=headers,
+            rows=rows,
+            widths=[0.38, 0.14] + [0.48 / n] * n,
+            align=["l", "l"] + ["c"] * n,
+            caption="Posição (1 = primeiro) do documento-fonte entre os trechos recuperados.",
             small=True,
         )
     )
@@ -404,13 +471,16 @@ def build_document(
     execution: dict | None = None,
     history: list[dict] | None = None,
 ) -> list[Block]:
+    # Origem da pergunta -> arquivo de goldens (tests/generate_answers.py, KNOWN_ORIGINS).
+    golden_files = [{"pdf": "dataset.json", "md": "dataset_md.json"}.get(o, o) for o in origins(runs)]
     doc: list[Block] = [
         Heading(1, "Relatório de qualidade de resposta do RAG"),
         Para(
             f"Gerado em {generated_at.strftime('%d/%m/%Y %H:%M')} a partir de {len(runs)} rodada(s) de avaliação: "
             + ", ".join(f"**{r.label}**" for r in runs)
-            + ". Cada rodada julgou as respostas do assistente para os mesmos goldens "
-            "(`tests/deepeval/goldens/dataset.json`) em cinco dimensões, com um LLM local como juiz."
+            + ". Cada rodada julgou as respostas do assistente para os mesmos goldens ("
+            + " e ".join(f"`tests/deepeval/goldens/{f}`" for f in golden_files or ["dataset.json"])
+            + ") em cinco dimensões, com um LLM local como juiz."
         ),
     ]
     number = 0
@@ -449,15 +519,25 @@ def build_document(
     for run in runs:
         extras = _extras(run)
         if extras:
-            doc.append(Para(f"**{run.framework}** — detalhes da rodada:", small=True))
+            doc.append(Para(f"**{run.name}** — detalhes da rodada:", small=True))
             doc.append(Bullets(extras))
 
     if len(runs) > 1:
-        doc.append(section("Comparação entre frameworks"))
+        same_system = len({r.variant for r in runs}) == 1
+        doc.append(section("Comparação entre frameworks" if same_system else "Comparação entre as rodadas"))
+        if not same_system:
+            doc.append(
+                Para(
+                    "As rodadas usam versões do índice (ou idiomas de pergunta) diferentes: respostas e trechos "
+                    "recuperados diferem por construção — é o que está sendo comparado. Para a comparação valer, "
+                    "o resto precisa ser igual: perguntas, gerador, juiz e limiar (os avisos de comparabilidade "
+                    "do resumo dizem se não foi)."
+                )
+            )
         doc.append(Figure(figures["means"], "Média de cada dimensão por rodada. A linha vertical marca o limiar."))
         doc.append(_means_table(runs))
         for comp in comparisons:
-            doc.append(Heading(3, f"Concordância: {comp.a.framework} × {comp.b.framework}"))
+            doc.append(Heading(3, f"Concordância: {comp.a.name} × {comp.b.name}"))
             doc.append(
                 Para(
                     f"{len(comp.common_cases)} casos em comum. Respostas idênticas nas duas rodadas: "
@@ -467,10 +547,10 @@ def build_document(
             doc.append(_agreement_table(comp))
             divergences = _divergence_table(comp)
             if divergences:
-                doc.append(Heading(3, f"Divergências de veredito: {comp.a.framework} × {comp.b.framework}"))
+                doc.append(Heading(3, f"Divergências de veredito: {comp.a.name} × {comp.b.name}"))
                 doc.append(divergences)
 
-    doc.append(section("Resultados por framework"))
+    doc.append(section("Resultados por framework" if len({r.variant for r in runs}) == 1 else "Resultados por rodada"))
     for i, run in enumerate(runs, start=1):
         doc.append(Heading(3, f"{number}.{i} {run.label}"))
         doc.append(
@@ -493,6 +573,22 @@ def build_document(
         if unmeasured:
             doc.append(Para("**Notas não medidas** (erro do juiz, timeout ou NaN):", small=True))
             doc.append(Bullets(unmeasured))
+
+    if origins(runs) and len(origins(runs)) > 1:
+        doc.append(section("Por origem da pergunta"))
+        doc.append(
+            Para(
+                "Origem = o acervo de onde vieram a pergunta e a resposta de referência. Num acervo que não "
+                "contém o assunto, o comportamento certo é se abster (\"não encontrei...\"); nesse caso as "
+                "notas de fidelidade e de relevância julgam uma recusa."
+            )
+        )
+        doc.append(_origin_table(runs))
+
+    diagnostic = (execution or {}).get("retrieval_diagnostic")
+    if diagnostic:
+        doc.append(section("Recuperação do documento certo"))
+        doc += _retrieval_blocks(diagnostic)
 
     if history:
         doc.append(section("Histórico"))
@@ -524,7 +620,7 @@ def build_document(
             if case is None:
                 continue
             notas = " · ".join(f"{d.short} {score_cell(case.score(d.key))}" for d in DIMENSIONS)
-            doc.append(Para(f"**{run.framework}** — {notas}", small=True))
+            doc.append(Para(f"**{run.name}** — {notas}", small=True))
             if not shared_answer:
                 doc.append(Para(f"Resposta: {clip(case.answer, 700)}", small=True))
             reasons = [

@@ -125,6 +125,9 @@ class Case:
     answer: str
     contexts: list[str]
     scores: dict[str, Score]
+    # De qual acervo a pergunta veio ("pdf", "md"...), quando a rodada julgou
+    # goldens de mais de um conjunto (tests/generate_answers.py --goldens).
+    origin: str | None = None
 
     @property
     def abstained(self) -> bool:
@@ -157,8 +160,24 @@ class Run:
         return self.generated_at.astimezone().strftime("%d/%m/%Y %H:%M") if self.generated_at else "data desconhecida"
 
     @property
+    def rag_index(self) -> str | None:
+        return self.extra.get("rag_index")
+
+    @property
+    def variant(self) -> str:
+        """O que distingue esta rodada além do framework: versão do índice e idioma das perguntas."""
+        parts = [self.rag_index] if self.rag_index else []
+        if self.extra.get("lang") == "en":
+            parts.append("perguntas em inglês")
+        return " · ".join(parts)
+
+    @property
+    def name(self) -> str:
+        return f"{self.framework} · {self.variant}" if self.variant else self.framework
+
+    @property
     def label(self) -> str:
-        return f"{self.framework} ({self.when})"
+        return f"{self.name} ({self.when})"
 
     @property
     def complete(self) -> bool:
@@ -216,6 +235,7 @@ def load_run(path: Path) -> Run:
                 answer=raw.get("actual_output") or "",
                 contexts=list(raw.get("retrieval_context") or []),
                 scores=scores,
+                origin=raw.get("origin"),
             )
         )
 
@@ -324,8 +344,18 @@ class Comparison:
     divergences: list[Divergence]
 
     @property
+    def across_variants(self) -> bool:
+        """As rodadas usam índices ou idiomas diferentes: é uma comparação de sistemas, não de métodos."""
+        return self.a.variant != self.b.variant
+
+    @property
     def warnings(self) -> list[str]:
-        """O que impede ler a diferença entre as rodadas como diferença entre os métodos."""
+        """O que impede ler a diferença entre as rodadas como diferença entre os métodos.
+
+        Entre rodadas de índices (ou idiomas) diferentes, respostas e trechos
+        diferentes são o objeto da comparação, não um problema dela: os avisos
+        que sobram são os de juiz, gerador, limiar e conjunto de casos.
+        """
         out = []
         if self.only_a or self.only_b:
             out.append(
@@ -344,6 +374,8 @@ class Comparison:
             )
         if self.a.threshold != self.b.threshold:
             out.append(f"Limiares diferentes ({self.a.threshold} x {self.b.threshold}).")
+        if self.across_variants:
+            return out
         if self.common_cases and self.identical_answers < len(self.common_cases):
             out.append(
                 f"Só {self.identical_answers} de {len(self.common_cases)} respostas avaliadas são idênticas "
@@ -398,6 +430,46 @@ def compare(a: Run, b: Run) -> Comparison:
         per_dimension=per_dimension,
         divergences=divergences,
     )
+
+
+def origins(runs: list[Run]) -> list[str]:
+    """As origens de pergunta presentes nas rodadas, na ordem em que aparecem."""
+    seen: list[str] = []
+    for run in runs:
+        for case in run.cases:
+            if case.origin and case.origin not in seen:
+                seen.append(case.origin)
+    return seen
+
+
+@dataclass
+class OriginStats:
+    origin: str
+    n_cases: int
+    abstained: int
+    all_passed: int
+    means: dict[str, float | None]
+
+
+def origin_stats(run: Run) -> list[OriginStats]:
+    """Médias de cada dimensão separadas pela origem da pergunta (acervo próprio x alheio)."""
+    out = []
+    for origin in origins([run]):
+        cases = [c for c in run.cases if c.origin == origin]
+        means = {}
+        for dim in DIMENSIONS:
+            values = [c.score(dim.key).value for c in cases if c.score(dim.key).measured]
+            means[dim.key] = statistics.fmean(values) if values else None
+        out.append(
+            OriginStats(
+                origin=origin,
+                n_cases=len(cases),
+                abstained=sum(1 for c in cases if c.abstained),
+                all_passed=sum(1 for c in cases if c.all_passed),
+                means=means,
+            )
+        )
+    return out
 
 
 def run_highlights(run: Run, stats: dict[str, DimensionStats]) -> list[str]:
