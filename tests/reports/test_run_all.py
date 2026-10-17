@@ -5,6 +5,7 @@ Herméticos: nenhuma suíte de verdade roda aqui. Rodar da raiz:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -18,7 +19,7 @@ import report_history
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # tests/, para importar run_all
 import run_all  # noqa: E402
 
-from test_build_report import deepeval_file, ragas_file  # noqa: E402,F401 - fixtures reaproveitadas
+from test_build_report import deepeval_file, jeveval_file, ragas_file  # noqa: E402,F401 - fixtures reaproveitadas
 
 PYTEST_JUNIT = """<?xml version="1.0" encoding="utf-8"?>
 <testsuites><testsuite name="pytest" errors="0" failures="1" skipped="2" tests="10" time="1.2"/></testsuites>"""
@@ -71,6 +72,54 @@ def test_resumo_de_uma_avaliacao_de_qualidade(ragas_file: Path) -> None:
     # 2 casos x 5 métricas; c2 tem answer_relevancy 0,0 (medida, reprovada).
     assert tests == {"total": 10, "failed": 1, "errors": 0, "skipped": 0}
     assert "10/10 notas medidas" in detail
+
+
+def test_resumo_conta_na_como_pulada_e_nao_como_erro(jeveval_file: Path) -> None:
+    detail, tests = run_all.quality_detail(jeveval_file)
+
+    # 2 casos x 6 métricas (5 dimensões + correção). No c2, uma recusa: fidelidade
+    # e relevância saem N/A, e a correção 0,1 é medida e reprova.
+    assert tests == {"total": 12, "failed": 1, "errors": 0, "skipped": 2}
+    assert "10/10 notas medidas" in detail
+    assert "9/10 ≥ limiar" in detail
+    assert "2 N/A" in detail
+
+
+def _runner(tmp_path: Path) -> run_all.Runner:
+    args = argparse.Namespace(pular=[], rapido=False, limite=None, respostas_separadas=False,
+                              qualidade_pytest=False, abrir=False)
+    return run_all.Runner(args, tmp_path)
+
+
+def test_jeveval_pula_sem_chave_da_typesafe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.setattr(run_all, "dotenv_value", lambda name: None)
+    runner = _runner(tmp_path)
+    runner.answers_file = tmp_path / "respostas.json"
+
+    runner.jeveval()
+
+    assert [(s.key, s.status) for s in runner.steps] == [("jeveval_controles", "pulada"), ("jeveval", "pulada")]
+    assert "TYPESAFE_API_KEY" in runner.steps[0].detail
+
+
+def test_jeveval_pula_sem_respostas_compartilhadas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Com --respostas-separadas não há o arquivo único: o JevEval não gera respostas.
+    monkeypatch.setenv("TYPESAFE_API_KEY", "x")
+    runner = _runner(tmp_path)
+
+    runner.jeveval()
+
+    assert {s.status for s in runner.steps} == {"pulada"}
+    assert "respostas compartilhadas" in runner.steps[0].detail
+
+
+def test_rapido_roda_so_os_hermeticos_do_jeveval(tmp_path: Path) -> None:
+    runner = _runner(tmp_path)
+    runner.args.rapido = True
+
+    assert runner.wants("jeveval")
+    assert not runner.wants_live("jeveval")
 
 
 EXECUTION = {

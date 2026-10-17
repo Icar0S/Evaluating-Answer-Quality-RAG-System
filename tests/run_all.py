@@ -3,7 +3,7 @@
 Uso, da raiz do repositório (ou pelo atalho scripts\\run_all_tests.bat):
 
     backend\\.venv\\Scripts\\python.exe tests\\run_all.py              # tudo (~40 min a horas: o DeepEval domina)
-    backend\\.venv\\Scripts\\python.exe tests\\run_all.py --rapido     # só API, gerador e E2E (minutos)
+    backend\\.venv\\Scripts\\python.exe tests\\run_all.py --rapido     # só os herméticos e o E2E (minutos)
     backend\\.venv\\Scripts\\python.exe tests\\run_all.py --limite 2   # qualidade em 2 goldens (fumaça)
     backend\\.venv\\Scripts\\python.exe tests\\run_all.py --pular e2e deepeval --abrir
 
@@ -11,19 +11,27 @@ Ordem, da mais rápida para a mais lenta:
 
  1. API (pytest, hermética)                       backend/.venv
  2. Gerador de relatório (pytest, hermética)      tests/reports/.venv
- 3. E2E (Playwright)                              frontend/tests/node_modules
+ 3. JevEval: testes herméticos (Jev falso)        tests/jeveval/.venv
+ 4. E2E (Playwright)                              frontend/tests/node_modules
     sobe o backend sozinho se ele não estiver no ar, e derruba no fim
- 4. Respostas do assistente, geradas UMA vez      backend/.venv
- 5. RAGAS: controles do juiz (pytest)             tests/ragas/.venv
- 6. RAGAS: avaliação dos goldens                  tests/ragas/.venv
- 7. DeepEval: avaliação dos goldens               tests/deepeval/.venv
- 8. Relatório consolidado                         tests/reports/.venv
+ 5. Respostas do assistente, geradas UMA vez      backend/.venv
+ 6. RAGAS: controles do juiz (pytest)             tests/ragas/.venv
+ 7. RAGAS: avaliação dos goldens                  tests/ragas/.venv
+ 8. DeepEval: avaliação dos goldens               tests/deepeval/.venv
+ 9. JevEval: controles do instrumento (pytest)    tests/jeveval/.venv
+10. JevEval: avaliação dos goldens                tests/jeveval/.venv
+11. Relatório consolidado                         tests/reports/.venv
 
-As avaliações (6 e 7) julgam as MESMAS respostas (passo 4): é isso que faz a
-comparação RAGAS x DeepEval do relatório ser uma comparação de métodos. Elas
+As avaliações (7, 8 e 10) julgam as MESMAS respostas (passo 5): é isso que faz a
+comparação entre os frameworks no relatório ser uma comparação de métodos. Elas
 rodam pelo run_and_export.py de cada suíte, que mede as mesmas métricas com o
 mesmo limiar do pytest delas, sem gerar e julgar tudo duas vezes; para rodar
 também o pytest de qualidade, use --qualidade-pytest.
+
+Os passos 9 e 10 chamam o Jev na API da TypeSafe e só rodam com
+TYPESAFE_API_KEY no ambiente ou no .env; sem ela, saem como "pulada" com o
+motivo. É a única etapa que manda conteúdo para fora da máquina (ver
+tests/jeveval/README.md).
 
 Fica de fora: a campanha do estudo de mutação (tests/mutation), que leva horas
 e tem protocolo próprio (ver o README de lá).
@@ -57,7 +65,7 @@ OUT_ROOT = ROOT / "tests" / "reports" / "out"
 BACKEND_PORT = 8010
 FRONTEND_PORT = 5510
 BACKEND_URL = f"http://localhost:{BACKEND_PORT}"
-SUITES = ("api", "relatorio", "e2e", "ragas", "deepeval")
+SUITES = ("api", "relatorio", "e2e", "ragas", "deepeval", "jeveval")
 
 STATUS_TAG = {"passou": "[ OK  ]", "concluída": "[ OK  ]", "falhou": "[FALHA]", "pulada": "[PULOU]", "erro": "[ERRO ]"}
 
@@ -71,12 +79,21 @@ PY = {
     "reports": venv_python(ROOT / "tests" / "reports" / ".venv"),
     "ragas": venv_python(ROOT / "tests" / "ragas" / ".venv"),
     "deepeval": venv_python(ROOT / "tests" / "deepeval" / ".venv"),
+    "jeveval": venv_python(ROOT / "tests" / "jeveval" / ".venv"),
 }
 SETUP_HINT = {
     "backend": "crie com: python -m venv backend\\.venv && backend\\.venv\\Scripts\\pip install -r backend\\requirements.txt",
     "reports": "crie com: python -m venv tests\\reports\\.venv && tests\\reports\\.venv\\Scripts\\pip install -r tests\\reports\\requirements.txt",
     "ragas": "crie com: python -m venv tests\\ragas\\.venv && tests\\ragas\\.venv\\Scripts\\pip install -r tests\\ragas\\requirements.txt",
     "deepeval": "crie com: python -m venv tests\\deepeval\\.venv && tests\\deepeval\\.venv\\Scripts\\pip install -r backend\\requirements-eval.txt",
+    "jeveval": "crie com: python -m venv tests\\jeveval\\.venv && tests\\jeveval\\.venv\\Scripts\\pip install -r tests\\jeveval\\requirements.txt",
+}
+# Onde cada suíte de qualidade grava seus resultados; o relatório reaproveita o
+# mais recente de quem não rodou nesta execução.
+QUALITY_RESULTS = {
+    "deepeval": ROOT / "tests" / "deepeval" / "results",
+    "ragas": ROOT / "tests" / "ragas" / "results",
+    "jeveval": ROOT / "tests" / "jeveval" / "results",
 }
 
 
@@ -205,14 +222,24 @@ def frontend_port_blocked() -> bool:
     return not (body and "components/chat.js" in body)
 
 
-def ollama_url() -> str:
-    """OLLAMA_BASE_URL do .env (sem depender de pydantic), ou o padrão."""
+def dotenv_value(name: str) -> str | None:
+    """Valor de uma variável no .env da raiz (sem depender de pydantic), ou None."""
     env_file = ROOT / ".env"
     if env_file.is_file():
         for line in env_file.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line.strip().startswith("OLLAMA_BASE_URL="):
-                return line.split("=", 1)[1].strip() or "http://localhost:11434"
-    return "http://localhost:11434"
+            if line.strip().startswith(f"{name}="):
+                return line.split("=", 1)[1].strip() or None
+    return None
+
+
+def ollama_url() -> str:
+    """OLLAMA_BASE_URL do .env, ou o padrão."""
+    return dotenv_value("OLLAMA_BASE_URL") or "http://localhost:11434"
+
+
+def typesafe_key_configured() -> bool:
+    """TYPESAFE_API_KEY no ambiente ou no .env: o que tests/jeveval precisa para chamar o Jev."""
+    return bool(os.environ.get("TYPESAFE_API_KEY", "").strip() or dotenv_value("TYPESAFE_API_KEY"))
 
 
 def results_snapshot(directory: Path) -> set[str]:
@@ -220,19 +247,26 @@ def results_snapshot(directory: Path) -> set[str]:
 
 
 def quality_detail(path: Path) -> tuple[str, dict]:
-    """Resumo de um JSON de avaliação: notas medidas e notas >= limiar."""
+    """Resumo de um JSON de avaliação: notas medidas e notas >= limiar.
+
+    Nota N/A (JevEval: nenhuma pergunta se aplicou, como a fidelidade de uma
+    recusa) não é medida que faltou: conta como "pulada", fora de medidas e
+    aprovadas, em vez de virar erro.
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
     metrics = [m for c in data.get("cases", []) for m in c.get("metrics", [])]
-    measured = sum(1 for m in metrics if m.get("score") is not None)
-    passed = sum(1 for m in metrics if m.get("success"))
+    applicable = [m for m in metrics if m.get("applicable", True) is not False]
+    not_applicable = len(metrics) - len(applicable)
+    measured = sum(1 for m in applicable if m.get("score") is not None)
+    passed = sum(1 for m in applicable if m.get("success"))
     cases = data.get("cases", [])
     all_ok = sum(1 for c in cases if c.get("success"))
     detail = (
-        f"{measured}/{len(metrics)} notas medidas, {passed}/{len(metrics)} ≥ limiar, "
+        f"{measured}/{len(applicable)} notas medidas, {passed}/{len(applicable)} ≥ limiar, "
         f"{all_ok}/{len(cases)} casos com todas ≥ limiar"
-    )
-    return detail, {"total": len(metrics), "failed": len(metrics) - passed - (len(metrics) - measured),
-                    "errors": len(metrics) - measured, "skipped": 0}
+    ) + (f", {not_applicable} N/A" if not_applicable else "")
+    return detail, {"total": len(metrics), "failed": len(applicable) - passed - (len(applicable) - measured),
+                    "errors": len(applicable) - measured, "skipped": not_applicable}
 
 
 # ----------------------------------------------------------------------- passos
@@ -256,6 +290,10 @@ class Runner:
             return False
         return True
 
+    def wants_live(self, suite: str) -> bool:
+        """A parte que chama juiz: o --rapido roda só os herméticos do JevEval."""
+        return self.wants(suite) and not self.args.rapido
+
     def record(self, step: Step) -> Step:
         self.steps.append(step)
         extra = f"  {step.detail}" if step.detail else ""
@@ -269,7 +307,8 @@ class Runner:
     def skip(self, key: str, name: str, why: str) -> Step:
         return self.record(Step(key=key, name=name, status="pulada", detail=why))
 
-    def pytest_step(self, key: str, name: str, venv: str, target: str, timeout: float) -> Step:
+    def pytest_step(self, key: str, name: str, venv: str, target: str, timeout: float,
+                    extra: list | None = None) -> Step:
         self.announce(name)
         python = PY[venv]
         if not python.exists():
@@ -277,7 +316,7 @@ class Runner:
         junit = self.junit / f"{key}.xml"
         log = self.logs / f"{key}.log"
         code, secs = run_logged(
-            [python, "-m", "pytest", target, "-p", "no:cacheprovider", f"--junitxml={junit}", "-rfE"],
+            [python, "-m", "pytest", target, "-p", "no:cacheprovider", f"--junitxml={junit}", "-rfE", *(extra or [])],
             log, timeout=timeout,
         )
         tests = junit_counts(junit)
@@ -346,22 +385,26 @@ class Runner:
             if backend_log is not None:
                 backend_log.close()
 
-    # 4-7. Qualidade ----------------------------------------------------------
+    # 5-10. Qualidade ---------------------------------------------------------
     def quality(self) -> None:
         do_ragas, do_deepeval = self.wants("ragas"), self.wants("deepeval")
-        if not (do_ragas or do_deepeval):
+        do_jeveval = self.wants_live("jeveval")
+        wanted = (("ragas", "RAGAS", do_ragas), ("deepeval", "DeepEval", do_deepeval),
+                  ("jeveval", "JevEval", do_jeveval))
+        if not (do_ragas or do_deepeval or do_jeveval):
             return
+        # O JevEval não usa o Ollama, mas julga respostas que só o Ollama gera.
         if http_get(f"{ollama_url()}/api/tags") is None:
-            for key, name, wanted in (("ragas", "RAGAS", do_ragas), ("deepeval", "DeepEval", do_deepeval)):
-                if wanted:
+            for key, name, want in wanted:
+                if want:
                     self.skip(key, f"{name}: avaliação", f"Ollama fora do ar em {ollama_url()}")
             return
 
         if not self.args.respostas_separadas:
             self.generate_answers()
             if self.answers_file is None:
-                for key, name, wanted in (("ragas", "RAGAS", do_ragas), ("deepeval", "DeepEval", do_deepeval)):
-                    if wanted:
+                for key, name, want in wanted:
+                    if want:
                         self.skip(key, f"{name}: avaliação", "sem respostas para julgar (ver o passo anterior)")
                 return
 
@@ -380,6 +423,27 @@ class Runner:
             if self.args.qualidade_pytest:
                 self.pytest_step("deepeval_pytest", "DeepEval: pytest de qualidade", "deepeval",
                                  "tests/deepeval", timeout=4 * 3600)
+        if do_jeveval:
+            self.jeveval()
+
+    def jeveval(self) -> None:
+        controls, evaluation = "JevEval: controles do instrumento", "JevEval: avaliação"
+        why = None
+        if self.answers_file is None:
+            # Esta camada não chama o assistente: só julga as respostas compartilhadas.
+            why = "julga só as respostas compartilhadas, e esta execução não as gerou (--respostas-separadas)"
+        elif not typesafe_key_configured():
+            why = "sem TYPESAFE_API_KEY no ambiente ou no .env (ver tests/jeveval/README.md)"
+        if why:
+            self.skip("jeveval_controles", controls, why)
+            self.skip("jeveval", evaluation, why)
+            return
+        # Controles antes das notas: se reprovarem, o relatório avisa que as
+        # notas do JevEval medem o instrumento, não o RAG.
+        self.pytest_step("jeveval_controles", controls, "jeveval", "tests/jeveval/test_jev_controls.py",
+                         timeout=1800, extra=["-m", "live"])
+        self.evaluation("jeveval", evaluation, "jeveval", ROOT / "tests" / "jeveval" / "run_and_export.py",
+                        QUALITY_RESULTS["jeveval"], [])
 
     def generate_answers(self) -> None:
         name = "Respostas do assistente (geradas uma vez)"
@@ -436,15 +500,13 @@ class Runner:
         self.record(Step(key, name, "concluída", detail, tests, secs, self._rel(log),
                          extra={"result": str(result.relative_to(ROOT))}))
 
-    # 8. Relatório ------------------------------------------------------------
+    # 11. Relatório -----------------------------------------------------------
     def report(self, started: datetime, t0: float) -> Path | None:
         self.announce("Relatório consolidado")
         reused = []
         inputs = list(self.new_results.values())
-        produced = {("RAGAS" if k == "ragas" else "DeepEval") for k in self.new_results}
-        for framework, directory in (("DeepEval", ROOT / "tests" / "deepeval" / "results"),
-                                     ("RAGAS", ROOT / "tests" / "ragas" / "results")):
-            if framework in produced:
+        for key, directory in QUALITY_RESULTS.items():
+            if key in self.new_results:
                 continue
             candidates = sorted(p for p in directory.glob("*.json") if p.stem[:8].isdigit()) if directory.is_dir() else []
             if candidates:
@@ -485,7 +547,8 @@ class Runner:
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Roda todas as suítes de teste e gera o relatório consolidado.")
-    parser.add_argument("--rapido", action="store_true", help="só API, gerador de relatório e E2E (sem os juízes)")
+    parser.add_argument("--rapido", action="store_true",
+                        help="só os testes herméticos (API, relatório, JevEval com Jev falso) e o E2E, sem juízes")
     parser.add_argument("--pular", nargs="+", default=[], choices=SUITES, help="suítes a pular")
     parser.add_argument("--limite", type=int, default=None, help="avaliações de qualidade só nos N primeiros goldens")
     parser.add_argument("--respostas-separadas", action="store_true",
@@ -508,6 +571,9 @@ def main() -> int:
         runner.pytest_step("api", "API (pytest)", "backend", "tests/api", timeout=900)
     if runner.wants("relatorio"):
         runner.pytest_step("relatorio", "Gerador de relatório (pytest)", "reports", "tests/reports", timeout=900)
+    if runner.wants("jeveval"):
+        runner.pytest_step("jeveval_hermeticos", "JevEval: testes herméticos (Jev falso)", "jeveval",
+                           "tests/jeveval", timeout=900, extra=["-m", "not live"])
     if runner.wants("e2e"):
         runner.e2e()
     runner.quality()
