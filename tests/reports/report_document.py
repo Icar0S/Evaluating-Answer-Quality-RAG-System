@@ -80,6 +80,8 @@ Block = Heading | Para | Bullets | Table | Figure | Callout | PageBreak
 
 
 def score_cell(score: Score) -> str:
+    if not score.applicable:
+        return "N/A"
     if not score.measured:
         return "n/d"
     return f"{fmt(score.value)} {'✓' if score.passed else '✗'}"
@@ -104,6 +106,8 @@ def _run_table(runs: list[Run]) -> Table:
     for run in runs:
         stats = dimension_stats(run)
         measured = sum(s.n_measured for s in stats.values())
+        # Denominador = notas que se aplicam: N/A não é nota que faltou.
+        applicable = sum(s.n_cases for s in stats.values())
         rows.append(
             [
                 f"**{run.name}**",
@@ -112,7 +116,7 @@ def _run_table(runs: list[Run]) -> Table:
                 run.judge_model or "—",
                 fmt(run.threshold),
                 pct(len(run.cases), run.n_cases_planned),
-                pct(measured, len(run.cases) * len(DIMENSIONS)),
+                pct(measured, applicable),
                 f"`{_rel(run.source)}`",
             ]
         )
@@ -136,6 +140,17 @@ def _extras(run: Run) -> list[str]:
         )
     if e.get("ragas_version"):
         items.append(f"Versão do ragas: `{e['ragas_version']}`.")
+    if e.get("instrument_sha"):
+        items.append(
+            f"Instrumento JevEval `{e['instrument_sha']}` (deepeval `{e.get('deepeval_version') or '?'}`): as "
+            "perguntas feitas ao Jev estão em `question_sets` no JSON da rodada."
+        )
+    if e.get("jev_calls") is not None:
+        cost = e.get("cost_usd")
+        items.append(
+            f"Chamadas ao Jev: {e['jev_calls']} (falhas: {e.get('jev_failures', 0)})"
+            + (f"; custo: US$ {cost:.4f}." if cost else ".")
+        )
     if run.embedding_model:
         items.append(f"Modelo de embeddings: `{run.embedding_model}`.")
     if e.get("judge_calls") is not None:
@@ -254,7 +269,7 @@ def _cases_table(run: Run) -> Table:
         rows=rows,
         widths=[0.27] + [0.115] * len(DIMENSIONS) + [0.155],
         align=["l"] + ["r"] * len(DIMENSIONS) + ["c"],
-        caption="✓ nota ≥ limiar · ✗ abaixo do limiar · n/d não medida · † o assistente se absteve.",
+        caption="✓ nota ≥ limiar · ✗ abaixo do limiar · n/d não medida · N/A não se aplica · † o assistente se absteve.",
         small=True,
     )
 
@@ -362,6 +377,17 @@ def _execution_warnings(execution: dict) -> list[Callout]:
                 [
                     "Casos com resposta conhecida não passaram: nesta execução, as notas do RAGAS medem o juiz, "
                     "não o RAG. Ver `tests/ragas/README.md`, \"Qual juiz usar\"."
+                ],
+            )
+        )
+    controls = next((s for s in steps if s.get("key") == "jeveval_controles"), None)
+    if controls and controls["status"] == "falhou":
+        out.append(
+            Callout(
+                "Controles do instrumento JevEval reprovaram",
+                [
+                    "Casos com resposta conhecida não passaram: nesta execução, as notas do JevEval medem as "
+                    "perguntas ou o Jev, não o RAG. Ver `tests/jeveval/README.md`, \"Validação do instrumento\"."
                 ],
             )
         )
@@ -473,6 +499,13 @@ def build_document(
 ) -> list[Block]:
     # Origem da pergunta -> arquivo de goldens (tests/generate_answers.py, KNOWN_ORIGINS).
     golden_files = [{"pdf": "dataset.json", "md": "dataset_md.json"}.get(o, o) for o in origins(runs)]
+    frameworks = {r.framework for r in runs}
+    if frameworks == {"JevEval"}:
+        judge = "com o Jev, da TypeSafe AI, como juiz (perguntas fechadas, respondidas com probabilidades)"
+    elif "JevEval" in frameworks:
+        judge = "com um LLM local como juiz (RAGAS, DeepEval) ou com o Jev, da TypeSafe AI (JevEval)"
+    else:
+        judge = "com um LLM local como juiz"
     doc: list[Block] = [
         Heading(1, "Relatório de qualidade de resposta do RAG"),
         Para(
@@ -480,7 +513,7 @@ def build_document(
             + ", ".join(f"**{r.label}**" for r in runs)
             + ". Cada rodada julgou as respostas do assistente para os mesmos goldens ("
             + " e ".join(f"`tests/deepeval/goldens/{f}`" for f in golden_files or ["dataset.json"])
-            + ") em cinco dimensões, com um LLM local como juiz."
+            + f") em cinco dimensões, {judge}."
         ),
     ]
     number = 0
@@ -565,7 +598,7 @@ def build_document(
             Figure(
                 figures[f"heatmap_{i}"],
                 f"{run.label}: nota por caso e dimensão. Vermelho abaixo do limiar, azul acima, cinza no "
-                "limiar; hachurado = não medida; † = o assistente se absteve.",
+                "limiar; hachurado = não medida; N/A = não se aplica; † = o assistente se absteve.",
             )
         )
         doc.append(_cases_table(run))
@@ -630,36 +663,42 @@ def build_document(
                 doc.append(Bullets(reasons))
 
     doc.append(section("Como ler este relatório"))
+    with_jeveval = "JevEval" in frameworks
+    columns = ["RAGAS", "DeepEval"] + (["JevEval"] if with_jeveval else [])
     doc.append(
         Table(
-            headers=["Dimensão", "Pergunta que a métrica responde", "RAGAS", "DeepEval"],
-            rows=[
-                [d.label, d.question, f"`{NATIVE_METRIC['RAGAS'][d.key]}`", f"`{NATIVE_METRIC['DeepEval'][d.key]}`"]
-                for d in DIMENSIONS
-            ],
-            widths=[0.17, 0.27, 0.28, 0.28],
-            align=["l", "l", "l", "l"],
-            caption="Equivalência entre as métricas dos dois frameworks.",
+            headers=["Dimensão", "Pergunta que a métrica responde"] + columns,
+            rows=[[d.label, d.question] + [f"`{NATIVE_METRIC[f][d.key]}`" for f in columns] for d in DIMENSIONS],
+            widths=[0.17, 0.27] + [0.56 / len(columns)] * len(columns),
+            align=["l"] * (2 + len(columns)),
+            caption="Equivalência entre as métricas dos frameworks.",
             small=True,
         )
     )
-    doc.append(
-        Bullets(
-            [
-                "Notas vão de 0 a 1. **Veredito** = nota ≥ limiar da rodada. O limiar é um ponto de partida, "
-                "não um valor calibrado.",
-                "A mesma dimensão não é a mesma conta nos dois frameworks: a fidelidade do RAGAS exige que cada "
-                "afirmação seja *inferível* do contexto; a do DeepEval conta afirmações que não o *contradizem*. "
-                "Divergência de veredito é o ponto de partida da análise, não um erro de um dos lados.",
-                "A geração não é determinística: rodadas que geram as próprias respostas julgam textos diferentes "
-                "para a mesma pergunta. O `tests/run_all.py` evita isso gerando as respostas uma vez só; a seção "
-                "de comparabilidade diz o que aconteceu em cada caso.",
-                "Quando o assistente se abstém (\"não encontrei...\"), fidelidade e relevância da resposta julgam "
-                "uma recusa; as métricas de contexto continuam medindo a recuperação.",
-                "\"n/d\" = a métrica não produziu nota (erro, timeout ou NaN). Fica fora das médias, mas nas "
-                "contagens \"≥ limiar\" e \"todas ≥ limiar\" conta como não aprovada: nota que não existe não "
-                "aprova ninguém.",
-            ]
-        )
-    )
+    notes = [
+        "Notas vão de 0 a 1. **Veredito** = nota ≥ limiar da rodada. O limiar é um ponto de partida, "
+        "não um valor calibrado.",
+        "A mesma dimensão não é a mesma conta nos frameworks: a fidelidade do RAGAS exige que cada "
+        "afirmação seja *inferível* do contexto; a do DeepEval conta afirmações que não o *contradizem*. "
+        "Divergência de veredito é o ponto de partida da análise, não um erro de um dos lados.",
+        "A geração não é determinística: rodadas que geram as próprias respostas julgam textos diferentes "
+        "para a mesma pergunta. O `tests/run_all.py` evita isso gerando as respostas uma vez só; a seção "
+        "de comparabilidade diz o que aconteceu em cada caso.",
+        "Quando o assistente se abstém (\"não encontrei...\"), fidelidade e relevância da resposta julgam "
+        "uma recusa; as métricas de contexto continuam medindo a recuperação.",
+        "\"n/d\" = a métrica não produziu nota (erro, timeout ou NaN). Fica fora das médias, mas nas "
+        "contagens \"≥ limiar\" e \"todas ≥ limiar\" conta como não aprovada: nota que não existe não "
+        "aprova ninguém.",
+    ]
+    if with_jeveval:
+        notes += [
+            "No JevEval, o Jev não escreve veredito: responde perguntas fechadas com probabilidades, e a nota é "
+            "a média ponderada dessas respostas, uma conta fixa feita fora do modelo. A fidelidade dele segue o "
+            "RAGAS (afirmação sobre o que o contexto não menciona não tem apoio). As perguntas estão em "
+            "`tests/jeveval/_jev_shared.py`.",
+            "\"N/A\" = nenhuma pergunta do JevEval se aplicou ao caso, como a fidelidade de uma recusa. Diferente "
+            "de \"n/d\": não é falha de medida, e por isso fica fora das médias e das contagens, sem aprovar nem "
+            "reprovar.",
+        ]
+    doc.append(Bullets(notes))
     return doc

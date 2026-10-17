@@ -1,9 +1,14 @@
 """Leitura dos resultados das suítes de qualidade e as contas do relatório.
 
-Cada framework grava seu JSON num formato próprio (tests/ragas/run_and_export.py
-e tests/deepeval/run_and_export.py). Aqui os dois viram o mesmo modelo — Run,
-Case, Score — indexado pelas cinco DIMENSÕES que as duas suítes medem. É isso
-que permite colocar RAGAS e DeepEval lado a lado.
+Cada framework grava seu JSON num formato próprio (tests/ragas/run_and_export.py,
+tests/deepeval/run_and_export.py e tests/jeveval/run_and_export.py). Aqui todos
+viram o mesmo modelo — Run, Case, Score — indexado pelas cinco DIMENSÕES que as
+suítes medem. É isso que permite colocar RAGAS, DeepEval e JevEval lado a lado.
+
+Uma nota pode estar em três estados: medida, não medida (erro do juiz, timeout,
+NaN) e N/A — nenhuma pergunta do JevEval se aplicou ao caso, como a fidelidade
+de uma recusa. Não medida conta como reprovação ("nota que não existe não
+aprova ninguém"); N/A sai das médias, dos denominadores e da lista de erros.
 
 Nada aqui importa ragas, deepeval ou o backend: o gerador roda em qualquer
 máquina que tenha os JSONs.
@@ -25,6 +30,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_DIRS = {
     "DeepEval": PROJECT_ROOT / "tests" / "deepeval" / "results",
     "RAGAS": PROJECT_ROOT / "tests" / "ragas" / "results",
+    "JevEval": PROJECT_ROOT / "tests" / "jeveval" / "results",
 }
 _RESULT_FILE = re.compile(r"^\d{8}T\d{6}Z\.json$")
 
@@ -47,9 +53,12 @@ DIMENSIONS = [
 ]
 DIMENSION_BY_KEY = {d.key: d for d in DIMENSIONS}
 
-# Nome da métrica no JSON de cada framework -> dimensão.
+# Nome da métrica no JSON de cada framework -> dimensão. A correção do JevEval
+# (resposta x referência) não é uma das cinco dimensões e fica fora do relatório
+# consolidado; está no JSON e no CSV da própria camada.
 _METRIC_TO_DIMENSION = {
     "RAGAS": {d.key: d.key for d in DIMENSIONS},
+    "JevEval": {d.key: d.key for d in DIMENSIONS},
     "DeepEval": {
         "Faithfulness": "faithfulness",
         "Answer Relevancy": "answer_relevancy",
@@ -74,6 +83,8 @@ NATIVE_METRIC = {
         "context_recall": "ContextualRecallMetric",
         "context_relevance": "ContextualRelevancyMetric",
     },
+    # As perguntas de cada uma estão em tests/jeveval/_jev_shared.py.
+    "JevEval": {d.key: f"JevEval({d.key})" for d in DIMENSIONS},
 }
 
 
@@ -111,6 +122,8 @@ class Score:
     passed: bool | None
     reason: str | None = None
     error: str | None = None
+    # False = N/A: a métrica não se aplica a este caso (só o JevEval diz isso).
+    applicable: bool = True
 
     @property
     def measured(self) -> bool:
@@ -136,7 +149,8 @@ class Case:
 
     @property
     def all_passed(self) -> bool:
-        return all(s.passed for s in self.scores.values()) and len(self.scores) == len(DIMENSIONS)
+        """Todas as dimensões aplicáveis aprovadas. N/A não reprova; nota não medida, sim."""
+        return all(s.passed for s in self.scores.values() if s.applicable) and len(self.scores) == len(DIMENSIONS)
 
     def score(self, dimension: str) -> Score:
         return self.scores.get(dimension) or Score(value=None, passed=None, error="métrica ausente no resultado")
@@ -193,10 +207,12 @@ class Run:
 def detect_framework(data: dict[str, Any]) -> str:
     if data.get("framework") == "ragas":
         return "RAGAS"
+    if data.get("framework") == "jeveval":
+        return "JevEval"
     names = {m.get("name") for c in data.get("cases", []) for m in c.get("metrics", [])}
     if names & set(_METRIC_TO_DIMENSION["DeepEval"]):
         return "DeepEval"
-    raise ValueError("formato de resultado não reconhecido (nem RAGAS nem DeepEval)")
+    raise ValueError("formato de resultado não reconhecido (nem RAGAS, nem DeepEval, nem JevEval)")
 
 
 def _parse_when(value: Any) -> datetime | None:
@@ -226,7 +242,13 @@ def load_run(path: Path) -> Run:
             passed = metric.get("success")
             if passed is None and value is not None:
                 passed = value >= threshold
-            scores[dimension] = Score(value=value, passed=passed, reason=metric.get("reason"), error=metric.get("error"))
+            scores[dimension] = Score(
+                value=value,
+                passed=passed,
+                reason=metric.get("reason"),
+                error=metric.get("error"),
+                applicable=metric.get("applicable", True) is not False,
+            )
         cases.append(
             Case(
                 name=raw.get("name") or raw.get("input", "")[:40],
@@ -272,7 +294,7 @@ def discover_latest() -> list[Path]:
 @dataclass
 class DimensionStats:
     dimension: str
-    n_cases: int
+    n_cases: int  # casos em que a dimensão se aplica (N/A fica de fora)
     n_measured: int
     n_passed: int
     mean: float | None
@@ -280,6 +302,7 @@ class DimensionStats:
     minimum: float | None
     maximum: float | None
     errors: list[tuple[str, str]]
+    n_not_applicable: int = 0
 
     @property
     def pass_rate(self) -> float | None:
@@ -289,18 +312,19 @@ class DimensionStats:
 def dimension_stats(run: Run) -> dict[str, DimensionStats]:
     stats = {}
     for dim in DIMENSIONS:
-        scores = [c.score(dim.key) for c in run.cases]
-        values = [s.value for s in scores if s.measured]
+        applicable = [(c.name, c.score(dim.key)) for c in run.cases if c.score(dim.key).applicable]
+        values = [s.value for _, s in applicable if s.measured]
         stats[dim.key] = DimensionStats(
             dimension=dim.key,
-            n_cases=len(run.cases),
+            n_cases=len(applicable),
             n_measured=len(values),
-            n_passed=sum(1 for s in scores if s.passed),
+            n_passed=sum(1 for _, s in applicable if s.passed),
             mean=statistics.fmean(values) if values else None,
             median=statistics.median(values) if values else None,
             minimum=min(values) if values else None,
             maximum=max(values) if values else None,
-            errors=[(c.name, c.score(dim.key).error or "não medida") for c in run.cases if not c.score(dim.key).measured],
+            errors=[(name, s.error or "não medida") for name, s in applicable if not s.measured],
+            n_not_applicable=len(run.cases) - len(applicable),
         )
     return stats
 
@@ -492,11 +516,21 @@ def run_highlights(run: Run, stats: dict[str, DimensionStats]) -> list[str]:
     unmeasured = sum(len(s.errors) for s in stats.values())
     if unmeasured:
         out.append(f"{unmeasured} nota(s) não foram medidas (erro do juiz, timeout ou NaN).")
+    not_applicable = sum(s.n_not_applicable for s in stats.values())
+    if not_applicable:
+        out.append(
+            f"{not_applicable} nota(s) N/A: nenhuma pergunta do instrumento se aplicou ao caso (por exemplo, a "
+            "fidelidade de uma recusa). Ficam fora das médias e das contagens, sem aprovar nem reprovar."
+        )
     abstained = [c.name for c in run.cases if c.abstained]
     if abstained:
+        consequence = (
+            "fidelidade e relevância da resposta deveriam sair N/A (o instrumento tem essa opção)."
+            if run.framework == "JevEval"
+            else "notas de fidelidade e relevância da resposta julgam uma recusa, não uma resposta."
+        )
         out.append(
-            f"O assistente se absteve em {len(abstained)} caso(s) ({', '.join(abstained)}): nesses, "
-            "notas de fidelidade e relevância da resposta julgam uma recusa, não uma resposta."
+            f"O assistente se absteve em {len(abstained)} caso(s) ({', '.join(abstained)}): nesses, {consequence}"
         )
     if not run.complete:
         out.append(f"Rodada incompleta: {len(run.cases)} de {run.n_cases_planned} casos.")

@@ -2,9 +2,10 @@
 
 Junta os resultados das suítes de qualidade de resposta em **um relatório
 só**, separado por framework e com a comparação entre eles. Hoje as suítes são
-[RAGAS](../ragas/README.md) e [DeepEval](../deepeval/README.md). O gerador
-só lê os JSONs que cada suíte já gravou: não chama o Ollama, não importa
-`ragas`/`deepeval` e não precisa do backend no ar.
+[RAGAS](../ragas/README.md), [DeepEval](../deepeval/README.md) e
+[JevEval](../jeveval/README.md). O gerador só lê os JSONs que cada suíte já
+gravou: não chama o Ollama nem o Jev, não importa `ragas`/`deepeval` e não
+precisa do backend no ar.
 
 | Formato | Arquivo | Para quê |
 |---|---|---|
@@ -115,18 +116,21 @@ historico.csv           as médias de cada rodada avaliada, em formato longo
 5. **Detalhe por caso.** Pergunta, referência e, por rodada, a resposta
    avaliada, as notas e a justificativa do juiz (quando o framework grava
    uma, como o DeepEval).
-6. **Como ler.** A equivalência entre as métricas dos dois frameworks e as
+6. **Como ler.** A equivalência entre as métricas dos frameworks e as
    regras de leitura.
 
-As cinco **dimensões** são as que as duas suítes medem:
+As cinco **dimensões** são as que as três suítes medem:
 
-| Dimensão | RAGAS | DeepEval |
-|---|---|---|
-| Fidelidade ao contexto | `Faithfulness` | `FaithfulnessMetric` |
-| Relevância da resposta | `AnswerRelevancy` | `AnswerRelevancyMetric` |
-| Precisão do contexto | `ContextPrecisionWithReference` | `ContextualPrecisionMetric` |
-| Recall do contexto | `ContextRecall` | `ContextualRecallMetric` |
-| Relevância do contexto | `ContextRelevance` | `ContextualRelevancyMetric` |
+| Dimensão | RAGAS | DeepEval | JevEval |
+|---|---|---|---|
+| Fidelidade ao contexto | `Faithfulness` | `FaithfulnessMetric` | `JevEval(faithfulness)` |
+| Relevância da resposta | `AnswerRelevancy` | `AnswerRelevancyMetric` | `JevEval(answer_relevancy)` |
+| Precisão do contexto | `ContextPrecisionWithReference` | `ContextualPrecisionMetric` | `JevEval(context_precision)` |
+| Recall do contexto | `ContextRecall` | `ContextualRecallMetric` | `JevEval(context_recall)` |
+| Relevância do contexto | `ContextRelevance` | `ContextualRelevancyMetric` | `JevEval(context_relevance)` |
+
+A correção (resposta × referência), que só o JevEval mede, não é uma das cinco
+e fica fora do relatório consolidado; está no JSON e no CSV de `tests/jeveval/`.
 
 ### Avisos de comparabilidade
 
@@ -156,19 +160,24 @@ respostas** com os dois.
 - **Veredito** = nota ≥ limiar da rodada.
 - **n/d** = a métrica não produziu nota (erro, timeout ou NaN). A nota fica
   fora das médias, mas nas contagens "≥ limiar" conta como não aprovada.
+- **N/A** = a métrica não se aplica ao caso (só o JevEval diz isso, com
+  `"applicable": false` no JSON; por exemplo, a fidelidade de uma recusa).
+  Diferente de n/d, não é falha de medida: fica fora das médias, dos
+  denominadores e das contagens, sem aprovar nem reprovar.
 - **†** = o assistente se absteve ("não encontrei…"). A frase vem de
   `backend/app/rag/generation.py::NOT_FOUND_MARKER`.
 - Os gráficos seguem a paleta validada do projeto: a cor é fixa por framework
-  (DeepEval azul, RAGAS laranja) e o heatmap vai de vermelho (abaixo do
-  limiar) a azul (acima), passando por cinza no limiar. Toda figura tem a
-  tabela com os números logo abaixo.
+  (DeepEval azul, RAGAS laranja, JevEval verde) e o heatmap vai de vermelho
+  (abaixo do limiar) a azul (acima), passando por cinza no limiar. Toda figura
+  tem a tabela com os números logo abaixo.
 
 ## Adicionar outro framework ou metodologia
 
 Para entrar no relatório, um novo avaliador precisa gravar o JSON no mesmo
 formato das suítes atuais (`cases[]` com `name`, `input`, `actual_output`,
 `expected_output`, `retrieval_context` e `metrics[]` com `name`, `score`,
-`success`, `reason` e `error`). Em `report_data.py`:
+`success`, `reason` e `error`, e opcionalmente `applicable: false` para N/A).
+Em `report_data.py`:
 
 1. ensine `detect_framework()` a reconhecê-lo;
 2. mapeie os nomes das métricas dele para as dimensões em `_METRIC_TO_DIMENSION`
