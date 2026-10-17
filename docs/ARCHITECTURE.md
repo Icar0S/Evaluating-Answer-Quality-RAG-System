@@ -536,6 +536,45 @@ processo do modelo duas vezes, e o juiz devolveu erro 500 nessas chamadas.
 Depois que as respostas estão gravadas, o gerador não é mais usado, e o
 orquestrador o descarrega (`keep_alive: 0`).
 
+### Avaliação de qualidade (JevEval, out/2026)
+
+Terceira camada de qualidade, sobre as mesmas respostas compartilhadas das
+outras duas (ver [tests/jeveval/README.md](../tests/jeveval/README.md)). No
+JevEval (deepeval 4.3), a decisão fica com o Jev, o modelo "System One" da
+TypeSafe AI. Ele responde perguntas fechadas com probabilidades, e a nota sai
+de uma conta fixa, fora do modelo. Decisões:
+
+**Primeira camada com juiz fora da máquina.** As outras duas usam juiz local,
+via Ollama, e nunca nuvem. O Jev só existe como API: cada medição manda
+pergunta, resposta, referência e trechos para `api.typesafe.ai`. Por isso a
+camada só chama o Jev com `TYPESAFE_API_KEY` definida, o `run_all` pula a
+camada sem ela, e o CI roda só os testes herméticos, com um Jev falso. O acervo
+avaliado é de artigos públicos. Uma base com dados internos pediria outra
+decisão.
+
+**Perguntas do próprio deepeval, com dois desvios declarados.** Precisão,
+recall e relevância do contexto usam, literalmente, as perguntas que o deepeval
+manda ao Jev no modo `system_one` das métricas nativas. Um teste hermético
+compara a cópia com o pacote instalado. A fidelidade perdeu a pergunta "nenhuma
+afirmação contradiz o contexto", que é o ponto cego do §4.9 do estudo de
+mutação, e ganhou a regra de inferibilidade do RAGAS. Fidelidade e relevância
+da resposta ganharam a opção N/A, para a recusa não levar nota 0.
+
+**N/A explícito em vez da nota 1 de fábrica.** Sem pergunta aplicável, o JevEval
+devolve 1,0 e `success=True`. A camada converte isso em N/A, e o relatório
+consolidado passou a distinguir três estados: medida, não medida (reprova) e
+N/A (fora das médias e das contagens).
+
+**Correção como oráculo O6, fora do protocolo.** A correção (resposta ×
+referência, com a semântica do O4) é validada nos 247 pares que calibraram o O1
+(AUC 0,48) e aplicada ao log da campanha sem reexecutar o SUT. Como nasceu
+depois da campanha, é análise exploratória. Os vereditos ficam em
+`tests/jeveval/results/o6/`, nunca no `verdicts.jsonl` da campanha.
+
+**Instrumento versionado.** A versão do Jev é fixa (`jev-1.13.0`, não o alias
+`jev-latest`), e cada export grava as perguntas e uma impressão digital delas
+(`instrument_sha`).
+
 ## Fase 3 — Human-in-the-loop (a documentar caso confirmado)
 
 ## Camada de movimento e ilha React na homepage

@@ -343,19 +343,20 @@ rodam só localmente, como explicado abaixo.
 
 ```powershell
 scripts\run_all_tests.bat                 # todas as suítes + relatório (de ~40 min a horas; ver abaixo)
-scripts\run_all_tests.bat --rapido        # só API, gerador de relatório e E2E (minutos)
+scripts\run_all_tests.bat --rapido        # só os herméticos (API, relatório, JevEval) e o E2E (minutos)
 scripts\run_all_tests.bat --limite 2      # qualidade em só 2 goldens, para conferir que tudo roda
 scripts\run_all_tests.bat --pular e2e deepeval --abrir
 ```
 
 O script ([tests/run_all.py](tests/run_all.py)) roda, nesta ordem:
 
-1. API e gerador de relatório (herméticas).
+1. API, gerador de relatório e JevEval com o Jev falso (herméticas).
 2. E2E. Se o backend não estiver no ar, o script sobe e derruba ele sozinho.
 3. Gera as respostas do assistente **uma vez só**.
-4. RAGAS (controles do juiz + avaliação) e DeepEval julgam **as mesmas
-   respostas**. Por isso a comparação entre eles no relatório é uma comparação
-   de métodos, não de rodadas.
+4. RAGAS (controles do juiz + avaliação), DeepEval e JevEval (controles do
+   instrumento + avaliação) julgam **as mesmas respostas**. Por isso a
+   comparação entre eles no relatório é uma comparação de métodos, não de
+   rodadas. O JevEval só roda com `TYPESAFE_API_KEY`; sem ela, sai como pulado.
 5. Gera o relatório consolidado, com uma seção de execução (o que passou,
    falhou ou foi pulado, e por quê).
 
@@ -363,10 +364,11 @@ O script ([tests/run_all.py](tests/run_all.py)) roda, nesta ordem:
 
 | Etapa | Duração |
 |---|---|
-| API, gerador de relatório e E2E | ~3 min |
+| API, gerador de relatório, JevEval hermético e E2E | ~3 min |
 | Respostas compartilhadas | ~2 min |
 | RAGAS (controles + 10 goldens) | ~16 min |
 | DeepEval (10 goldens) | de ~20 min a algumas horas |
+| JevEval (controles + 10 goldens) | ainda não medido (~85 chamadas à API da TypeSafe) |
 
 O DeepEval pode demorar muito mais: na rodada de teste, 1 golden levou 18 min
 porque uma métrica (`Contextual Relevancy`) passou bem do teto de 300 s que o
@@ -450,6 +452,22 @@ tests\ragas\.venv\Scripts\pip install -r tests\ragas\requirements.txt
 ollama pull qwen3:8b   # juiz (o gemma3:4b reprova nos controles)
 tests\ragas\.venv\Scripts\python.exe -m pytest tests/ragas
 tests\ragas\.venv\Scripts\python.exe tests\ragas\run_and_export.py   # JSON + CSV em tests/ragas/results/
+```
+
+**Qualidade da resposta ([JevEval](tests/jeveval/README.md))**: as mesmas
+cinco dimensões e mais a correção em relação à referência, julgadas pelo Jev,
+da TypeSafe AI. O Jev responde perguntas fechadas com probabilidades, e a nota
+sai de uma conta fixa, fora do modelo. Recusa vira N/A, e não nota 0. Os testes
+herméticos usam um Jev falso e rodam no CI. A validação do instrumento (inclusive
+nos 247 pares rotulados do estudo de mutação) e a avaliação usam a API, ou seja,
+**mandam o conteúdo para fora da máquina**, e só rodam com `TYPESAFE_API_KEY`:
+
+```powershell
+python -m venv tests\jeveval\.venv
+tests\jeveval\.venv\Scripts\pip install -r tests\jeveval\requirements.txt
+tests\jeveval\.venv\Scripts\python.exe -m pytest tests/jeveval -m "not live"   # herméticos
+tests\jeveval\.venv\Scripts\python.exe -m pytest tests/jeveval -m live         # controles (com chave)
+tests\jeveval\.venv\Scripts\python.exe tests\jeveval\run_and_export.py --answers respostas.json
 ```
 
 **Relatório consolidado ([tests/reports/](tests/reports/README.md))**: depois
@@ -678,9 +696,9 @@ um RAG só.
 ## Fase 2 — Arquitetura de testes
 
 Testes de API (pytest), testes E2E (Playwright/TypeScript) e avaliação de qualidade de
-resposta ([DeepEval](https://deepeval.com/docs/introduction) e [RAGAS](https://docs.ragas.io/)
-sobre os mesmos goldens, ver seção "Testes" acima, [tests/deepeval/README.md](tests/deepeval/README.md)
-e [tests/ragas/README.md](tests/ragas/README.md)) — implementados. Em aberto: ingestão de
+resposta ([DeepEval](https://deepeval.com/docs/introduction), [RAGAS](https://docs.ragas.io/)
+e JevEval sobre os mesmos goldens, ver seção "Testes" acima, [tests/deepeval/README.md](tests/deepeval/README.md),
+[tests/ragas/README.md](tests/ragas/README.md) e [tests/jeveval/README.md](tests/jeveval/README.md)) — implementados. Em aberto: ingestão de
 corpus de teste via ZIP e geração de dataset sintético assistida por LLM (o dataset atual é
 curado manualmente, ver `tests/deepeval/goldens/dataset.json`). Detalhes em `docs/ARCHITECTURE.md`.
 
@@ -730,6 +748,7 @@ scripts/start_dev_remote.bat sobe tudo gerando pelo servidor, sem LLM local
 tests/                    API, qualidade de resposta e revisão humana (Fase 2/3)
 tests/deepeval/           Qualidade de resposta com DeepEval (goldens em goldens/dataset.json)
 tests/ragas/              Qualidade de resposta com RAGAS, mesmos goldens; juiz local validado por controles
+tests/jeveval/            Qualidade de resposta com JevEval (juiz: o Jev, via API); herméticos com Jev falso no CI
 tests/reports/            Relatório consolidado das suítes de qualidade (MD, PDF, XLSX, CSV) e o histórico
 tests/run_all.py          Roda todas as suítes e gera o relatório (atalho: scripts/run_all_tests.bat)
 tests/generate_answers.py Gera as respostas do assistente uma vez, para todos os frameworks julgarem as mesmas
