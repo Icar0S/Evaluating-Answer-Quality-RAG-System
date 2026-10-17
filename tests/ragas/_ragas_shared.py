@@ -332,8 +332,14 @@ def run_pipeline(question: str) -> tuple[str, list[str]]:
     return result["answer"], [c["text"] for c in chunks]
 
 
-def stack_status() -> str | None:
-    """None se Ollama, modelos e vector store estiverem prontos; senão, o motivo do skip."""
+def stack_status(need_index: bool = True) -> str | None:
+    """None se Ollama, modelos e vector store estiverem prontos; senão, o motivo do skip.
+
+    need_index=False dispensa o vector store: julgar respostas prontas
+    (`run_and_export.py --answers`) e os controles do juiz não passam pelo SUT.
+    É o caso da demonstração em Docker, cujo índice fica num volume do
+    container e não em data/vector_store.
+    """
     settings, rs = get_settings(), get_ragas_settings()
     try:
         resp = httpx.get(f"{settings.ollama_base_url}/api/tags", timeout=3)
@@ -354,13 +360,14 @@ def stack_status() -> str | None:
         if not _has(model):
             return f"Modelo '{model}' não está baixado no Ollama local (`ollama pull {model}`)"
 
-    try:
-        from app.rag import vector_store
+    if need_index:
+        try:
+            from app.rag import vector_store
 
-        if vector_store.collection_count() == 0:
-            return "Vector store vazio — rode `python scripts/ingest_documents.py` antes"
-    except Exception as exc:  # noqa: BLE001 - índice inacessível = stack não pronta
-        return f"Vector store inacessível: {exc}"
+            if vector_store.collection_count() == 0:
+                return "Vector store vazio — rode `python scripts/ingest_documents.py` antes"
+        except Exception as exc:  # noqa: BLE001 - índice inacessível = stack não pronta
+            return f"Vector store inacessível: {exc}"
 
     if active.kind == "ollama" and active.generation_model == rs.ragas_judge_model:
         warnings.warn(

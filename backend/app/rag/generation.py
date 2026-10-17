@@ -72,9 +72,11 @@ def build_user_message(question: str, context_chunks: list[dict]) -> str:
 
     context_blocks = []
     for i, chunk in enumerate(context_chunks, start=1):
-        context_blocks.append(
-            f"[Trecho {i} - {chunk['document']} (pág. {chunk.get('page', '?')})]\n{chunk['text']}"
-        )
+        # Trecho de Markdown não tem página (page=None): sem "(pág. None)" no
+        # prompt. Trecho de PDF sai idêntico ao prompt v1 de sempre.
+        page = chunk.get("page", "?")
+        where = chunk["document"] if page is None else f"{chunk['document']} (pág. {page})"
+        context_blocks.append(f"[Trecho {i} - {where}]\n{chunk['text']}")
     context_text = "\n\n".join(context_blocks)
     return f"CONTEXTO:\n{context_text}\n\nPERGUNTA: {question}"
 

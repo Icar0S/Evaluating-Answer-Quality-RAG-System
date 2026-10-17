@@ -1,0 +1,19 @@
+# Contexto de build do docker-compose.yml: a imagem do backend só copia
+# backend/requirements.txt, backend/app e scripts/ingest_documents.py. Tudo o
+# mais fica fora, para o build não enviar gigabytes ao daemon.
+.git
+.github
+.env
+**/.venv
+**/venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+.deepeval
+data
+logs
+docs
+paper*
+frontend
+tests
+plano.md

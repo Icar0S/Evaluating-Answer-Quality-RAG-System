@@ -5,7 +5,10 @@
   "scripts": {
     "test": "playwright test",
     "test:headed": "playwright test --headed",
-    "report": "playwright show-report"
+    "report": "playwright show-report",
+    "demo": "playwright test -c playwright.demo.config.ts",
+    "demo:ui": "playwright test -c playwright.demo.config.ts --ui",
+    "demo:report": "playwright show-report"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1"

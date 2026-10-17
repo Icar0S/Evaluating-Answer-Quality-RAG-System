@@ -2,7 +2,8 @@
 
 Segue a skill de dataviz do projeto (paleta de referência validada):
 - cor por ENTIDADE e em ordem fixa: DeepEval no slot 1 (azul), RAGAS no slot
-  2 (laranja), outro framework no slot seguinte; a cor nunca segue o ranking;
+  2 (laranja), JevEval no slot 3 (verde), outro framework no slot seguinte; a
+  cor nunca segue o ranking;
 - heatmap em escala DIVERGENTE centrada no limiar: o trabalho do gráfico é
   dizer de que lado do limiar cada nota caiu (vermelho abaixo, azul acima,
   cinza neutro no limiar), não só "quanto";
@@ -39,7 +40,7 @@ DIVERGING_LOW = "#e34948"  # vermelho: abaixo do limiar
 DIVERGING_MID = "#f0efec"  # cinza neutro: no limiar
 DIVERGING_HIGH = "#2a78d6"  # azul: acima do limiar
 CATEGORICAL = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
-FRAMEWORK_SLOT = {"DeepEval": 0, "RAGAS": 1}
+FRAMEWORK_SLOT = {"DeepEval": 0, "RAGAS": 1, "JevEval": 2}
 
 DPI = 200
 CSS_PX = DPI / 96  # 1 px de tela na resolução da figura
@@ -194,11 +195,16 @@ def history_chart(runs: list[dict], path: Path, threshold: float = 0.7) -> Path 
     import matplotlib.dates as mdates
 
     points = [r for r in runs if r.get("run_generated_at") and any(v is not None for v in r["means"].values())]
-    per_framework = {r["framework"]: sum(1 for p in points if p["framework"] == r["framework"]) for r in points}
+    # Uma linha por rodada (framework + índice + idioma): pontos de índices
+    # diferentes nunca se ligam na mesma linha.
+    def series_of(r: dict) -> str:
+        return r.get("name") or r["framework"]
+
+    per_framework = {series_of(r): sum(1 for p in points if series_of(p) == series_of(r)) for r in points}
     if not per_framework or max(per_framework.values()) < 2:
         return None  # nenhum framework com duas rodadas: não há linha, só pontos soltos
     plt.rc("font", **FONT)
-    colors = framework_colors([r["framework"] for r in points])
+    colors = framework_colors([series_of(r) for r in points])
     fig, axes = plt.subplots(1, len(DIMENSIONS), figsize=(6.7, 2.35), dpi=DPI, facecolor=SURFACE, sharey=True)
     fig.subplots_adjust(left=0.06, right=0.99, top=0.74, bottom=0.17, wspace=0.12)
     for ax, dim in zip(axes, DIMENSIONS):
@@ -214,7 +220,7 @@ def history_chart(runs: list[dict], path: Path, threshold: float = 0.7) -> Path 
             series = [
                 (datetime.fromisoformat(r["run_generated_at"]), r["means"].get(dim.key))
                 for r in points
-                if r["framework"] == framework and r["means"].get(dim.key) is not None
+                if series_of(r) == framework and r["means"].get(dim.key) is not None
             ]
             if not series:
                 continue
@@ -278,6 +284,11 @@ def heatmap(run: Run, path: Path) -> Path:
         for j, dim in enumerate(DIMENSIONS):
             score = case.score(dim.key)
             x, y, w, h = j + gap_x, i + gap_y, 1 - 2 * gap_x, 1 - 2 * gap_y
+            if not score.applicable:
+                # N/A não é falha de medida: célula lisa, sem a hachura do "n/d".
+                ax.add_patch(Rectangle((x, y), w, h, facecolor=SURFACE, edgecolor=BASELINE, linewidth=0.5))
+                ax.text(j + 0.5, i + 0.5, "N/A", ha="center", va="center", fontsize=7, color=INK_SECONDARY)
+                continue
             if not score.measured:
                 ax.add_patch(Rectangle((x, y), w, h, facecolor=SURFACE, edgecolor=BASELINE, hatch="////",
                                        linewidth=0.5))

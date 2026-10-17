@@ -1,0 +1,17 @@
+# GPU NVIDIA para o Ollama do docker-compose.yml. Separado porque, numa
+# máquina sem GPU NVIDIA, pedir o device faz o `compose up` falhar; sem este
+# arquivo, tudo roda em CPU (bem mais lento para o gerador e o juiz).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#
+# No Windows, precisa do Docker Desktop com WSL2 e driver NVIDIA recente
+# (teste: docker run --rm --gpus all ubuntu nvidia-smi).
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

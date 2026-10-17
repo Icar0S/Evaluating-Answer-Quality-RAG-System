@@ -1,0 +1,113 @@
+[
+  {
+    "name": "md-seven-failure-points-lista",
+    "input": "Quais são os sete pontos de falha (failure points) identificados por Barnett et al. ao construir sistemas RAG?",
+    "input_en": "What are the seven failure points identified by Barnett et al. when engineering RAG systems?",
+    "expected_output": "FP1 conteúdo ausente (Missing Content): a pergunta não pode ser respondida pelos documentos disponíveis; FP2 documentos relevantes fora do topo do ranking (Missed the Top Ranked Documents); FP3 fora do contexto (Not in Context): o documento foi recuperado, mas descartado na consolidação; FP4 não extraído (Not Extracted): a resposta está no contexto, mas o LLM não a extrai; FP5 formato errado (Wrong Format); FP6 especificidade incorreta (Incorrect Specificity); FP7 resposta incompleta (Incomplete).",
+    "context": [
+      "FP1 Missing Content The first fail case is when asking a question that cannot be answered from the available documents. [...] FP2 Missed the Top Ranked Documents The answer to the question is in the document but did not rank highly enough to be returned to the user. [...] FP3 Not in Context - Consolidation strategy Limitations [...] FP4 Not Extracted Here the answer is present in the context, but the large language model failed to extract out the correct answer. [...] FP5 Wrong Format [...] FP6 Incorrect Specificity [...] FP7 Incomplete Incomplete answers are not incorrect but miss some of the information even though that information was in the context and available for extraction."
+    ],
+    "source_document": "Seven Failure Points When Engineering a Retrieval Augmented.md",
+    "conversion": "limpo"
+  },
+  {
+    "name": "md-seven-failure-points-licoes",
+    "input": "Quais são as duas principais lições de Barnett et al. sobre validação e robustez de sistemas RAG?",
+    "input_en": "What are the two key takeaways of Barnett et al. about the validation and robustness of RAG systems?",
+    "expected_output": "A validação de um sistema RAG só é viável durante a operação, e a robustez de um sistema RAG evolui com o uso em vez de ser projetada desde o início.",
+    "context": [
+      "The two key takeaways arising from our work are: 1) validation of a RAG system is only feasible during operation, and 2) the robustness of a RAG system evolves rather than designed in at the start."
+    ],
+    "source_document": "Seven Failure Points When Engineering a Retrieval Augmented.md",
+    "conversion": "limpo"
+  },
+  {
+    "name": "md-rag-survey-dimensoes",
+    "input": "Em quais três dimensões o survey de Al Azher e Alhoori organiza a avaliação de sistemas RAG?",
+    "input_en": "Along which three dimensions does the survey by Al Azher and Alhoori organize the evaluation of RAG systems?",
+    "expected_output": "(1) Avaliação do recuperador, com práticas de recuperação de informação para medir relevância, cobertura e eficiência; (2) avaliação do gerador, com métricas como fluência e factualidade e frameworks de LLM-as-a-Judge; (3) avaliação ponta a ponta, que captura como recuperação e geração interagem em sistemas RAG reais.",
+    "context": [
+      "In this survey, we examine evaluation approaches across three dimensions: (1) Retriever evaluation, drawing from traditional information retrieval practices to assess relevance, coverage, and efficiency; (2) Generator evaluation, leveraging metrics such as fluency, factuality, and LLM-as-a-Judge frameworks to measure textual quality and grounding; and (3) End-to-end evaluation, which captures how retrieval and generation interact in real-world RAG systems."
+    ],
+    "source_document": "AComprehensiveSurveyofRetrieval-AugmentedGenerationRAGEvaluationandBenchmarksPerspectivesfromInformationRetrievalandLLM.md",
+    "conversion": "limpo"
+  },
+  {
+    "name": "md-mtbench-vieses",
+    "input": "Quais vieses e limitações do LLM-as-a-judge são examinados no trabalho do MT-Bench e Chatbot Arena, e qual a concordância do GPT-4 com as preferências humanas?",
+    "input_en": "Which biases and limitations of LLM-as-a-judge are examined in the MT-Bench and Chatbot Arena paper, and how well does GPT-4 agree with human preferences?",
+    "expected_output": "São examinados os vieses de posição, de verbosidade e de autoaprimoramento (self-enhancement), além da capacidade de raciocínio limitada. Juízes fortes como o GPT-4 alcançam mais de 80% de concordância com preferências humanas, o mesmo nível de concordância entre humanos.",
+    "context": [
+      "We examine the usage and limitations of LLM-as-a-judge, including position, verbosity, and self-enhancement biases, as well as limited reasoning ability [...] Our results reveal that strong LLM judges like GPT-4 can match both controlled and crowdsourced human preferences well, achieving over 80% agreement, the same level of agreement between humans. (No Markdown, este trecho está com as palavras grudadas; espaços restaurados aqui para leitura.)"
+    ],
+    "source_document": "NeurIPS-2023-judging-llm-as-a-judge-with-mt-bench-and-chatbot-arena-Paper-Datasets_and_Benchmarks.md",
+    "conversion": "grave"
+  },
+  {
+    "name": "md-slr-llm-juiz",
+    "input": "Quantos estudos a revisão sistemática de Shrestha sobre LLM-as-a-Judge analisou, e quais vieses sistemáticos dos avaliadores ela destaca?",
+    "input_en": "How many studies did Shrestha's systematic literature review on LLM-as-a-Judge analyze, and which systematic evaluator biases does it highlight?",
+    "expected_output": "27 artigos publicados entre janeiro de 2020 e março de 2026. A revisão destaca o viés de posição (favorecer respostas que aparecem primeiro), o viés de verbosidade (preferir respostas mais longas independentemente da qualidade) e o viés de autopreferência (dar notas maiores a saídas parecidas com o estilo do próprio avaliador).",
+    "context": [
+      "This paper presents a systematic review of the literature of 27 research papers published between January 2020 and March 2026 that investigate the behavior of LLM evaluators. [...] position bias (favoring responses that appear first), verbosity bias (preferring longer answers regardless of quality) and self-preference bias (rating outputs that resemble the evaluator's own style more highly). (No Markdown, as duas colunas do PDF aparecem intercaladas linha a linha.)"
+    ],
+    "source_document": "Judging the JudgesPosition Bias in LLM-as-a-Judge.md",
+    "conversion": "moderado",
+    "observacao": "O nome do arquivo diz 'Judging the Judges: Position Bias in LLM-as-a-Judge', mas o conteúdo é 'LLM-as-a-Judge: A Systematic Literature Review on Reliability, Bias and Meta-Evaluation Frameworks' (Shrestha)."
+  },
+  {
+    "name": "md-taxonomia-teste-llm",
+    "input": "Quais são as quatro dimensões da taxonomia para o projeto de casos de teste de software baseado em LLM, e que distinção ela faz entre tipos de oráculo?",
+    "input_en": "What are the four dimensions of the taxonomy for designing test cases of LLM-based software, and what distinction does it make between oracle types?",
+    "expected_output": "Software sob teste (SUT), objetivo (Goal), oráculos (Oracles) e entradas (Inputs). A taxonomia distingue oráculos atômicos, que avaliam uma única execução, de oráculos agregados, que avaliam a corretude ao longo de múltiplas observações.",
+    "context": [
+      "[...] organizes testing concerns across four dimensions: Software Under Test, Goal, Oracles, and Inputs. [...] An Atomic Oracle evaluates a single test execution. [...] An Aggregated Oracle addresses this limitation by evaluating correctness across multiple observations. (No Markdown, este trecho está com as palavras grudadas; espaços restaurados aqui para leitura.)"
+    ],
+    "source_document": "Challenges in Testing Large Language Model Based Software A Faceted Taxonomy.md",
+    "conversion": "grave"
+  },
+  {
+    "name": "md-gptdroid",
+    "input": "Como o GPTDroid usa LLMs para testar a interface gráfica de aplicativos móveis e quais resultados ele relata?",
+    "input_en": "How does GPTDroid use LLMs for mobile app GUI testing and what results does it report?",
+    "expected_output": "Formula o teste de GUI como um problema de perguntas e respostas: passa as informações da página da interface ao LLM para obter scripts de teste, executa-os e devolve o feedback do aplicativo ao LLM, iterando; usa um mecanismo de memória ciente de funcionalidades. Em 93 apps do Google Play, supera o melhor baseline em 32% de cobertura de atividades, detecta 31% mais bugs e encontrou 53 bugs novos, dos quais 35 foram confirmados e corrigidos.",
+    "context": [
+      "We propose GPTDroid, asking LLM to chat with the mobile apps by passing the GUI page information to LLM to elicit testing scripts, and executing them to keep passing the app feedback to LLM, iterating the whole process. [...] functionality-aware memory prompting mechanism [...] We evaluate it on 93 apps from Google Play and demonstrate that it outperforms the best baseline by 32% in activity coverage, and detects 31% more bugs at a faster rate. Moreover, GPTDroid identify 53 new bugs on Google Play, of which 35 have been confirmed and fixed. (No Markdown, colunas intercaladas e palavras grudadas; espaços restaurados aqui para leitura.)"
+    ],
+    "source_document": "Make LLM a Testing Expert.md",
+    "conversion": "grave"
+  },
+  {
+    "name": "md-survey-teste-com-llm",
+    "input": "Quantos estudos o survey 'Software Testing with Large Language Models: Survey, Landscape, and Vision' analisou, e quais tarefas de teste aparecem como as mais representativas?",
+    "input_en": "How many studies did the survey 'Software Testing with Large Language Models: Survey, Landscape, and Vision' analyze, and which testing tasks are the most representative?",
+    "expected_output": "Analisa 102 estudos que usaram LLMs em teste de software; a preparação de casos de teste e o reparo de programas são as tarefas mais representativas.",
+    "context": [
+      "It analyzes 102 relevant studies that have used LLMs for software testing [...] software testing tasks for which LLMs are commonly used, among which test case preparation and program repair are the most representative."
+    ],
+    "source_document": "Software_Testing_With_Large_Language_Models_Survey_Landscape_and_Vision.md",
+    "conversion": "grave"
+  },
+  {
+    "name": "md-teste-estrutural-agentes",
+    "input": "Que técnicas o trabalho da BMW sobre teste estrutural de agentes baseados em LLM combina para automatizar os testes?",
+    "input_en": "Which techniques does the BMW work on structural testing of LLM-based agents combine to automate testing?",
+    "expected_output": "Traces baseados em OpenTelemetry para capturar as trajetórias do agente, mocking para forçar um comportamento reprodutível do LLM e asserções para automatizar a verificação dos testes.",
+    "context": [
+      "Technical methods for structural testing: we use traces based on OpenTelemetry to capture agent trajectories, mocking to enforce reproducible LLM behavior, and assertions for automating test verification."
+    ],
+    "source_document": "Automated_Structural_Testing_of_LLM-Based_Agents_Methods_Framework_and_Case_Studies.md",
+    "conversion": "moderado"
+  },
+  {
+    "name": "md-teste-llm-reddit",
+    "input": "Que fonte o trabalho de Hudson, Jit, Hu e Chechik sobre teste de LLMs (SE 2030) usa para examinar como os praticantes testam LLMs?",
+    "input_en": "Which source does the work by Hudson, Jit, Hu and Chechik on testing LLMs (SE 2030) use to examine how practitioners test LLMs?",
+    "expected_output": "Discussões no Reddit, onde praticantes compartilham experiências com o teste de LLMs e fazem e respondem perguntas sobre o assunto; o trabalho também revisa benchmarks e ferramentas open-source.",
+    "context": [
+      "[...] open-source benchmarks and tools (Sec. 3 and 4) and present a preliminary examination of LLM testing in practice through discussions on Reddit, where practitioners share their experiences with testing LLMs as well as post and answer questions about testing (Sec. 5). (No Markdown, colunas intercaladas e palavras grudadas; espaços restaurados aqui para leitura.)"
+    ],
+    "source_document": "TestingLLM.md",
+    "conversion": "grave"
+  }
+]

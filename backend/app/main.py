@@ -57,6 +57,7 @@ async def health() -> HealthResponse:
         generation_model=active.generation_model,
         embedding_model=active.embedding_model,
         vector_store_documents=doc_count,
+        rag_index=get_settings().index_name,
     )
 
 
@@ -177,6 +178,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
         prompt_tokens=result["prompt_tokens"],
         completion_tokens=result["completion_tokens"],
         top_k=top_k,
+        # get_settings(), não o `settings` do import: é o índice que a busca acabou de usar.
+        rag_index=get_settings().index_name,
     )
 
     response = ChatResponse(

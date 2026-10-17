@@ -69,7 +69,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    reason = shared.stack_status()
+    # Com --answers o SUT não roda: o índice local não precisa existir.
+    reason = shared.stack_status(need_index=args.answers is None)
     if reason:
         _log(f"[ERRO] Stack não está pronta: {reason}")
         return 1
@@ -83,7 +84,22 @@ def main() -> int:
         # que torna a comparação RAGAS x DeepEval uma comparação de métodos.
         answers_meta = json.loads(args.answers.read_text(encoding="utf-8"))
         answers_by_name = {a["name"]: a for a in answers_meta.get("answers", [])}
-        goldens = [g for g in goldens if g.name in answers_by_name]
+        # Os casos vêm do arquivo de respostas, que traz pergunta e referência de
+        # cada golden (inclusive de outros conjuntos, como o dos Markdown).
+        # Arquivos antigos, sem esses campos, caem nos goldens padrão pelo nome.
+        by_name = {g.name: g for g in goldens}
+        goldens = [
+            shared.Golden(
+                name=a["name"],
+                input=a["input"],
+                expected_output=a["expected_output"],
+                context=list(a.get("context") or []),
+            )
+            if "expected_output" in a
+            else by_name[a["name"]]
+            for a in answers_meta.get("answers", [])
+            if "expected_output" in a or a["name"] in by_name
+        ]
     if args.only:
         goldens = [g for g in goldens if g.name in set(args.only)]
     if args.limit:
@@ -108,6 +124,8 @@ def main() -> int:
         "provider": answers_meta.get("provider", active.name),
         "generation_model": answers_meta.get("generation_model", active.generation_model),
         "answers_source": str(args.answers) if args.answers else None,
+        "rag_index": answers_meta.get("rag_index", settings.index_name),
+        "lang": answers_meta.get("lang", "pt"),
         "embedding_model": settings.embedding_model,
         "judge_model": rs.ragas_judge_model,
         "judge_num_ctx": rs.ragas_judge_num_ctx,
@@ -166,6 +184,7 @@ def main() -> int:
         output["cases"].append(
             {
                 "name": golden.name,
+                "origin": answers_by_name.get(golden.name, {}).get("origin"),
                 "input": golden.input,
                 "actual_output": answer,
                 "expected_output": golden.expected_output,

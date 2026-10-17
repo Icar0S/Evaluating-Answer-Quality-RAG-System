@@ -41,6 +41,7 @@ LONG_COLUMNS = [
     "Rodada",
     "Framework",
     "Data",
+    "Origem",
     "Caso",
     "Dimensão",
     "Métrica",
@@ -52,7 +53,16 @@ LONG_COLUMNS = [
 ]
 
 
-def _verdict(passed: bool | None, measured: bool) -> str:
+def _matrix_cell(score) -> float | str | None:
+    """Nota na matriz: número, vazio quando não medida, "N/A" quando não se aplica."""
+    if not score.applicable:
+        return "N/A"
+    return None if score.value is None else round(score.value, 4)
+
+
+def _verdict(passed: bool | None, measured: bool, applicable: bool = True) -> str:
+    if not applicable:
+        return "N/A"
     if not measured:
         return "n/d"
     return "passou" if passed else "reprovou"
@@ -70,11 +80,12 @@ def long_rows(runs: list[Run]) -> list[list]:
                         run.label,
                         run.framework,
                         run.when,
+                        case.origin or "",
                         case.name,
                         dim.label,
                         NATIVE_METRIC.get(run.framework, {}).get(dim.key, dim.key),
                         None if s.value is None else round(s.value, 4),
-                        _verdict(s.passed, s.measured),
+                        _verdict(s.passed, s.measured, s.applicable),
                         "sim" if case.abstained else "não",
                         s.error or "",
                         s.reason or "",
@@ -270,33 +281,34 @@ def write_xlsx(
                     s.n_measured,
                     s.n_passed,
                     s.n_cases,
+                    s.n_not_applicable,
                 ]
             )
     end = _table(
         ws,
-        ["Rodada", "Dimensão", "Métrica", "Média", "Mediana", "Mín.", "Máx.", "Medidas", "≥ limiar", "Casos"],
+        ["Rodada", "Dimensão", "Métrica", "Média", "Mediana", "Mín.", "Máx.", "Medidas", "≥ limiar", "Casos", "N/A"],
         rows,
-        [30, 24, 30, 9, 9, 9, 9, 9, 9, 8],
+        [30, 24, 30, 9, 9, 9, 9, 9, 9, 8, 6],
     )
     _diverging(ws, f"D2:G{end}", runs[0].threshold)
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:J{end}"
+    ws.auto_filter.ref = f"A1:K{end}"
 
     # Notas (formato longo) --------------------------------------------------
     ws = wb.create_sheet(_sheet_name("Notas", taken))
-    end = _table(ws, LONG_COLUMNS, long_rows(runs), [30, 11, 17, 28, 22, 30, 8, 10, 10, 30, 80])
-    _diverging(ws, f"G2:G{end}", runs[0].threshold)
+    end = _table(ws, LONG_COLUMNS, long_rows(runs), [34, 11, 17, 9, 28, 22, 30, 8, 10, 10, 30, 80])
+    _diverging(ws, f"H2:H{end}", runs[0].threshold)
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:K{end}"
+    ws.auto_filter.ref = f"A1:L{end}"
 
     # Matriz por rodada ------------------------------------------------------
     for run in runs:
-        ws = wb.create_sheet(_sheet_name(f"Matriz {run.framework}", taken))
+        ws = wb.create_sheet(_sheet_name(f"Matriz {run.name}", taken))
         ws["A1"] = run.label
         ws["A1"].font = Font(bold=True)
         rows = [
             [case.name]
-            + [None if case.score(d.key).value is None else round(case.score(d.key).value, 4) for d in DIMENSIONS]
+            + [_matrix_cell(case.score(d.key)) for d in DIMENSIONS]
             + ["sim" if case.all_passed else "não", "sim" if case.abstained else "não"]
             for case in run.cases
         ]

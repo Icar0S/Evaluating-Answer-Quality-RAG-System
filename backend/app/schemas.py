@@ -30,6 +30,9 @@ class ChatMetadata(BaseModel):
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     top_k: int
+    # Versão do índice que respondeu (RAG_INDICES). Com dois RAGs no ar (a
+    # demonstração em Docker sobe um por acervo), é o que diz qual respondeu.
+    rag_index: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -53,6 +56,7 @@ class HealthResponse(BaseModel):
     generation_model: str
     embedding_model: str
     vector_store_documents: int
+    rag_index: str | None = None
 
 
 class ErrorResponse(BaseModel):

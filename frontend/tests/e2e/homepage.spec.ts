@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { isBackendUp } from "./helpers";
 
 test.describe("Homepage", () => {

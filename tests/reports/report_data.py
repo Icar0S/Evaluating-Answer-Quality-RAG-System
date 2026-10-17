@@ -1,9 +1,14 @@
 """Leitura dos resultados das suítes de qualidade e as contas do relatório.
 
-Cada framework grava seu JSON num formato próprio (tests/ragas/run_and_export.py
-e tests/deepeval/run_and_export.py). Aqui os dois viram o mesmo modelo — Run,
-Case, Score — indexado pelas cinco DIMENSÕES que as duas suítes medem. É isso
-que permite colocar RAGAS e DeepEval lado a lado.
+Cada framework grava seu JSON num formato próprio (tests/ragas/run_and_export.py,
+tests/deepeval/run_and_export.py e tests/jeveval/run_and_export.py). Aqui todos
+viram o mesmo modelo — Run, Case, Score — indexado pelas cinco DIMENSÕES que as
+suítes medem. É isso que permite colocar RAGAS, DeepEval e JevEval lado a lado.
+
+Uma nota pode estar em três estados: medida, não medida (erro do juiz, timeout,
+NaN) e N/A — nenhuma pergunta do JevEval se aplicou ao caso, como a fidelidade
+de uma recusa. Não medida conta como reprovação ("nota que não existe não
+aprova ninguém"); N/A sai das médias, dos denominadores e da lista de erros.
 
 Nada aqui importa ragas, deepeval ou o backend: o gerador roda em qualquer
 máquina que tenha os JSONs.
@@ -25,6 +30,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_DIRS = {
     "DeepEval": PROJECT_ROOT / "tests" / "deepeval" / "results",
     "RAGAS": PROJECT_ROOT / "tests" / "ragas" / "results",
+    "JevEval": PROJECT_ROOT / "tests" / "jeveval" / "results",
 }
 _RESULT_FILE = re.compile(r"^\d{8}T\d{6}Z\.json$")
 
@@ -47,9 +53,12 @@ DIMENSIONS = [
 ]
 DIMENSION_BY_KEY = {d.key: d for d in DIMENSIONS}
 
-# Nome da métrica no JSON de cada framework -> dimensão.
+# Nome da métrica no JSON de cada framework -> dimensão. A correção do JevEval
+# (resposta x referência) não é uma das cinco dimensões e fica fora do relatório
+# consolidado; está no JSON e no CSV da própria camada.
 _METRIC_TO_DIMENSION = {
     "RAGAS": {d.key: d.key for d in DIMENSIONS},
+    "JevEval": {d.key: d.key for d in DIMENSIONS},
     "DeepEval": {
         "Faithfulness": "faithfulness",
         "Answer Relevancy": "answer_relevancy",
@@ -74,6 +83,8 @@ NATIVE_METRIC = {
         "context_recall": "ContextualRecallMetric",
         "context_relevance": "ContextualRelevancyMetric",
     },
+    # As perguntas de cada uma estão em tests/jeveval/_jev_shared.py.
+    "JevEval": {d.key: f"JevEval({d.key})" for d in DIMENSIONS},
 }
 
 
@@ -111,6 +122,8 @@ class Score:
     passed: bool | None
     reason: str | None = None
     error: str | None = None
+    # False = N/A: a métrica não se aplica a este caso (só o JevEval diz isso).
+    applicable: bool = True
 
     @property
     def measured(self) -> bool:
@@ -125,6 +138,9 @@ class Case:
     answer: str
     contexts: list[str]
     scores: dict[str, Score]
+    # De qual acervo a pergunta veio ("pdf", "md"...), quando a rodada julgou
+    # goldens de mais de um conjunto (tests/generate_answers.py --goldens).
+    origin: str | None = None
 
     @property
     def abstained(self) -> bool:
@@ -133,7 +149,8 @@ class Case:
 
     @property
     def all_passed(self) -> bool:
-        return all(s.passed for s in self.scores.values()) and len(self.scores) == len(DIMENSIONS)
+        """Todas as dimensões aplicáveis aprovadas. N/A não reprova; nota não medida, sim."""
+        return all(s.passed for s in self.scores.values() if s.applicable) and len(self.scores) == len(DIMENSIONS)
 
     def score(self, dimension: str) -> Score:
         return self.scores.get(dimension) or Score(value=None, passed=None, error="métrica ausente no resultado")
@@ -157,8 +174,24 @@ class Run:
         return self.generated_at.astimezone().strftime("%d/%m/%Y %H:%M") if self.generated_at else "data desconhecida"
 
     @property
+    def rag_index(self) -> str | None:
+        return self.extra.get("rag_index")
+
+    @property
+    def variant(self) -> str:
+        """O que distingue esta rodada além do framework: versão do índice e idioma das perguntas."""
+        parts = [self.rag_index] if self.rag_index else []
+        if self.extra.get("lang") == "en":
+            parts.append("perguntas em inglês")
+        return " · ".join(parts)
+
+    @property
+    def name(self) -> str:
+        return f"{self.framework} · {self.variant}" if self.variant else self.framework
+
+    @property
     def label(self) -> str:
-        return f"{self.framework} ({self.when})"
+        return f"{self.name} ({self.when})"
 
     @property
     def complete(self) -> bool:
@@ -174,10 +207,12 @@ class Run:
 def detect_framework(data: dict[str, Any]) -> str:
     if data.get("framework") == "ragas":
         return "RAGAS"
+    if data.get("framework") == "jeveval":
+        return "JevEval"
     names = {m.get("name") for c in data.get("cases", []) for m in c.get("metrics", [])}
     if names & set(_METRIC_TO_DIMENSION["DeepEval"]):
         return "DeepEval"
-    raise ValueError("formato de resultado não reconhecido (nem RAGAS nem DeepEval)")
+    raise ValueError("formato de resultado não reconhecido (nem RAGAS, nem DeepEval, nem JevEval)")
 
 
 def _parse_when(value: Any) -> datetime | None:
@@ -207,7 +242,13 @@ def load_run(path: Path) -> Run:
             passed = metric.get("success")
             if passed is None and value is not None:
                 passed = value >= threshold
-            scores[dimension] = Score(value=value, passed=passed, reason=metric.get("reason"), error=metric.get("error"))
+            scores[dimension] = Score(
+                value=value,
+                passed=passed,
+                reason=metric.get("reason"),
+                error=metric.get("error"),
+                applicable=metric.get("applicable", True) is not False,
+            )
         cases.append(
             Case(
                 name=raw.get("name") or raw.get("input", "")[:40],
@@ -216,6 +257,7 @@ def load_run(path: Path) -> Run:
                 answer=raw.get("actual_output") or "",
                 contexts=list(raw.get("retrieval_context") or []),
                 scores=scores,
+                origin=raw.get("origin"),
             )
         )
 
@@ -252,7 +294,7 @@ def discover_latest() -> list[Path]:
 @dataclass
 class DimensionStats:
     dimension: str
-    n_cases: int
+    n_cases: int  # casos em que a dimensão se aplica (N/A fica de fora)
     n_measured: int
     n_passed: int
     mean: float | None
@@ -260,6 +302,7 @@ class DimensionStats:
     minimum: float | None
     maximum: float | None
     errors: list[tuple[str, str]]
+    n_not_applicable: int = 0
 
     @property
     def pass_rate(self) -> float | None:
@@ -269,18 +312,19 @@ class DimensionStats:
 def dimension_stats(run: Run) -> dict[str, DimensionStats]:
     stats = {}
     for dim in DIMENSIONS:
-        scores = [c.score(dim.key) for c in run.cases]
-        values = [s.value for s in scores if s.measured]
+        applicable = [(c.name, c.score(dim.key)) for c in run.cases if c.score(dim.key).applicable]
+        values = [s.value for _, s in applicable if s.measured]
         stats[dim.key] = DimensionStats(
             dimension=dim.key,
-            n_cases=len(run.cases),
+            n_cases=len(applicable),
             n_measured=len(values),
-            n_passed=sum(1 for s in scores if s.passed),
+            n_passed=sum(1 for _, s in applicable if s.passed),
             mean=statistics.fmean(values) if values else None,
             median=statistics.median(values) if values else None,
             minimum=min(values) if values else None,
             maximum=max(values) if values else None,
-            errors=[(c.name, c.score(dim.key).error or "não medida") for c in run.cases if not c.score(dim.key).measured],
+            errors=[(name, s.error or "não medida") for name, s in applicable if not s.measured],
+            n_not_applicable=len(run.cases) - len(applicable),
         )
     return stats
 
@@ -324,8 +368,18 @@ class Comparison:
     divergences: list[Divergence]
 
     @property
+    def across_variants(self) -> bool:
+        """As rodadas usam índices ou idiomas diferentes: é uma comparação de sistemas, não de métodos."""
+        return self.a.variant != self.b.variant
+
+    @property
     def warnings(self) -> list[str]:
-        """O que impede ler a diferença entre as rodadas como diferença entre os métodos."""
+        """O que impede ler a diferença entre as rodadas como diferença entre os métodos.
+
+        Entre rodadas de índices (ou idiomas) diferentes, respostas e trechos
+        diferentes são o objeto da comparação, não um problema dela: os avisos
+        que sobram são os de juiz, gerador, limiar e conjunto de casos.
+        """
         out = []
         if self.only_a or self.only_b:
             out.append(
@@ -344,6 +398,8 @@ class Comparison:
             )
         if self.a.threshold != self.b.threshold:
             out.append(f"Limiares diferentes ({self.a.threshold} x {self.b.threshold}).")
+        if self.across_variants:
+            return out
         if self.common_cases and self.identical_answers < len(self.common_cases):
             out.append(
                 f"Só {self.identical_answers} de {len(self.common_cases)} respostas avaliadas são idênticas "
@@ -400,6 +456,46 @@ def compare(a: Run, b: Run) -> Comparison:
     )
 
 
+def origins(runs: list[Run]) -> list[str]:
+    """As origens de pergunta presentes nas rodadas, na ordem em que aparecem."""
+    seen: list[str] = []
+    for run in runs:
+        for case in run.cases:
+            if case.origin and case.origin not in seen:
+                seen.append(case.origin)
+    return seen
+
+
+@dataclass
+class OriginStats:
+    origin: str
+    n_cases: int
+    abstained: int
+    all_passed: int
+    means: dict[str, float | None]
+
+
+def origin_stats(run: Run) -> list[OriginStats]:
+    """Médias de cada dimensão separadas pela origem da pergunta (acervo próprio x alheio)."""
+    out = []
+    for origin in origins([run]):
+        cases = [c for c in run.cases if c.origin == origin]
+        means = {}
+        for dim in DIMENSIONS:
+            values = [c.score(dim.key).value for c in cases if c.score(dim.key).measured]
+            means[dim.key] = statistics.fmean(values) if values else None
+        out.append(
+            OriginStats(
+                origin=origin,
+                n_cases=len(cases),
+                abstained=sum(1 for c in cases if c.abstained),
+                all_passed=sum(1 for c in cases if c.all_passed),
+                means=means,
+            )
+        )
+    return out
+
+
 def run_highlights(run: Run, stats: dict[str, DimensionStats]) -> list[str]:
     """Frases do resumo de uma rodada, derivadas só dos números."""
     out = []
@@ -420,11 +516,21 @@ def run_highlights(run: Run, stats: dict[str, DimensionStats]) -> list[str]:
     unmeasured = sum(len(s.errors) for s in stats.values())
     if unmeasured:
         out.append(f"{unmeasured} nota(s) não foram medidas (erro do juiz, timeout ou NaN).")
+    not_applicable = sum(s.n_not_applicable for s in stats.values())
+    if not_applicable:
+        out.append(
+            f"{not_applicable} nota(s) N/A: nenhuma pergunta do instrumento se aplicou ao caso (por exemplo, a "
+            "fidelidade de uma recusa). Ficam fora das médias e das contagens, sem aprovar nem reprovar."
+        )
     abstained = [c.name for c in run.cases if c.abstained]
     if abstained:
+        consequence = (
+            "fidelidade e relevância da resposta deveriam sair N/A (o instrumento tem essa opção)."
+            if run.framework == "JevEval"
+            else "notas de fidelidade e relevância da resposta julgam uma recusa, não uma resposta."
+        )
         out.append(
-            f"O assistente se absteve em {len(abstained)} caso(s) ({', '.join(abstained)}): nesses, "
-            "notas de fidelidade e relevância da resposta julgam uma recusa, não uma resposta."
+            f"O assistente se absteve em {len(abstained)} caso(s) ({', '.join(abstained)}): nesses, {consequence}"
         )
     if not run.complete:
         out.append(f"Rodada incompleta: {len(run.cases)} de {run.n_cases_planned} casos.")

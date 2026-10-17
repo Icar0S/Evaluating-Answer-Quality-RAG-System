@@ -12,3 +12,7 @@ frontend/home-assets/** text eol=lf
 
 # Fontes sao binarias — nenhuma normalizacao.
 *.woff2 binary
+
+# Scripts de shell rodam dentro de containers Linux (docker/seed_models.sh):
+# com CRLF, o sh le "\r" como parte dos comandos e quebra.
+*.sh text eol=lf

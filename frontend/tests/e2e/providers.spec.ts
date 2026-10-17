@@ -1,4 +1,5 @@
-import { test, expect, Page } from "@playwright/test";
+import { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 // Seletor Local/Servidor do painel de Monitor, com o backend inteiro mockado
 // (HTTP + WebSocket). Nao depende de API no ar nem de Ollama, entao roda no CI

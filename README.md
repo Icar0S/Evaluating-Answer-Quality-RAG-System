@@ -343,19 +343,20 @@ rodam só localmente, como explicado abaixo.
 
 ```powershell
 scripts\run_all_tests.bat                 # todas as suítes + relatório (de ~40 min a horas; ver abaixo)
-scripts\run_all_tests.bat --rapido        # só API, gerador de relatório e E2E (minutos)
+scripts\run_all_tests.bat --rapido        # só os herméticos (API, relatório, JevEval) e o E2E (minutos)
 scripts\run_all_tests.bat --limite 2      # qualidade em só 2 goldens, para conferir que tudo roda
 scripts\run_all_tests.bat --pular e2e deepeval --abrir
 ```
 
 O script ([tests/run_all.py](tests/run_all.py)) roda, nesta ordem:
 
-1. API e gerador de relatório (herméticas).
+1. API, gerador de relatório e JevEval com o Jev falso (herméticas).
 2. E2E. Se o backend não estiver no ar, o script sobe e derruba ele sozinho.
 3. Gera as respostas do assistente **uma vez só**.
-4. RAGAS (controles do juiz + avaliação) e DeepEval julgam **as mesmas
-   respostas**. Por isso a comparação entre eles no relatório é uma comparação
-   de métodos, não de rodadas.
+4. RAGAS (controles do juiz + avaliação), DeepEval e JevEval (controles do
+   instrumento + avaliação) julgam **as mesmas respostas**. Por isso a
+   comparação entre eles no relatório é uma comparação de métodos, não de
+   rodadas. O JevEval só roda com `TYPESAFE_API_KEY`; sem ela, sai como pulado.
 5. Gera o relatório consolidado, com uma seção de execução (o que passou,
    falhou ou foi pulado, e por quê).
 
@@ -363,10 +364,11 @@ O script ([tests/run_all.py](tests/run_all.py)) roda, nesta ordem:
 
 | Etapa | Duração |
 |---|---|
-| API, gerador de relatório e E2E | ~3 min |
+| API, gerador de relatório, JevEval hermético e E2E | ~3 min |
 | Respostas compartilhadas | ~2 min |
 | RAGAS (controles + 10 goldens) | ~16 min |
 | DeepEval (10 goldens) | de ~20 min a algumas horas |
+| JevEval (controles + 10 goldens) | ainda não medido (~85 chamadas à API da TypeSafe) |
 
 O DeepEval pode demorar muito mais: na rodada de teste, 1 golden levou 18 min
 porque uma métrica (`Contextual Relevancy`) passou bem do teto de 300 s que o
@@ -452,6 +454,22 @@ tests\ragas\.venv\Scripts\python.exe -m pytest tests/ragas
 tests\ragas\.venv\Scripts\python.exe tests\ragas\run_and_export.py   # JSON + CSV em tests/ragas/results/
 ```
 
+**Qualidade da resposta ([JevEval](tests/jeveval/README.md))**: as mesmas
+cinco dimensões e mais a correção em relação à referência, julgadas pelo Jev,
+da TypeSafe AI. O Jev responde perguntas fechadas com probabilidades, e a nota
+sai de uma conta fixa, fora do modelo. Recusa vira N/A, e não nota 0. Os testes
+herméticos usam um Jev falso e rodam no CI. A validação do instrumento (inclusive
+nos 247 pares rotulados do estudo de mutação) e a avaliação usam a API, ou seja,
+**mandam o conteúdo para fora da máquina**, e só rodam com `TYPESAFE_API_KEY`:
+
+```powershell
+python -m venv tests\jeveval\.venv
+tests\jeveval\.venv\Scripts\pip install -r tests\jeveval\requirements.txt
+tests\jeveval\.venv\Scripts\python.exe -m pytest tests/jeveval -m "not live"   # herméticos
+tests\jeveval\.venv\Scripts\python.exe -m pytest tests/jeveval -m live         # controles (com chave)
+tests\jeveval\.venv\Scripts\python.exe tests\jeveval\run_and_export.py --answers respostas.json
+```
+
 **Relatório consolidado ([tests/reports/](tests/reports/README.md))**: depois
 de rodar o `run_and_export.py` das suítes de qualidade, este comando junta os
 resultados num relatório só, separado por framework. O relatório traz a
@@ -468,12 +486,219 @@ tests\reports\.venv\Scripts\python.exe tests\reports\build_report.py --formats p
 
 Todas as interações são logadas em `logs/interactions.jsonl` (JSON Lines), uma linha por interação, com pergunta, contexto recuperado, resposta, métricas e metadados — isso alimenta a suíte DeepEval e a escrita do artigo.
 
+## Versões do índice do RAG (PDF × Markdown)
+
+O assistente pode responder a partir de acervos diferentes, cada um indexado
+numa **versão** própria do índice ([backend/app/config.py](backend/app/config.py),
+`RAG_INDICES`):
+
+| Versão | Acervo | Coleção |
+|---|---|---|
+| `pdf-v1` (padrão) | `data/source_pdfs` (PDFs; texto do PyMuPDF, chunks dentro de cada página) | `rag_test_specialist` |
+| `md-v1` | `data/new_papers_marks` (Markdown; a sintaxe de tabela vira texto) | `rag_md_v1` |
+
+As duas versões usam o mesmo chunker (800/120 tokens) e o mesmo modelo de
+embedding. O modelo faz parte da versão, porque um índice só pode ser
+consultado com o modelo que o construiu. Cada ingestão grava um **manifesto**
+em `data/vector_store/manifests/<coleção>.json`, com os arquivos e seus
+SHA-256, os parâmetros, o modelo e o número de chunks. É o que diz contra qual
+acervo uma avaliação rodou. Mudar o acervo, o formato ou a extração significa
+criar uma versão nova (`md-v2`...), não editar uma existente.
+
+```powershell
+backend\.venv\Scripts\python scripts\ingest_documents.py --index md-v1   # vetoriza os Markdown
+backend\.venv\Scripts\python scripts\ingest_documents.py --list          # versões, chunks e data de cada uma
+```
+
+Para conversar com o assistente usando outra versão, defina `RAG_INDEX=md-v1`
+no `.env` e reinicie o backend.
+
+**Comparar as versões** com as mesmas perguntas, o mesmo gerador e o mesmo
+juiz:
+
+```powershell
+backend\.venv\Scripts\python.exe tests\compare_indices.py              # pdf-v1 × md-v1 com RAGAS (~75 min)
+backend\.venv\Scripts\python.exe tests\compare_indices.py --limite 2   # para conferir que tudo roda
+```
+
+O script faz quatro coisas:
+
+1. Mede se **o documento certo vem entre os trechos recuperados**, com a
+   pergunta em português e em inglês (só embeddings, ~1 min).
+2. Faz a cada versão as perguntas **dos dois acervos**: os 10 goldens dos PDFs
+   e os 10 dos Markdown
+   ([tests/deepeval/goldens/dataset_md.json](tests/deepeval/goldens/dataset_md.json),
+   um rascunho para revisão humana). Pergunta do acervo alheio mede se o RAG
+   se abstém.
+3. Julga tudo com o RAGAS.
+4. Gera o relatório consolidado, com as rodadas lado a lado, o recorte por
+   origem da pergunta e o diagnóstico de recuperação.
+
+**O que já se sabe sobre o acervo `md-v1` (13/10/2026):**
+
+- **São outros artigos.** Nenhum dos 22 Markdown é um dos 39 PDFs, embora os
+  temas se cruzem (avaliação de RAG, teste de LLMs, LLM-as-a-judge). A
+  comparação é "acervo atual × acervo novo", não "PDF × Markdown do mesmo
+  artigo".
+- **O idioma da pergunta pesa mais que tudo.** Com o `nomic-embed-text`, o
+  documento certo veio entre os 4 trechos em **2 de 10** perguntas em
+  português e em **10 de 10** em inglês. Em português, a busca prefere o único
+  documento em português do acervo, seja qual for o assunto. É o mesmo efeito
+  que tirou o MetaRAG da recuperação no índice de PDFs.
+- **A conversão PDF → Markdown degradou 16 dos 22 arquivos.** Entre 3% e 25%
+  das palavras saíram grudadas, e há colunas intercaladas linha a linha. No
+  texto que o PyMuPDF extrai dos PDFs, a mediana é 0%. Mesmo assim, com a
+  pergunta em inglês, os documentos degradados foram recuperados em 1º lugar.
+- **Um arquivo tem nome trocado.** "Judging the JudgesPosition Bias in
+  LLM-as-a-Judge.md" contém a revisão sistemática de Shrestha sobre
+  LLM-as-a-Judge.
+
+**Primeira comparação completa (13/10/2026, RAGAS, gerador `gemma3:4b`, juiz
+`qwen3:8b`).** Médias nas perguntas do próprio acervo de cada versão:
+
+| Rodada | Fidelidade | Rel. resposta | Precisão ctx | Recall ctx | Rel. contexto | Todas ≥ 0,7 |
+|---|---:|---:|---:|---:|---:|---:|
+| `pdf-v1`, perguntas dos PDFs | 0,90 | 0,67 | 0,40 | 0,90 | 0,72 | 1/10 |
+| `md-v1`, perguntas dos Markdown em português | 0,57 | 0,79 | 0,43 | 0,75 | 1,00 | 3/10 |
+| `md-v1`, as mesmas perguntas em inglês | 0,89 | 0,87 | 0,71 | 1,00 | 1,00 | 6/10 |
+
+- **Em português, o `md-v1` responde a partir do documento errado.** A busca
+  traz trechos do único documento em português do acervo. O gerador atribui
+  ao artigo perguntado itens citados ali, ou inventa o que falta, e a
+  fidelidade cai para 0,57. Em inglês, essa é a melhor rodada.
+- **Fora do próprio acervo, os dois quase nunca se abstêm.** O `pdf-v1` se
+  absteve em 1 das 10 perguntas sobre os Markdown, e o `md-v1` em 2 das 10
+  sobre os PDFs. Nas outras, a resposta atribui ao artigo perguntado o
+  conteúdo de outro. Os "sete pontos de falha de Barnett et al." saíram das
+  lições de outros artigos do acervo de PDFs. Já o survey de Wang et al.
+  teria analisado "12 estudos", mas foram 102, e o 12 é de outra revisão. O
+  relatório conta só 1 abstenção no `md-v1`, porque a outra recusa usou uma
+  frase diferente da que o prompt pede.
+- **As notas de contexto do juiz não bastam para ordenar os índices.** Na
+  conferência à mão, o `context_recall` deu 1,00 a trechos que não contêm os
+  fatos da referência: a lista FP1–FP7, nos dois idiomas do `md-v1`, e os
+  "102 estudos", no `pdf-v1`. A fidelidade também não pega a atribuição
+  errada, porque a afirmação está no trecho, mas vem de outro trabalho. Por
+  isso, o recall de 1,00 em inglês não prova recuperação perfeita. O sinal que
+  não depende do juiz é o diagnóstico de recuperação.
+
+Duas próximas versões naturais:
+
+- `md-v2`, com os mesmos artigos reconvertidos por uma ferramenta melhor;
+- `*-v2`, com um modelo de embedding multilíngue (por exemplo, `bge-m3`), que
+  ataca o problema do idioma nos dois acervos.
+
+## Demonstração E2E ao vivo (Docker + Playwright)
+
+Para mostrar a uma turma o sistema sendo testado de ponta a ponta, o RAG
+inteiro sobe em containers, com **dois RAGs**: o dos PDFs (`pdf-v1`) e o dos
+Markdown (`md-v1`). Os dois usam o mesmo gerador e o mesmo juiz; só o acervo
+muda. Os testes Playwright rodam com o **navegador visível** nos dois, e no
+fim sai o relatório que **compara a qualidade dos dois RAGs**.
+
+```powershell
+scripts\demo_e2e.bat          # testes ao vivo nos dois RAGs + relatório comparando os dois (~1h com GPU)
+scripts\demo_e2e.bat rapido   # só os testes ao vivo, sem perguntas de referência nem relatório (~5 min)
+scripts\demo_e2e.bat ui       # o mesmo do rapido, no modo UI do Playwright (lista de testes, linha do tempo, DOM)
+scripts\demo_e2e.bat subir    # só sobe os containers, para abrir o chat de cada RAG à mão
+scripts\demo_e2e.bat parar    # derruba os containers (índices e modelos ficam nos volumes)
+```
+
+**O que o `scripts\demo_e2e.bat` roda, nesta ordem**
+([tests/demo_e2e.py](tests/demo_e2e.py)):
+
+1. Os testes da interface, uma vez.
+2. Em cada RAG, primeiro o dos PDFs e depois o dos Markdown:
+   - o fluxo do chat;
+   - as 20 **perguntas de referência** (os goldens dos PDFs e dos Markdown),
+     feitas pelo chat, com a resposta esperada num painel na página. Cada
+     resposta fica gravada com os trechos que o chat devolveu;
+   - o teste "quem responde não é quem julga", com a mesma pergunta nos dois.
+3. O RAGAS julga as respostas às perguntas de referência dos dois RAGs, com o
+   juiz do Ollama do container.
+4. O relatório consolidado abre sozinho (`tests/reports/out/<data>/relatorio.pdf`).
+   Ele traz os dois RAGs lado a lado, as notas por origem da pergunta (acervo
+   próprio × alheio, com as abstenções) e a posição do documento certo entre
+   os trechos que o chat devolveu.
+
+As respostas julgadas são as mesmas que a turma viu na tela. A parte ao vivo
+leva ~10 min; o julgamento, ~70 s por resposta com GPU (~45 min para as 40).
+Para um ensaio mais curto, `set DEMO_GOLDENS=2` faz só as 2 primeiras
+perguntas de cada acervo: no ensaio de 13/10/2026, tudo levou 16,6 min. Ao
+terminar, `cd frontend\tests && npm run demo:report` abre o relatório HTML do
+Playwright, com vídeo e trace de cada teste.
+
+| Container ([docker-compose.yml](docker-compose.yml)) | O que faz |
+|---|---|
+| `ollama` | Embeddings (`nomic-embed-text`), gerador (`gemma3:4b`) e juiz (`qwen3:8b`), com GPU via `docker-compose.gpu.yml` |
+| `models` | Baixa os modelos que faltarem e sai |
+| `ingest` | Indexa os PDFs de `data/source_pdfs` (`pdf-v1`), se o índice estiver vazio |
+| `ingest-md` | Indexa os Markdown de `data/new_papers_marks` (`md-v1`), se o índice estiver vazio |
+| `backend` | RAG dos PDFs: API em `http://localhost:8010` |
+| `backend-md` | RAG dos Markdown: API em `http://localhost:8011` |
+| `frontend` | nginx servindo o frontend em `http://localhost:5510` |
+
+Cada RAG tem o próprio volume de índice. O chat do RAG dos PDFs fica em
+`http://localhost:5510/chat.html`; o dos Markdown, em
+`http://localhost:5510/chat.html?api=http://localhost:8011`. Embaixo de cada
+resposta, o chat mostra o modelo e o índice que respondeu.
+
+**Quem responde não é quem julga.** O teste `judge-vs-generator.spec.ts`:
+
+1. Faz uma pergunta pelo chat e confere na tela que quem respondeu foi o
+   gerador.
+2. Entrega a pergunta, os trechos recuperados e a resposta a **outro modelo**,
+   o juiz, que diz se a resposta é fiel aos trechos.
+3. Mostra os dois papéis e o veredito num painel na página.
+
+Se gerador e juiz forem o mesmo modelo (*self-grading*), o teste falha. Os
+modelos da demonstração vêm de `DEMO_GENERATION_MODEL` e `DEMO_JUDGE_MODEL`
+(padrões `gemma3:4b` e `qwen3:8b`), e não do `.env`, para valerem em
+qualquer máquina. Durante a demonstração, uma faixa no canto de cada página
+mostra o teste em execução, o RAG e os dois modelos.
+
+**Requisitos:**
+
+- Docker Desktop (WSL2 no Windows).
+- GPU NVIDIA: opcional, mas sem ela gerador e juiz ficam lentos demais para
+  uma aula. O script detecta a GPU (`nvidia-smi`) e a usa.
+- Os PDFs em `data/source_pdfs` e os Markdown em `data/new_papers_marks`.
+  Os acervos não são versionados. Sem os Markdown, o RAG dos Markdown sobe
+  vazio, o script avisa e os testes dele se auto-pulam.
+- Node.js 18+. O script instala o Playwright na primeira vez.
+- Para o relatório: Python e os venvs `tests\ragas\.venv` e
+  `tests\reports\.venv` (seção "Testes"). Sem eles, o `rapido` continua
+  funcionando.
+- Espaço em disco: a imagem do Ollama tem ~9,3 GB e os três modelos, ~8,4 GB.
+
+**Primeira vez:**
+
+1. Se a máquina já tem os modelos no Ollama dela, o script copia **só os três
+   da demonstração** para um volume do Docker (~2,5 min; nada é baixado).
+2. Faz o build do backend.
+3. Indexa os PDFs e os Markdown dentro do Docker (~1 min cada).
+
+Nas vezes seguintes, sobe em segundos. Por que copiar em vez de montar a
+pasta do Windows no container: lido do volume, o `gemma3:4b` carrega em ~44 s;
+pela pasta montada, a primeira resposta levou ~1 min 50 s. Isso pesa porque
+gerador e juiz não cabem juntos em 8 GB de VRAM, e o gerador é recarregado a
+cada julgamento. Para montar a pasta mesmo assim, defina `OLLAMA_MODELS_DIR`.
+
+**Portas:**
+
+- 8010 e 5510 são as mesmas do ambiente local: feche o `start_dev.bat` antes.
+- 8011 é o RAG dos Markdown.
+- 11435 é o Ollama do container. O Ollama da máquina continua na 11434.
+
+O `scripts\run_all_tests.bat` continua igual: testa o backend da máquina, com
+um RAG só.
+
 ## Fase 2 — Arquitetura de testes
 
 Testes de API (pytest), testes E2E (Playwright/TypeScript) e avaliação de qualidade de
-resposta ([DeepEval](https://deepeval.com/docs/introduction) e [RAGAS](https://docs.ragas.io/)
-sobre os mesmos goldens, ver seção "Testes" acima, [tests/deepeval/README.md](tests/deepeval/README.md)
-e [tests/ragas/README.md](tests/ragas/README.md)) — implementados. Em aberto: ingestão de
+resposta ([DeepEval](https://deepeval.com/docs/introduction), [RAGAS](https://docs.ragas.io/)
+e JevEval sobre os mesmos goldens, ver seção "Testes" acima, [tests/deepeval/README.md](tests/deepeval/README.md),
+[tests/ragas/README.md](tests/ragas/README.md) e [tests/jeveval/README.md](tests/jeveval/README.md)) — implementados. Em aberto: ingestão de
 corpus de teste via ZIP e geração de dataset sintético assistida por LLM (o dataset atual é
 curado manualmente, ver `tests/deepeval/goldens/dataset.json`). Detalhes em `docs/ARCHITECTURE.md`.
 
@@ -523,9 +748,17 @@ scripts/start_dev_remote.bat sobe tudo gerando pelo servidor, sem LLM local
 tests/                    API, qualidade de resposta e revisão humana (Fase 2/3)
 tests/deepeval/           Qualidade de resposta com DeepEval (goldens em goldens/dataset.json)
 tests/ragas/              Qualidade de resposta com RAGAS, mesmos goldens; juiz local validado por controles
+tests/jeveval/            Qualidade de resposta com JevEval (juiz: o Jev, via API); herméticos com Jev falso no CI
 tests/reports/            Relatório consolidado das suítes de qualidade (MD, PDF, XLSX, CSV) e o histórico
 tests/run_all.py          Roda todas as suítes e gera o relatório (atalho: scripts/run_all_tests.bat)
 tests/generate_answers.py Gera as respostas do assistente uma vez, para todos os frameworks julgarem as mesmas
+tests/compare_indices.py  Compara versões do índice (pdf-v1 × md-v1) com as mesmas perguntas, gerador e juiz
+tests/retrieval_diagnostic.py  O documento certo vem entre os trechos? Pergunta em PT e em EN, por índice
+data/new_papers_marks/    Acervo Markdown do índice md-v1 (não versionado, como os PDFs)
+docker-compose.yml        Demonstração ao vivo: Ollama, os dois RAGs (PDFs e Markdown) e o frontend em containers
+docker/                   Dockerfile do backend e a cópia dos modelos para o volume do Docker
+scripts/demo_e2e.bat      Sobe a stack em Docker, roda os testes E2E nos dois RAGs e gera o relatório comparando os dois
+tests/demo_e2e.py         O que o demo_e2e.bat roda com os containers no ar: testes ao vivo, RAGAS e relatório
 tests/mutation/           Estudo de mutação para RAG (Fase 4) — operadores, oráculos, campanha e análise
 logs/                     interactions.jsonl (log estruturado, não versionado)
 docs/ARCHITECTURE.md      Decisões técnicas e racional

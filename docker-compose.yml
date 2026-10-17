@@ -1,0 +1,165 @@
+# Stack completa do RAG em containers, para a demonstração E2E ao vivo
+# (scripts\demo_e2e.bat; README, "Demonstração E2E ao vivo").
+#
+#   ollama      embeddings (nomic-embed-text), gerador (gemma3:4b) e juiz (qwen3:8b)
+#   models      baixa os três modelos que faltarem, uma vez, e sai
+#   ingest      indexa os PDFs de data/source_pdfs (índice pdf-v1), se estiver vazio
+#   ingest-md   indexa os Markdown de data/new_papers_marks (índice md-v1), se estiver vazio
+#   backend     RAG dos PDFs (pdf-v1): API em http://localhost:8010
+#   backend-md  RAG dos Markdown (md-v1): API em http://localhost:8011
+#   frontend    nginx servindo frontend/ em http://localhost:5510
+#
+# Os dois RAGs usam o mesmo Ollama, com o mesmo gerador e os mesmos
+# embeddings, e só o acervo muda. É isso que deixa a demonstração comparar a
+# qualidade dos dois. Cada um tem o próprio volume de índice, e nenhum
+# processo divide o banco do Chroma com outro.
+#
+# Uso:
+#   docker compose up -d --build                                       # CPU
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build   # GPU NVIDIA
+#   docker compose down                                                # para (volumes ficam)
+#
+# Os modelos da demonstração vêm de variáveis próprias (DEMO_*), não do
+# GENERATION_MODEL do .env: a demonstração precisa garantir que quem responde
+# (gerador) e quem julga (juiz) sejam modelos DIFERENTES, em qualquer máquina.
+# As portas 8010/5510 são as mesmas do ambiente local: pare o start_dev.bat
+# antes de subir. O Ollama do container fica na 11435 do host, para não
+# brigar com um Ollama instalado na máquina (11434).
+name: rag-test-specialist
+
+# RAG_INDEX escolhe a versão do índice (backend/app/config.py, RAG_INDICES) e,
+# com ela, a coleção e a pasta dos documentos. A pasta é relativa à raiz do
+# projeto, /app na imagem: por isso os documentos montam em /app/data/...
+x-backend-env: &backend-env
+  OLLAMA_BASE_URL: http://ollama:11434
+  GENERATION_MODEL: ${DEMO_GENERATION_MODEL:-gemma3:4b}
+  EMBEDDING_MODEL: ${DEMO_EMBEDDING_MODEL:-nomic-embed-text}
+  GENERATION_TIMEOUT_SECONDS: "300"
+  ACTIVE_PROVIDER: local
+  RAG_INDEX: pdf-v1
+  VECTOR_STORE_DIR: /data/vector_store
+  LOGS_DIR: /data/logs
+  CORS_ORIGINS: http://localhost:5510,http://127.0.0.1:5510
+
+x-backend-md-env: &backend-md-env
+  <<: *backend-env
+  RAG_INDEX: md-v1
+
+x-backend-build: &backend-build
+  context: .
+  dockerfile: docker/backend.Dockerfile
+
+x-backend-health: &backend-health
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health', timeout=8)"]
+  interval: 5s
+  timeout: 10s
+  retries: 30
+  start_period: 20s
+
+services:
+  ollama:
+    image: ollama/ollama:0.35.0
+    ports:
+      - "11435:11434"
+    environment:
+      # A pasta de modelos pode ser a do Ollama da máquina (OLLAMA_MODELS_DIR,
+      # ver README): sem prune, o container nunca apaga um blob que o Ollama do
+      # host use.
+      OLLAMA_NOPRUNE: "1"
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - ${OLLAMA_MODELS_DIR:-ollama-models}:/root/.ollama/models
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  models:
+    image: ollama/ollama:0.35.0
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: ollama:11434
+      MODELS: "${DEMO_EMBEDDING_MODEL:-nomic-embed-text} ${DEMO_GENERATION_MODEL:-gemma3:4b} ${DEMO_JUDGE_MODEL:-qwen3:8b}"
+    entrypoint: ["/bin/sh", "-c"]
+    # Só baixa o que falta: com os modelos já na pasta, sobe sem internet.
+    command:
+      - 'for m in $$MODELS; do ollama show "$$m" > /dev/null 2>&1 && echo "ok: $$m" || ollama pull "$$m" || exit 1; done'
+    restart: "no"
+
+  ingest:
+    build: *backend-build
+    image: rag-test-specialist/backend
+    working_dir: /app
+    command: ["python", "scripts/ingest_documents.py", "--if-empty"]
+    environment: *backend-env
+    volumes:
+      - ./data/source_pdfs:/app/data/source_pdfs:ro
+      - vector-store:/data/vector_store
+    depends_on:
+      models:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # Sem nenhum .md na pasta (o acervo não é versionado), o índice fica vazio:
+  # o backend-md sobe assim mesmo, e os testes do RAG md-v1 se auto-pulam.
+  ingest-md:
+    build: *backend-build
+    image: rag-test-specialist/backend
+    working_dir: /app
+    command: ["python", "scripts/ingest_documents.py", "--if-empty"]
+    environment: *backend-md-env
+    volumes:
+      - ./data/new_papers_marks:/app/data/new_papers_marks:ro
+      - vector-store-md:/data/vector_store
+    depends_on:
+      models:
+        condition: service_completed_successfully
+    restart: "no"
+
+  backend:
+    build: *backend-build
+    image: rag-test-specialist/backend
+    ports:
+      - "8010:8010"
+    environment: *backend-env
+    volumes:
+      - vector-store:/data/vector_store
+      - rag-logs:/data/logs
+    depends_on:
+      ingest:
+        condition: service_completed_successfully
+    healthcheck: *backend-health
+
+  backend-md:
+    build: *backend-build
+    image: rag-test-specialist/backend
+    ports:
+      - "8011:8010"
+    environment: *backend-md-env
+    volumes:
+      - vector-store-md:/data/vector_store
+      - rag-logs-md:/data/logs
+    depends_on:
+      ingest-md:
+        condition: service_completed_successfully
+    healthcheck: *backend-health
+
+  frontend:
+    image: nginx:1.27-alpine
+    ports:
+      - "5510:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  ollama-models:
+  vector-store:
+  vector-store-md:
+  rag-logs:
+  rag-logs-md:

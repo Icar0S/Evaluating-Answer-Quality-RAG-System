@@ -14,6 +14,10 @@ frontend/home/node_modules/
 # Dados e artefatos gerados (reprodutíveis via ingest, não versionados)
 data/source_pdfs/*
 !data/source_pdfs/.gitkeep
+# Acervo do índice md-v1 (backend/app/config.py, RAG_INDICES): texto integral de
+# artigos, fora do Git pelo mesmo motivo de licença dos PDFs.
+data/new_papers_marks/*
+!data/new_papers_marks/.gitkeep
 data/vector_store/*
 !data/vector_store/.gitkeep
 logs/*.jsonl
@@ -25,6 +29,8 @@ tests/deepeval/results/*
 .deepeval/
 tests/ragas/results/*
 !tests/ragas/results/.gitkeep
+tests/jeveval/results/*
+!tests/jeveval/results/.gitkeep
 tests/reports/out/*
 !tests/reports/out/.gitkeep
 tests/human_review/annotations/*

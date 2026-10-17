@@ -57,8 +57,8 @@ def build(
     None = relatório avulso, fora do histórico.
     """
     runs = [report_data.load_run(p) for p in paths]
-    # Ordem estável: DeepEval antes de RAGAS (slots 1 e 2 da paleta), depois por data.
-    order = {"DeepEval": 0, "RAGAS": 1}
+    # Ordem estável: DeepEval, RAGAS, JevEval (slots 1, 2 e 3 da paleta), depois por data.
+    order = {"DeepEval": 0, "RAGAS": 1, "JevEval": 2}
     runs.sort(key=lambda r: (order.get(r.framework, 9), r.generated_at or datetime.min.replace(tzinfo=timezone.utc)))
     comparisons = [report_data.compare(a, b) for a, b in itertools.combinations(runs, 2)]
 
@@ -132,7 +132,7 @@ def main() -> int:
     if not paths:
         print(
             "[ERRO] Nenhum resultado encontrado. Rode antes o run_and_export.py de alguma suíte "
-            "(tests/ragas ou tests/deepeval), ou passe --input.",
+            "(tests/ragas, tests/deepeval ou tests/jeveval), ou passe --input.",
             file=sys.stderr,
         )
         return 1

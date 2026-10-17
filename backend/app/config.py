@@ -5,11 +5,36 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Mapping
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Raiz do projeto (dois níveis acima de backend/app/)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# Versões do índice vetorial do RAG. Cada versão é um acervo (uma pasta de
+# documentos) indexado numa coleção própria do Chroma; RAG_INDEX escolhe qual
+# o assistente usa. pdf-v1 é o índice histórico (a mesma coleção de sempre).
+# Mudar o acervo, o formato ou a extração de texto de uma versão = criar uma
+# versão nova, não editar a existente: resultados de avaliação citam a versão
+# pelo nome, e o manifesto de cada ingestão (app/rag/ingestion.py) registra o
+# que entrou nela.
+# O modelo de embedding faz parte da versão: um índice só pode ser consultado
+# com o modelo que o construiu (vetores de modelos diferentes não se comparam,
+# e a busca erra sem dar erro). Por isso RAG_INDEX fixa também EMBEDDING_MODEL.
+RAG_INDICES: dict[str, dict[str, str]] = {
+    "pdf-v1": {
+        "collection": "rag_test_specialist",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "nomic-embed-text",
+        "description": "artigos em PDF; texto do PyMuPDF, chunks dentro de cada página",
+    },
+    "md-v1": {
+        "collection": "rag_md_v1",
+        "source_dir": "data/new_papers_marks",
+        "embedding_model": "nomic-embed-text",
+        "description": "artigos em Markdown; sintaxe de tabela convertida em texto, documento inteiro em chunks",
+    },
+}
 
 
 class Settings(BaseSettings):
@@ -66,6 +91,10 @@ class Settings(BaseSettings):
     vector_store_dir: str = "data/vector_store"
     vector_store_collection: str = "rag_test_specialist"
     logs_dir: str = "logs"
+    # Versão do índice (RAG_INDICES). Definida, sobrepõe VECTOR_STORE_COLLECTION,
+    # SOURCE_PDFS_DIR e EMBEDDING_MODEL com os valores da versão. Vazia =
+    # comportamento histórico.
+    rag_index: str | None = None
 
     # Geracao
     # None = nao envia `options` ao Ollama (mantem o default do modelo, que e o
@@ -117,11 +146,35 @@ class Settings(BaseSettings):
         "generation_num_ctx",
         "generation_num_predict",
         "generation_think",
+        "rag_index",
         mode="before",
     )
     @classmethod
     def _vazio_e_none(cls, value: Any) -> Any:
         return None if isinstance(value, str) and not value.strip() else value
+
+    @model_validator(mode="after")
+    def _aplica_rag_index(self) -> "Settings":
+        if self.rag_index:
+            if self.rag_index not in RAG_INDICES:
+                raise ValueError(
+                    f"RAG_INDEX desconhecido: {self.rag_index!r} (versões: {', '.join(RAG_INDICES)})"
+                )
+            spec = RAG_INDICES[self.rag_index]
+            self.vector_store_collection = spec["collection"]
+            self.source_pdfs_dir = spec["source_dir"]
+            self.embedding_model = spec["embedding_model"]
+        return self
+
+    @property
+    def index_name(self) -> str:
+        """Nome da versão do índice em uso (a coleção crua, se não for uma versão registrada)."""
+        if self.rag_index:
+            return self.rag_index
+        return next(
+            (name for name, spec in RAG_INDICES.items() if spec["collection"] == self.vector_store_collection),
+            self.vector_store_collection,
+        )
 
     @property
     def source_pdfs_path(self) -> Path:

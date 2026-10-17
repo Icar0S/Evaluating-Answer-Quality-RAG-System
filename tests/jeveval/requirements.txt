@@ -1,0 +1,26 @@
+# Camada JevEval (tests/jeveval/, ver README.md desta pasta).
+#
+# Venv PRÓPRIO (tests/jeveval/.venv), pelo mesmo motivo das outras camadas: o
+# deepeval exige pydantic mais novo que o pydantic==2.10.4 pinado em
+# backend/requirements.txt. E não o venv de tests/deepeval, que fica no 4.2.0:
+# o JevEval só existe a partir do 4.3, e trocar a versão de lá mudaria o
+# instrumento de uma camada que já tem resultados registrados.
+#
+# Esta camada não importa o backend: julga respostas já geradas
+# (tests/generate_answers.py) e lê os logs do estudo de mutação. Por isso não
+# repete as dependências do SUT (chromadb, PyMuPDF...).
+#
+#   python -m venv tests\jeveval\.venv
+#   tests\jeveval\.venv\Scripts\pip install -r tests\jeveval\requirements.txt
+
+# JevEval, Noul/Score/Choice e o TypeSafeModel (deepeval/metrics/jev_eval/).
+deepeval==4.3.1
+# Cliente da API do Jev. Só é importado na hora de chamar o Jev de verdade; os
+# testes herméticos rodam sem ele ser usado e sem chave.
+typesafe-sdk==0.7.5
+
+# o6_mutation.py lê tests/mutation/config/study.yaml (níveis, teto de geração)
+# para aplicar ao log as mesmas regras do evaluate.py. Mesmo pin de lá.
+PyYAML==6.0.2
+
+pytest==9.1.1
