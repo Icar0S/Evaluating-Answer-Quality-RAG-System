@@ -27,6 +27,30 @@ jobs:
       - name: Rodar pytest
         run: pytest
 
+  # Camada JevEval (tests/jeveval/): so os testes hermeticos, com o Jev falso de
+  # _fake_jev.py. Validam as perguntas, os pesos, a agregacao, o N/A e o formato
+  # do export, sem rede e sem chave da TypeSafe. Os testes que chamam o Jev de
+  # verdade sao marcados `live` e ficam de fora pelo -m.
+  jeveval:
+    name: JevEval hermetico (pytest, Jev falso)
+    runs-on: ubuntu-latest
+    env:
+      DEEPEVAL_TELEMETRY_OPT_OUT: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tests/jeveval/requirements.txt
+
+      - name: Instalar dependencias
+        run: pip install -r tests/jeveval/requirements.txt
+
+      - name: Rodar pytest (sem rede, sem chave)
+        run: pytest tests/jeveval -m "not live" -p no:cacheprovider
+
   # frontend/index.html e frontend/home-assets/ sao gerados por frontend/home/ e
   # versionados de proposito (o projeto roda sem etapa de build). O risco disso e
   # o artefato sair de sincronia com a fonte sem ninguem perceber; este job
