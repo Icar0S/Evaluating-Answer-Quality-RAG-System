@@ -1,8 +1,8 @@
 # Benchmark de estratégias de RAG — estado da implementação
 
 **Plano:** [plano-benchmark.md](../plano-benchmark.md) · **Branch:** `feat/indices-v2`
-(um commit por etapa) · **Última atualização:** 18/10/2026 (runner e cartões prontos; E1 construído; E0
-completo rodando)
+(um commit por etapa) · **Última atualização:** 18/10/2026 (E0 concluído; E1, E6 e E2 construídos; E6 e E2
+rodando a seleção)
 
 Este documento registra o que já foi construído do plano, etapa por etapa: o que
 mudou, onde, como usar, os testes que rodaram no fim de cada etapa e as decisões
@@ -28,7 +28,7 @@ tomadas no caminho.
 | **A6** | C2/C4 no `generate_answers.py`: proveniência do braço, custo por resposta, ordem embaralhada com semente, abstenção | **concluída** |
 | **A7** | Goldens v2: núcleo de ≥ 60 perguntas em ≥ 20 PDFs e ≥ 30 de fora, como `rascunho` para a revisão humana | **concluída** (falta a revisão humana) |
 | **B0** | Runner de experimentos e cartões em YAML | **concluída** (formato provisório até a §9) |
-| B1 | E0 — rodada A/A | fumaça ok; rodada completa em andamento (~3 h) |
+| **B1** | E0 — rodada A/A | **concluída** (margem de ruído em `tests/benchmark/out/E0_20261018T082340/margem.json`) |
 | **B2** | E1 — idioma (`pdf-v1-bgem3`, tradução da pergunta) | **construído** (versão, tradução gravada, cartão); a rodada vem depois do E0, que dá a margem |
 | **B3** | E6 — parâmetros de recuperação (C1) | **construído** (versões, limiar recalibrado, curva, cartão); a varredura roda depois do E0 |
 | **B4** | E5 — concentração das fontes: análise e primeira leitura no baseline | **análise pronta** (faltam o cruzamento com a C2 e o `pdf-v1-noref` do H5b) |
@@ -41,14 +41,14 @@ tomadas no caminho.
 Rodados no fim de cada etapa. Nenhum precisa de Ollama, GPU ou rede.
 
 ```
-tests/api       (pytest, backend/.venv)                     VERDE — 55 testes (35 antes do benchmark)
-tests/benchmark (pytest, backend/.venv; entra no CI)        VERDE — 47 testes
+tests/api       (pytest, backend/.venv)                     VERDE — 64 testes (35 antes do benchmark)
+tests/benchmark (pytest, backend/.venv; entra no CI)        VERDE — 57 testes
 tests/reports   (pytest, tests/reports/.venv)               VERDE — 44 testes
 tests/jeveval   (pytest -m "not live", tests/jeveval/.venv) VERDE — 63 testes
 goldens v2      (validar --indice pdf-v1 --evidencia)       VERDE — 103 goldens, 0 erro, 0 aviso
 ```
 
-O `pytest` da raiz (o do CI) roda `tests/api` e `tests/benchmark` juntos: 102
+O `pytest` da raiz (o do CI) roda `tests/api` e `tests/benchmark` juntos: 121
 testes.
 
 ---
@@ -664,6 +664,94 @@ braços). Os 10 passos passaram, em ~9 min.
 - A c01, em português, recuperou só os artigos em português, e o modelo se
   absteve: a abstenção indevida de A1 é 1 em 3.
 
+### B1 — E0: a rodada A/A (18/10)
+
+Rodada completa em `tests/benchmark/out/E0_20261018T082340/`, com os 103 goldens
+v2 (70 de dentro do `pdf-v1`, 30 de fora, 3 ambíguas), em 3 h. O RAGAS levou de
+40 a 42 min por julgamento de 70 casos.
+
+**A margem de ruído.** É o P95 de |Δ| por bootstrap de documentos, e os
+vereditos dos outros experimentos a usam.
+
+| Métrica | Gerador + juiz (A1 × A2 × A3) | Só o juiz (A1 × A4) | C1 (A1 × A5) |
+|---|---|---|---|
+| fidelidade | 0,068 | 0,054 | — |
+| recall de contexto | 0,046 | 0,046 | — |
+| relevância da resposta | 0,006 | 0,006 | — |
+| precisão e relevância de contexto | 0 | 0 | — |
+| abstenção indevida e correta | 0 | — | — |
+| evidência@4, Hit@4, MRR@10 | — | — | 0,042 |
+| precisão@4 | — | — | 0,010 |
+| latência da geração | 338 ms | — | — |
+| latência da busca | 57 ms | — | 7 ms |
+
+**De onde vem o ruído:**
+
+- **Gerador: quase nada.** Com temperatura 0 e semente 42, A1 e A3 deram as
+  mesmas 103 respostas, letra por letra. A2, com outra ordem das perguntas,
+  mudou 2. É o cache de prefixo do Ollama.
+- **Juiz: quase tudo.** As mesmas 70 respostas, julgadas de novo, mudam de
+  fidelidade em 7 a 9 casos, muitas vezes de 0 para 1. O juiz já roda com
+  temperatura 0 e sem raciocínio; a variação vem do próprio Ollama, com as
+  chamadas em paralelo e o cache.
+- **C1: uma pergunta.** A c28 mudou entre A1 e A5 por causa do HNSW (o achado
+  da seção 2). A margem de 0,042, que dá ~3 perguntas em 70, sai dela: no
+  bootstrap, o documento da c28 entra 0, 1, 2 ou 3 vezes.
+
+**A lição do cartão, medida.** A1 e A2 são a mesma configuração. A fidelidade
+de A2 saiu 0,030 abaixo, com IC [−0,068; −0,005], que não contém o zero. Só
+pelo IC, seria uma piora "significativa". A regra do veredito põe a margem
+antes: 0,030 ≤ 0,068, sem diferença relevante.
+
+**O baseline** (A1: `pdf-v1`, perguntas em português, `gemma3:4b`):
+
+| | |
+|---|---|
+| evidência@4 (C1) | 0,11 (8 de 70) |
+| abstenção indevida | 0,56 (39 das 70 perguntas de dentro recebem "não encontrei") |
+| abstenção correta | 0,83 (25 de 30 de fora) |
+| fidelidade · relevância da resposta | 0,73 · 0,35 |
+| precisão · recall · relevância de contexto | 0,28 · 0,39 · 0,55 |
+| aprovadas em todas as dimensões (limiar 0,7) | 7 de 70 |
+| latência da busca · da geração | 361 ms · 2,36 s |
+| tokens no prompt (média) | 2.687, sem truncagem |
+
+A abstenção indevida é o ímã de idioma visto do outro lado: o trecho certo não
+chega (evidência@4 de 0,11), e o gerador obedece à regra de não inventar.
+
+**A recusa, revisada à mão** (o plano manda fazer nos casos do E0). Nas 103
+respostas do A1, duas recusas passavam como resposta: "Com base nos documentos
+fornecidos, não encontrei essa informação." (a frase sem o fim) e "O trecho
+fornecido não contém informações sobre ...". As duas entraram em `VARIANTS`
+(`tests/benchmark/abstention.py`). A resposta parcial ("o documento não
+especifica o número exato", depois de responder o resto) continua resposta. O
+placar agora recalcula a recusa pelo texto da resposta, e não pelo `abstained`
+gravado. Assim, uma variante nova vale também para as rodadas antigas. O
+relatório (`tests/reports/report_data.py`) passou a usar o mesmo detector.
+Com ele, a diferença de abstenção entre A1 e A2 sumiu: a resposta que mudou
+era uma dessas recusas.
+
+**Uma falha do juiz:** no A1, a precisão de contexto da c10 não foi medida
+(HTTP 500 do Ollama). Por isso o n é 69 nos pares dessa métrica.
+
+**O cruzamento concentração × qualidade (E5), no A1.**
+
+| Documento (os quatro em português) | Participação | Excesso de ímã | Respostas que o usam | Reprovadas |
+|---|---|---|---|---|
+| Teste de Mutação em System Prompts | 45% | +41 | 55 | 93% |
+| Utilizando a IA Generativa | 18% | +35 | 38 | 100% |
+| EEVEE | 13% | +21 | 26 | 96% |
+| RAG Corporativo com HyDE | 10% | +14 | 17 | 94% |
+
+66 das 70 respostas se apoiam só no top 20% dos documentos. Contra as outras 4:
+
+- fidelidade 0,72 × 0,94, Δ −0,22 [−0,37; −0,05];
+- relevância de contexto 0,53 × 0,88, Δ −0,34 [−0,57; −0,04];
+- aprovação 9% × 25%, com IC largo (só 4 respostas do outro lado).
+
+O 80/20 do português não é só descritivo: as respostas apoiadas nos ímãs são
+piores.
+
 ### B2 — E1: o que o experimento precisava (18/10)
 
 O plano (§8, E1) pede três construções, e as três estão prontas. A rodada vem
@@ -846,7 +934,7 @@ atribuição errada precisa de citação e fica para o E3.
 
 **O que falta no E5:**
 
-- rodar o cruzamento na C2 do E0;
+- ~~rodar o cruzamento na C2 do E0~~: feito, na seção do B1;
 - o `pdf-v1-noref` do H5b;
 - a demanda real das aulas. Para começar a coletar, basta um `LOGS_DIR` por
   aula no backend local (§8, E5).

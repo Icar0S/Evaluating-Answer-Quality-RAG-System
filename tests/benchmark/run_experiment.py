@@ -53,7 +53,8 @@ sys.path.insert(0, str(ROOT / "backend"))
 import run_all as ra  # noqa: E402
 
 from app.config import RAG_INDICES  # noqa: E402
-from tests.benchmark import c1, limiar, placar  # noqa: E402
+from app.rag.generation import NOT_FOUND_MARKER  # noqa: E402
+from tests.benchmark import abstention, c1, limiar, placar  # noqa: E402
 
 OUT_ROOT = ROOT / "tests" / "benchmark" / "out"
 RAGAS_RESULTS = ROOT / "tests" / "ragas" / "results"
@@ -432,6 +433,14 @@ def translation_milliseconds(arm: dict, questions: dict[str, str]) -> dict[str, 
     return {name: timings[text] for name, text in questions.items() if text in timings}
 
 
+def refused(answer: dict) -> bool:
+    """A recusa com o detector de hoje (tests/benchmark/abstention.py), não o `abstained` gravado na rodada:
+    uma variante revisada depois vale também para as rodadas antigas."""
+    if answer.get("actual_output") is None:
+        return bool(answer.get("abstained"))
+    return abstention.is_abstention(answer["actual_output"], NOT_FOUND_MARKER)
+
+
 def arm_measures(out: Path, arm: dict, arms: dict[str, dict], questions: dict[str, str] | None = None,
                  classes: dict[str, str | None] | None = None) -> dict:
     """Por pergunta, tudo o que o placar compara: C1 (na língua do braço), RAGAS, recusa e custo.
@@ -486,9 +495,8 @@ def arm_measures(out: Path, arm: dict, arms: dict[str, dict], questions: dict[st
         for name, a in inside.items():
             measures["clusters"][name] = c1.doc_stem(a["source_document"])
         measures["abstention"] = {
-            "correct_abstention": {n: float(a["abstained"]) for n, a in outside.items()
-                                   if "abstained" in a and classes.get(n) != "ambiguo"},
-            "undue_abstention": {n: float(a["abstained"]) for n, a in inside.items() if "abstained" in a},
+            "correct_abstention": {n: float(refused(a)) for n, a in outside.items() if classes.get(n) != "ambiguo"},
+            "undue_abstention": {n: float(refused(a)) for n, a in inside.items()},
         }
         for metric in ("retrieval_ms", "generation_ms", "prompt_tokens", "completion_tokens"):
             values = {n: float(a[metric]) for n, a in {**inside, **outside}.items() if a.get(metric) is not None}

@@ -16,6 +16,7 @@ máquina que tenha os JSONs.
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import re
 import statistics
@@ -113,6 +114,19 @@ def _read_not_found_marker() -> str | None:
 NOT_FOUND_MARKER = _read_not_found_marker()
 
 
+def _load_abstention():
+    """O detector de recusa do benchmark (tests/benchmark/abstention.py: sem acento, caixa e pontuação, e as
+    variantes revisadas no E0). Carregado pelo caminho do arquivo, sem mexer no sys.path: é só biblioteca padrão."""
+    path = PROJECT_ROOT / "tests" / "benchmark" / "abstention.py"
+    spec = importlib.util.spec_from_file_location("benchmark_abstention", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_abstention = _load_abstention()
+
+
 def _read_index_origins() -> dict[str, tuple[str, ...]]:
     """De quais acervos de perguntas cada versão do índice contém os artigos, lido da fonte.
 
@@ -171,8 +185,8 @@ class Case:
 
     @property
     def abstained(self) -> bool:
-        """O SUT respondeu com a frase de abstenção ("não encontrei...")."""
-        return bool(NOT_FOUND_MARKER) and NOT_FOUND_MARKER.lower() in self.answer.lower()
+        """O SUT respondeu com a frase de abstenção ("não encontrei..."), escrita de qualquer jeito."""
+        return bool(NOT_FOUND_MARKER) and _abstention.is_abstention(self.answer, NOT_FOUND_MARKER)
 
     @property
     def all_passed(self) -> bool:

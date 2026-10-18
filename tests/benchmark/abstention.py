@@ -10,8 +10,15 @@ from __future__ import annotations
 import re
 import unicodedata
 
-# Variantes revisadas à mão. Vazia até o E0: entra aqui só frase de recusa vista nas respostas de verdade.
-VARIANTS: tuple[str, ...] = ()
+# Variantes revisadas à mão: entra aqui só frase de recusa vista nas respostas de verdade. Revisão de 18/10/2026,
+# nas 103 respostas do A1 do E0 (gemma3:4b): duas recusas passavam como resposta, "Com base nos documentos
+# fornecidos, não encontrei essa informação." (a frase sem o fim) e "O trecho fornecido não contém informações
+# sobre ...". As respostas parciais ("o documento não especifica o número exato", depois de responder o resto)
+# continuam respostas.
+VARIANTS: tuple[str, ...] = (
+    "não encontrei essa informação",
+    "o trecho fornecido não contém informações",
+)
 _NON_WORD = re.compile(r"[^0-9a-z]+")
 
 

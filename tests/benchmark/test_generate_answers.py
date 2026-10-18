@@ -40,6 +40,16 @@ def test_recusa_sem_acento_caixa_ou_pontuacao_ainda_e_recusa():
     assert abstention.is_abstention("O contexto não traz esse dado.", MARKER, variants=("o contexto nao traz",))
 
 
+def test_variantes_revisadas_no_e0_sao_recusa_e_a_resposta_parcial_nao():
+    # As duas recusas que passavam como resposta no A1 do E0, e uma resposta parcial que continua resposta.
+    assert abstention.is_abstention("Com base nos documentos fornecidos, não encontrei essa informação. O Trecho 2 "
+                                    "discute a estratégia de chunking.", MARKER)
+    assert abstention.is_abstention("O trecho fornecido não contém informações sobre a taxa de sucesso. Ele "
+                                    "descreve um estudo de caso.", MARKER)
+    assert not abstention.is_abstention("O GPT-4 gerou múltiplos testes. No entanto, o documento não especifica o "
+                                        "número exato de testes gerados.", MARKER)
+
+
 def test_resposta_grava_custo_documentos_e_recusa(generate):
     record = generate.answer_record("v2", GOLDEN, GOLDEN["input"], 4)
 
