@@ -31,6 +31,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # "origins": de quais acervos de perguntas de referência (tests/deepeval/goldens:
 # "pdf" = dataset.json, "md" = dataset_md.json) a versão contém os artigos. Uma
 # pergunta de origem que a versão não contém mede se o RAG se abstém.
+#
+# Versão derivada (os mesmos documentos de outra versão e uma mudança só, como
+# nos braços do plano-benchmark.md): a lista sai de `--register --like <base>`,
+# e não da pasta, que pode ter documentos de outras versões. As chaves de
+# INDEX_SETTINGS_KEYS são opcionais: presentes, fixam o parâmetro de chunking da
+# versão por cima do .env, como o modelo de embedding.
+INDEX_SETTINGS_KEYS = ("chunk_size_tokens", "chunk_overlap_tokens")
+
 RAG_INDICES: dict[str, dict[str, Any]] = {
     "pdf-v1": {
         "collection": "rag_test_specialist",
@@ -193,6 +201,9 @@ class Settings(BaseSettings):
             self.vector_store_collection = spec["collection"]
             self.source_pdfs_dir = spec["source_dir"]
             self.embedding_model = spec["embedding_model"]
+            for key in INDEX_SETTINGS_KEYS:
+                if key in spec:
+                    setattr(self, key, spec[key])
         return self
 
     @property

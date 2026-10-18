@@ -5,15 +5,18 @@ Uso:
     python scripts/ingest_documents.py --index md-v1        # os Markdown originais de data/new_papers_marks
     python scripts/ingest_documents.py --list               # versões registradas e o estado de cada uma
     python scripts/ingest_documents.py --index md-v3 --register   # fixa a lista de documentos de uma versão nova
+    python scripts/ingest_documents.py --index pdf-v1-bgem3 --register --like pdf-v1   # versão derivada
     python scripts/ingest_documents.py --source data/source_pdfs --no-reset
 
 Cada versão do índice (backend/app/config.py, RAG_INDICES) tem coleção
 própria; ingerir uma não toca nas outras. Versões podem ler a mesma pasta
 (pdf-v1 e pdf-v2 leem data/source_pdfs): o que entra em cada uma é a lista de
 documentos dela, em backend/app/rag/index_versions/<versão>.sha256. O
---register grava essa lista com o que está na pasta agora, uma vez só. Ao
-terminar, a ingestão grava o manifesto da versão (arquivos com hash,
-parâmetros, modelo de embedding, e o que a lista pedia e não estava na pasta).
+--register grava essa lista com o que está na pasta agora, uma vez só; com
+--like <base>, copia a lista da versão-base (versão derivada: os mesmos
+documentos e uma mudança só). Ao terminar, a ingestão grava o manifesto da
+versão (arquivos com hash, parâmetros, modelo de embedding, e o que a lista
+pedia e não estava na pasta).
 """
 
 from __future__ import annotations
@@ -47,6 +50,16 @@ def _list_indices() -> None:
               f"({spec['description']})")
 
 
+def _register(settings, like: str | None) -> None:
+    from app.rag.ingestion import register_documents
+
+    try:
+        path = register_documents(settings.rag_index, settings.source_pdfs_path, like=like)
+    except (FileExistsError, FileNotFoundError, ValueError) as exc:
+        sys.exit(f"[ERRO] {exc}")
+    print(f"Lista de documentos de {settings.rag_index}: {path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ingere os documentos de um índice do RAG.")
     parser.add_argument("--index", default=None, help="versão do índice (ver --list); padrão: RAG_INDEX ou pdf-v1")
@@ -63,7 +76,15 @@ def main() -> None:
         action="store_true",
         help="grava a lista de documentos da versão (--index) com o que está na pasta agora, sem ingerir",
     )
+    parser.add_argument(
+        "--like",
+        default=None,
+        metavar="BASE",
+        help="com --register: copia a lista da versão BASE em vez de pegar a pasta inteira (versão derivada)",
+    )
     args = parser.parse_args()
+    if args.like and not args.register:
+        parser.error("--like só vale com --register")
 
     if args.index:
         # Antes de importar o app: a configuração é lida (e cacheada) no import.
@@ -73,18 +94,14 @@ def main() -> None:
         return
 
     from app.config import get_settings
-    from app.rag.ingestion import ingest_documents, register_documents
+    from app.rag.ingestion import ingest_documents
     from app.rag.vector_store import collection_count
 
     settings = get_settings()
     if args.register:
         if not settings.rag_index:
             parser.error("--register precisa de --index (a versão registrada em backend/app/config.py)")
-        try:
-            path = register_documents(settings.rag_index, settings.source_pdfs_path)
-        except (FileExistsError, FileNotFoundError) as exc:
-            sys.exit(f"[ERRO] {exc}")
-        print(f"Lista de documentos de {settings.rag_index}: {path}")
+        _register(settings, args.like)
         return
     print(f"Índice: {settings.index_name} (coleção {settings.vector_store_collection}, pasta {settings.source_pdfs_dir})")
     if args.if_empty:

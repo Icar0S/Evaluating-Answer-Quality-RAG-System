@@ -135,6 +135,75 @@ def test_pasta_explicita_ignora_a_lista_da_versao(test_version: Path, monkeypatc
     assert result["registered_documents"] is None
 
 
+def test_toda_versao_registrada_tem_os_campos_que_o_backend_le():
+    # /health lê "origins" sem valor padrão (Settings.index_origins): versão sem o campo derruba a rota.
+    required = {"collection", "source_dir", "embedding_model", "origins", "description"}
+    collections = [spec["collection"] for spec in RAG_INDICES.values()]
+    assert len(collections) == len(set(collections)), "duas versões na mesma coleção se sobrescrevem"
+    defaults = {key: Settings.model_fields[key].default for key in ("chunk_size_tokens", "chunk_overlap_tokens")}
+    for name, spec in RAG_INDICES.items():
+        assert required <= spec.keys(), f"{name}: falta {required - spec.keys()}"
+        assert spec["origins"] and set(spec["origins"]) <= {"pdf", "md"}, name
+        size = spec.get("chunk_size_tokens", defaults["chunk_size_tokens"])
+        overlap = spec.get("chunk_overlap_tokens", defaults["chunk_overlap_tokens"])
+        assert 0 <= overlap < size, f"{name}: sobreposição {overlap} >= chunk {size} seria trocada sem aviso"
+
+
+def test_versao_pode_fixar_os_parametros_de_chunking(monkeypatch):
+    monkeypatch.setitem(
+        RAG_INDICES,
+        "teste-k400",
+        {**RAG_INDICES["pdf-v1"], "collection": "teste_k400", "chunk_size_tokens": 400, "chunk_overlap_tokens": 0},
+    )
+    monkeypatch.setenv("CHUNK_SIZE_TOKENS", "1200")
+
+    settings = Settings(_env_file=None, rag_index="teste-k400")
+    assert (settings.chunk_size_tokens, settings.chunk_overlap_tokens) == (400, 0)
+    # Versão sem as chaves segue a configuração, como antes.
+    assert Settings(_env_file=None, rag_index="pdf-v1").chunk_size_tokens == 1200
+
+
+def test_register_like_copia_a_lista_da_base_e_nao_a_pasta(test_version: Path):
+    for name in ("b.md", "a.md"):
+        (test_version / name).write_text(name, encoding="utf-8")
+    ingestion.register_documents("teste-v1", test_version)
+    (test_version / "de_outra_versao.md").write_text("outro acervo", encoding="utf-8")
+
+    path = ingestion.register_documents("teste-v1-x", test_version, like="teste-v1")
+
+    base = ingestion.registered_documents("teste-v1")
+    assert list(ingestion.registered_documents("teste-v1-x").items()) == list(base.items())
+    assert "--like teste-v1" in path.read_text(encoding="utf-8").splitlines()[0]
+
+
+def test_register_like_recusa_pasta_sem_os_documentos_da_base(test_version: Path):
+    for name in ("a.md", "b.md"):
+        (test_version / name).write_text(name, encoding="utf-8")
+    ingestion.register_documents("teste-v1", test_version)
+    (test_version / "a.md").unlink()
+    (test_version / "b.md").write_text("b mudou", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"a\.md: não está.*b\.md: mudou"):
+        ingestion.register_documents("teste-v1-x", test_version, like="teste-v1")
+    assert ingestion.registered_documents("teste-v1-x") is None
+    with pytest.raises(FileNotFoundError):
+        ingestion.register_documents("teste-v1-y", test_version, like="sem-lista")
+
+
+def test_manifesto_grava_a_sobreposicao_pedida_e_a_efetiva(tmp_path: Path, monkeypatch, ollama):
+    docs = tmp_path / "acervo"
+    docs.mkdir()
+    (docs / "a.md").write_text("conteudo " * 900, encoding="utf-8")
+    monkeypatch.setenv("CHUNK_SIZE_TOKENS", "100")
+    monkeypatch.setenv("CHUNK_OVERLAP_TOKENS", "150")
+    get_settings.cache_clear()
+    monkeypatch.setattr(vector_store, "add_chunks", lambda **kwargs: None)
+
+    manifest = json.loads(Path(ingestion.ingest_documents(source_dir=docs)["manifest"]).read_text(encoding="utf-8"))
+
+    assert (manifest["chunk_overlap_tokens"], manifest["chunk_overlap_tokens_effective"]) == (150, 25)
+
+
 def test_sintaxe_de_tabela_vira_texto_e_o_resto_fica_intacto():
     markdown = "| A Software |  | Engineering |\n| --- | --- | --- |\n|  | Models: |  |\nTexto com |pipe| no meio."
 

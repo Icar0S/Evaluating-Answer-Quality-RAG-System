@@ -532,6 +532,19 @@ modelo de embedding e `origins`, os acervos de perguntas de referência cujos
 artigos ela contém) e depois o `--register`, que grava a lista com o que está
 na pasta, uma vez só.
 
+Uma **versão derivada** tem os mesmos documentos de outra e uma mudança só (o
+modelo de embedding, o tamanho do chunk...), como os braços do
+[plano-benchmark.md](plano-benchmark.md). A lista dela sai de
+`--register --like <base>`, que copia a da versão-base. O `--register` sozinho
+pegaria a pasta inteira, e as pastas hoje têm 61 artigos: um `pdf-v1-bgem3`
+registrado assim compararia também 39 contra 61 artigos. A entrada pode fixar
+`chunk_size_tokens` e `chunk_overlap_tokens`, que valem por cima do `.env`,
+como o modelo de embedding.
+
+```powershell
+backend\.venv\Scripts\python scripts\ingest_documents.py --index pdf-v1-bgem3 --register --like pdf-v1
+```
+
 Para conversar com o assistente usando outra versão, defina `RAG_INDEX=md-v1`
 no `.env` e reinicie o backend.
 

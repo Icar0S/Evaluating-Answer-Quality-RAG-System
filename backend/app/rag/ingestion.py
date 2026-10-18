@@ -80,6 +80,13 @@ def extract_pdf_pages(pdf_path: Path) -> list[tuple[int, str]]:
     return pages
 
 
+def effective_overlap(chunk_size_tokens: int, overlap_tokens: int) -> int:
+    """Sobreposição que o chunker usa de fato: uma sobreposição >= ao chunk vira chunk // 4."""
+    if overlap_tokens >= chunk_size_tokens:
+        return max(chunk_size_tokens // 4, 0)
+    return overlap_tokens
+
+
 def chunk_text(
     text: str,
     chunk_size_tokens: int,
@@ -96,8 +103,7 @@ def chunk_text(
     tokens = _encoding.encode(text)
     if not tokens:
         return []
-    if overlap_tokens >= chunk_size_tokens:
-        overlap_tokens = max(chunk_size_tokens // 4, 0)
+    overlap_tokens = effective_overlap(chunk_size_tokens, overlap_tokens)
 
     offset = boundary_offset_tokens % chunk_size_tokens if chunk_size_tokens > 0 else 0
 
@@ -196,25 +202,50 @@ def registered_documents(index: str) -> dict[str, str] | None:
     return documents
 
 
-def register_documents(index: str, source_dir: Path) -> Path:
-    """Grava a lista de documentos da versão com o que está na pasta agora.
+def register_documents(index: str, source_dir: Path, like: str | None = None) -> Path:
+    """Grava a lista de documentos da versão com o que está na pasta agora ou, com `like`, a lista de outra versão.
+
+    `like` é para a versão derivada: os mesmos documentos da versão-base e uma mudança só (modelo de embedding,
+    chunker, cabeçalho...). Sem ele, a lista pegaria a pasta inteira, que pode ter documentos de outras versões
+    (data/source_pdfs tem os 61 do pdf-v2), e comparar a derivada com a base mediria também a troca de acervo.
+    Os arquivos da base precisam estar na pasta com o mesmo conteúdo.
 
     Uma vez só: versão registrada não muda, e mudar o acervo é registrar uma versão nova.
     """
     path = INDEX_VERSIONS_DIR / f"{index}.sha256"
     if path.exists():
         raise FileExistsError(f"{path} já existe: versão registrada não muda (registre uma versão nova)")
-    files = sorted(
-        (p for p in source_dir.iterdir() if p.suffix.lower() in SUPPORTED_SUFFIXES), key=lambda p: p.name.lower()
-    )
-    if not files:
-        raise FileNotFoundError(f"nenhum documento em {source_dir}")
-    header = (
-        f"# {index}: {len(files)} documento(s) de {source_dir.name}, registrados em "
-        f"{datetime.now(timezone.utc).date().isoformat()} (scripts/ingest_documents.py --register)"
-    )
+    today = datetime.now(timezone.utc).date().isoformat()
+    if like is not None:
+        base = registered_documents(like)
+        if base is None:
+            raise FileNotFoundError(f"{like} não tem lista de documentos em {INDEX_VERSIONS_DIR}")
+        problems = []
+        for name, digest in base.items():
+            if not (source_dir / name).is_file():
+                problems.append(f"{name}: não está em {source_dir}")
+            elif _sha256(source_dir / name) != digest:
+                problems.append(f"{name}: mudou desde o registro de {like}")
+        if problems:
+            raise ValueError(f"a pasta não tem os documentos de {like}: " + "; ".join(problems))
+        header = (
+            f"# {index}: os {len(base)} documento(s) de {like}, em {source_dir.name}, registrados em {today} "
+            f"(scripts/ingest_documents.py --register --like {like})"
+        )
+        entries = list(base.items())
+    else:
+        files = sorted(
+            (p for p in source_dir.iterdir() if p.suffix.lower() in SUPPORTED_SUFFIXES), key=lambda p: p.name.lower()
+        )
+        if not files:
+            raise FileNotFoundError(f"nenhum documento em {source_dir}")
+        header = (
+            f"# {index}: {len(files)} documento(s) de {source_dir.name}, registrados em {today} "
+            "(scripts/ingest_documents.py --register)"
+        )
+        entries = [(p.name, _sha256(p)) for p in files]
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [header] + [f"{_sha256(p)}  {p.name}" for p in files]
+    lines = [header] + [f"{digest}  {name}" for name, digest in entries]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     return path
 
@@ -259,6 +290,8 @@ def write_manifest(
         "embedding_model": settings.embedding_model,
         "chunk_size_tokens": settings.chunk_size_tokens,
         "chunk_overlap_tokens": settings.chunk_overlap_tokens,
+        # O pedido acima e o que o chunker usou (sobreposição >= chunk vira chunk // 4, sem aviso).
+        "chunk_overlap_tokens_effective": effective_overlap(settings.chunk_size_tokens, settings.chunk_overlap_tokens),
         "chunk_boundary_offset_tokens": settings.chunk_boundary_offset_tokens,
         "md_normalization": MD_NORMALIZATION if any(d["format"] == "md" for d in documents) else None,
         "n_documents": len(documents),
