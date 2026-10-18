@@ -70,8 +70,13 @@ vêm de índices diferentes:
   diferentes, que são o objeto da comparação, e continuam avisando de juiz,
   gerador ou limiar diferentes;
 - a seção **Por origem da pergunta** separa as notas pelo acervo de onde a
-  pergunta veio, e conta as abstenções (no acervo alheio, se abster é o
-  comportamento certo);
+  pergunta veio, conta as abstenções e diz, na coluna "No índice", se o
+  índice da rodada tem os artigos daquela origem. Fora do índice, se abster é
+  o comportamento certo; dentro, é resposta perdida. A informação vem de
+  `RAG_INDICES` (campo `origins`, em `backend/app/config.py`), lida da fonte
+  sem importar o backend: o `pdf-v1` e o `md-v1` têm um acervo cada, e as
+  versões v2 têm os dois. O `notas.csv` e a aba "Notas" trazem a mesma
+  coluna, depois de "Abstenção";
 - a seção **Recuperação do documento certo** mostra, por golden, a posição do
   documento-fonte entre os trechos, com a pergunta em português e em inglês.
 

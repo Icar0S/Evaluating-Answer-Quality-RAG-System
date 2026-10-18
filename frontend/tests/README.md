@@ -84,6 +84,11 @@ backends do `docker-compose.yml`), em três projetos do Playwright:
 | `RAG pdf-v1 (PDFs)` | `chat-flow`, `goldens`, `judge-vs-generator` | `http://localhost:8010` |
 | `RAG md-v1 (Markdown)` | os mesmos três | `http://localhost:8011` |
 
+Com `DEMO_PDF_INDEX=pdf-v2` e `DEMO_MD_INDEX=md-v2`, os projetos viram
+`RAG pdf-v2 (PDFs)` e `RAG md-v2 (Markdown)`. Em `goldens.spec.ts`, o painel
+diz se o certo é responder ou se abster a partir do `/health` do backend
+(`rag_index_origins`, os acervos cujos artigos o índice contém).
+
 Num projeto de RAG, antes de cada teste, `e2e/fixtures.ts`:
 
 - pula o teste se o backend daquele RAG estiver fora do ar ou com o índice
@@ -103,6 +108,7 @@ mouse e não muda o layout, então não interfere nos testes.
 | `RAG_JUDGE_MODEL` | Modelo juiz | `qwen3:8b` |
 | `RAG_JUDGE_OLLAMA_URL` | Ollama do juiz | `http://localhost:11434` |
 | `DEMO_PDF_API_URL` / `DEMO_MD_API_URL` | API de cada RAG | `http://localhost:8010` / `8011` |
+| `DEMO_PDF_INDEX` / `DEMO_MD_INDEX` | Versão do índice que cada RAG deve servir (conferida no `/health`) | `pdf-v1` / `md-v1` |
 | `DEMO_ANSWERS_DIR` | Onde `goldens.spec.ts` grava as respostas; sem ela, o spec fica de fora | — |
 | `DEMO_GOLDENS` | Só as N primeiras perguntas de referência de cada acervo | todas |
 

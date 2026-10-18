@@ -506,9 +506,50 @@ mutação depende disso.
   sinal mais firme é o diagnóstico de recuperação, que não usa juiz. As notas
   de contexto pedem um juiz mais estrito.
 
-Próximas versões naturais: uma `md-v2` reconvertida dos mesmos PDFs por uma
-ferramenta melhor, e versões com embedding multilíngue (por exemplo,
-`bge-m3`) para atacar o idioma.
+### Versões v2: os mesmos artigos nos dois formatos (out/2026)
+
+O `data/sync_corpora.py` deixou as duas pastas com os mesmos 61 artigos: os 39
+PDFs viraram Markdown (pymupdf4llm, com o pymupdf-layout) e os 22 Markdown
+viraram PDF (fpdf2). O `pdf-v2` e o `md-v2` indexam esses 61, um formato cada.
+Comparar os dois é comparar formatos, que é o que o par v1 não permitia.
+Decisões:
+
+**Cada versão fixa a lista dos seus documentos.** As versões v1 e v2 leem a
+mesma pasta, então a pasta deixou de definir a versão. Cada uma tem a lista
+dos seus arquivos com o SHA-256 em `backend/app/rag/index_versions/`, e a
+ingestão da pasta da versão só pega o que está na lista. As listas do v1 saíram
+dos manifestos da ingestão de 13/10 e reproduzem os 39 e os 22 originais, na
+mesma ordem. Sem elas, uma reingestão do `pdf-v1` (o caminho padrão, sem
+`RAG_INDEX`) teria pegado os 61 PDFs em silêncio. Arquivo que sumiu ou mudou
+vira aviso e campo do manifesto, sem bloquear a ingestão. As listas ficam
+dentro do pacote do backend porque a imagem do Docker só copia `backend/app`.
+Ingestão com pasta explícita (`--source`, ou o estudo de mutação, com coleção
+e pasta próprias) continua pegando a pasta inteira.
+
+**O índice diz de quais acervos tem os artigos.** O campo `origins` de cada
+versão (`pdf`, `md` ou os dois) substitui a dedução pelo prefixo do nome
+(`md-v1` → `md`), que errava no v2. O `/health` expõe o campo
+(`rag_index_origins`) para o teste E2E das perguntas de referência, e o
+relatório o lê do `config.py` sem importar o backend, como já fazia com a frase
+de abstenção. Isso vale também para rodadas antigas, cujo JSON só tem o nome
+do índice.
+
+**Os PDFs gerados não são os artigos originais.** Herdam palavras grudadas e
+colunas intercaladas dos Markdown de origem, e não têm figuras. As tabelas
+dos Markdown viram uma linha de texto por linha, como a ingestão do `md-v1`
+já fazia. O PyMuPDF (Story) foi testado para diagramar e descartado: perdia o
+resto de parágrafos partidos entre páginas e gravava o código errado das
+letras matemáticas fora do plano básico do Unicode.
+
+**O diagnóstico de recuperação casa o artigo pelo nome sem extensão.** O
+golden dos Markdown cita "X.md", que no `pdf-v2` é "X.pdf". No primeiro
+diagnóstico (17/10/2026, 10 perguntas, em inglês), o documento certo veio em 5
+de 10 no `pdf-v2` e em 7 de 10 no `md-v2`.
+
+Próximas versões naturais: uma `md-v3` com os 22 artigos do `md-v1`
+reconvertidos a partir dos PDFs originais por uma ferramenta melhor, e
+versões com embedding multilíngue (por exemplo, `bge-m3`) para atacar o
+idioma.
 
 ### Demonstração E2E com os dois RAGs (out/2026)
 

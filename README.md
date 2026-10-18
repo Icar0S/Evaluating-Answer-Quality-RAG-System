@@ -492,23 +492,45 @@ O assistente pode responder a partir de acervos diferentes, cada um indexado
 numa **versão** própria do índice ([backend/app/config.py](backend/app/config.py),
 `RAG_INDICES`):
 
-| Versão | Acervo | Coleção |
-|---|---|---|
-| `pdf-v1` (padrão) | `data/source_pdfs` (PDFs; texto do PyMuPDF, chunks dentro de cada página) | `rag_test_specialist` |
-| `md-v1` | `data/new_papers_marks` (Markdown; a sintaxe de tabela vira texto) | `rag_md_v1` |
+| Versão | Acervo | Coleção | Perguntas de referência no índice |
+|---|---|---|---|
+| `pdf-v1` (padrão) | os 39 PDFs originais de `data/source_pdfs` (texto do PyMuPDF, chunks dentro de cada página) | `rag_test_specialist` | as dos PDFs |
+| `md-v1` | os 22 Markdown originais de `data/new_papers_marks` (a sintaxe de tabela vira texto) | `rag_md_v1` | as dos Markdown |
+| `pdf-v2` | os 61 artigos em PDF: os 39 do `pdf-v1` e os 22 do `md-v1` diagramados a partir do Markdown | `rag_pdf_v2` | as dos dois |
+| `md-v2` | os 61 artigos em Markdown: os 22 do `md-v1` e os 39 do `pdf-v1` convertidos pelo pymupdf4llm | `rag_md_v2` | as dos dois |
 
-As duas versões usam o mesmo chunker (800/120 tokens) e o mesmo modelo de
+As versões usam o mesmo chunker (800/120 tokens) e o mesmo modelo de
 embedding. O modelo faz parte da versão, porque um índice só pode ser
 consultado com o modelo que o construiu. Cada ingestão grava um **manifesto**
 em `data/vector_store/manifests/<coleção>.json`, com os arquivos e seus
 SHA-256, os parâmetros, o modelo e o número de chunks. É o que diz contra qual
 acervo uma avaliação rodou. Mudar o acervo, o formato ou a extração significa
-criar uma versão nova (`md-v2`...), não editar uma existente.
+criar uma versão nova (`md-v3`...), não editar uma existente.
+
+**O `pdf-v2` e o `md-v2` têm os mesmos artigos**, cada um num formato: comparar
+os dois é comparar formatos, não acervos. Os arquivos que faltavam em cada
+pasta saíram do [data/sync_corpora.py](data/sync_corpora.py) (17/10/2026).
+Os 22 PDFs gerados herdam os defeitos de conversão dos Markdown de origem e
+não têm figuras.
+
+**Cada versão fixa a lista dos seus documentos**, com o SHA-256 de cada um, em
+[backend/app/rag/index_versions/](backend/app/rag/index_versions/). O `pdf-v1`
+e o `pdf-v2` leem a mesma pasta, e é a lista que decide o que entra em cada um:
+ingerir o `pdf-v1` hoje pega os mesmos 39 PDFs de 13/10, e não os 61. Arquivo
+da lista que sumiu da pasta ou mudou de conteúdo entra no manifesto e no aviso
+da ingestão, porque aí o índice já não é a versão registrada. A imagem do
+Docker leva as listas, então a regra vale lá também.
 
 ```powershell
-backend\.venv\Scripts\python scripts\ingest_documents.py --index md-v1   # vetoriza os Markdown
-backend\.venv\Scripts\python scripts\ingest_documents.py --list          # versões, chunks e data de cada uma
+backend\.venv\Scripts\python scripts\ingest_documents.py --index md-v1   # vetoriza os Markdown originais
+backend\.venv\Scripts\python scripts\ingest_documents.py --list          # versões, documentos, chunks e data de cada uma
+backend\.venv\Scripts\python scripts\ingest_documents.py --index md-v3 --register   # fixa a lista de uma versão nova
 ```
+
+Para registrar uma versão nova: a entrada em `RAG_INDICES` (coleção, pasta,
+modelo de embedding e `origins`, os acervos de perguntas de referência cujos
+artigos ela contém) e depois o `--register`, que grava a lista com o que está
+na pasta, uma vez só.
 
 Para conversar com o assistente usando outra versão, defina `RAG_INDEX=md-v1`
 no `.env` e reinicie o backend.
@@ -518,6 +540,7 @@ juiz:
 
 ```powershell
 backend\.venv\Scripts\python.exe tests\compare_indices.py              # pdf-v1 × md-v1 com RAGAS (~75 min)
+backend\.venv\Scripts\python.exe tests\compare_indices.py --indices pdf-v2 md-v2   # os mesmos artigos nos dois formatos
 backend\.venv\Scripts\python.exe tests\compare_indices.py --limite 2   # para conferir que tudo roda
 ```
 
@@ -528,8 +551,10 @@ O script faz quatro coisas:
 2. Faz a cada versão as perguntas **dos dois acervos**: os 10 goldens dos PDFs
    e os 10 dos Markdown
    ([tests/deepeval/goldens/dataset_md.json](tests/deepeval/goldens/dataset_md.json),
-   um rascunho para revisão humana). Pergunta do acervo alheio mede se o RAG
-   se abstém.
+   um rascunho para revisão humana). Pergunta de um acervo que a versão não
+   tem (no `pdf-v1` e no `md-v1`, o do outro formato) mede se o RAG se abstém;
+   no `pdf-v2` e no `md-v2`, todas são do próprio acervo. O relatório marca
+   cada origem como "no índice" ou não.
 3. Julga tudo com o RAGAS.
 4. Gera o relatório consolidado, com as rodadas lado a lado, o recorte por
    origem da pergunta e o diagnóstico de recuperação.
@@ -582,10 +607,18 @@ O script faz quatro coisas:
   isso, o recall de 1,00 em inglês não prova recuperação perfeita. O sinal que
   não depende do juiz é o diagnóstico de recuperação.
 
+**Primeiro diagnóstico das versões v2 (17/10/2026, só embeddings).** Nas 10
+perguntas dos Markdown, o documento certo veio entre os 4 trechos em 5 de 10
+(em inglês) no `pdf-v2` e em 7 de 10 no `md-v2`. Os artigos são os mesmos, e o
+formato pesou. Com 61 artigos em vez de 22, o `md-v2` acha menos que o `md-v1`
+(10 de 10), e em português nenhum dos dois passa de 1 de 10. A comparação com
+RAGAS (`--indices pdf-v2 md-v2`) ainda não rodou.
+
 Duas próximas versões naturais:
 
-- `md-v2`, com os mesmos artigos reconvertidos por uma ferramenta melhor;
-- `*-v2`, com um modelo de embedding multilíngue (por exemplo, `bge-m3`), que
+- `md-v3`, com os 22 artigos do `md-v1` reconvertidos a partir dos PDFs
+  originais (o `md-v2` só reconverteu os 39 que já eram PDF);
+- `*-v3`, com um modelo de embedding multilíngue (por exemplo, `bge-m3`), que
   ataca o problema do idioma nos dois acervos.
 
 ## Demonstração E2E ao vivo (Docker + Playwright)
@@ -604,6 +637,17 @@ scripts\demo_e2e.bat subir    # só sobe os containers, para abrir o chat de cad
 scripts\demo_e2e.bat parar    # derruba os containers (índices e modelos ficam nos volumes)
 ```
 
+Para comparar **formatos** em vez de acervos, a demonstração roda com as
+versões v2, que têm os mesmos artigos nos dois formatos. Na primeira vez, a
+subida indexa as duas versões novas (alguns minutos); as v1 continuam no
+volume.
+
+```powershell
+set DEMO_PDF_INDEX=pdf-v2
+set DEMO_MD_INDEX=md-v2
+scripts\demo_e2e.bat
+```
+
 **O que o `scripts\demo_e2e.bat` roda, nesta ordem**
 ([tests/demo_e2e.py](tests/demo_e2e.py)):
 
@@ -617,9 +661,9 @@ scripts\demo_e2e.bat parar    # derruba os containers (índices e modelos ficam 
 3. O RAGAS julga as respostas às perguntas de referência dos dois RAGs, com o
    juiz do Ollama do container.
 4. O relatório consolidado abre sozinho (`tests/reports/out/<data>/relatorio.pdf`).
-   Ele traz os dois RAGs lado a lado, as notas por origem da pergunta (acervo
-   próprio × alheio, com as abstenções) e a posição do documento certo entre
-   os trechos que o chat devolveu.
+   Ele traz os dois RAGs lado a lado, as notas por origem da pergunta (se o
+   índice tem os artigos dela ou não, com as abstenções) e a posição do
+   documento certo entre os trechos que o chat devolveu.
 
 As respostas julgadas são as mesmas que a turma viu na tela. A parte ao vivo
 leva ~10 min; o julgamento, ~70 s por resposta com GPU (~45 min para as 40).
@@ -632,8 +676,8 @@ Playwright, com vídeo e trace de cada teste.
 |---|---|
 | `ollama` | Embeddings (`nomic-embed-text`), gerador (`gemma3:4b`) e juiz (`qwen3:8b`), com GPU via `docker-compose.gpu.yml` |
 | `models` | Baixa os modelos que faltarem e sai |
-| `ingest` | Indexa os PDFs de `data/source_pdfs` (`pdf-v1`), se o índice estiver vazio |
-| `ingest-md` | Indexa os Markdown de `data/new_papers_marks` (`md-v1`), se o índice estiver vazio |
+| `ingest` | Indexa os PDFs de `data/source_pdfs` (`pdf-v1`, ou `DEMO_PDF_INDEX`), se o índice estiver vazio |
+| `ingest-md` | Indexa os Markdown de `data/new_papers_marks` (`md-v1`, ou `DEMO_MD_INDEX`), se o índice estiver vazio |
 | `backend` | RAG dos PDFs: API em `http://localhost:8010` |
 | `backend-md` | RAG dos Markdown: API em `http://localhost:8011` |
 | `frontend` | nginx servindo o frontend em `http://localhost:5510` |
@@ -755,6 +799,7 @@ tests/generate_answers.py Gera as respostas do assistente uma vez, para todos os
 tests/compare_indices.py  Compara versões do índice (pdf-v1 × md-v1) com as mesmas perguntas, gerador e juiz
 tests/retrieval_diagnostic.py  O documento certo vem entre os trechos? Pergunta em PT e em EN, por índice
 data/new_papers_marks/    Acervo Markdown do índice md-v1 (não versionado, como os PDFs)
+data/sync_corpora.py      Converte o que falta para os dois acervos terem os mesmos artigos (PDF ↔ Markdown; venv em data/requirements.txt)
 docker-compose.yml        Demonstração ao vivo: Ollama, os dois RAGs (PDFs e Markdown) e o frontend em containers
 docker/                   Dockerfile do backend e a cópia dos modelos para o volume do Docker
 scripts/demo_e2e.bat      Sobe a stack em Docker, roda os testes E2E nos dois RAGs e gera o relatório comparando os dois
