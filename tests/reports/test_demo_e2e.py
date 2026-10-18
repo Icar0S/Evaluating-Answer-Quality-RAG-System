@@ -78,6 +78,17 @@ def test_diagnostico_sai_dos_trechos_que_o_chat_devolveu():
     assert rows["m2"]["conversion"] == "limpo"
 
 
+def test_no_v2_o_documento_certo_e_achado_no_outro_formato():
+    # O golden dos Markdown cita "a.md"; no pdf-v2 o mesmo artigo é "a.pdf" (data/sync_corpora.py).
+    answer_sets = {"pdf-v2": demo_e2e.build_answers("pdf-v2", [_record("m1", "r", ["x.pdf", "a.pdf"], "pdf-v2")],
+                                                    GOLDENS)}
+
+    diagnostic = demo_e2e.retrieval_diagnostic(answer_sets, GOLDENS)
+
+    assert {r["name"]: r["ranks"]["pdf-v2"]["pt"] for r in diagnostic["rows"]} == {"m1": 2, "m2": None}
+    assert demo_e2e.source_rank(["b.markdown.md"], "b.markdown.pdf") == 1  # só a última extensão sai
+
+
 def test_conta_os_testes_de_cada_projeto_do_playwright():
     results = {
         "suites": [

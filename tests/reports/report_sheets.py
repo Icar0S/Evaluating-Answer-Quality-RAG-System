@@ -27,6 +27,7 @@ from report_data import (
     Comparison,
     Run,
     dimension_stats,
+    origin_in_index,
     run_highlights,
 )
 
@@ -48,6 +49,9 @@ LONG_COLUMNS = [
     "Nota",
     "Veredito",
     "Abstenção",
+    # Depois de "Abstenção", e não junto de "Origem", para as colunas de antes não mudarem de posição. Lida com
+    # ela: fora do índice, se abster é o certo.
+    "No índice",
     "Erro",
     "Justificativa do juiz",
 ]
@@ -71,6 +75,7 @@ def _verdict(passed: bool | None, measured: bool, applicable: bool = True) -> st
 def long_rows(runs: list[Run]) -> list[list]:
     """Uma linha por rodada x caso x dimensão (a tabela "Notas" e o CSV)."""
     rows = []
+    in_index = {True: "sim", False: "não", None: ""}
     for run in runs:
         for case in run.cases:
             for dim in DIMENSIONS:
@@ -87,6 +92,7 @@ def long_rows(runs: list[Run]) -> list[list]:
                         None if s.value is None else round(s.value, 4),
                         _verdict(s.passed, s.measured, s.applicable),
                         "sim" if case.abstained else "não",
+                        in_index[origin_in_index(run.rag_index, case.origin)] if case.origin else "",
                         s.error or "",
                         s.reason or "",
                     ]
@@ -296,10 +302,11 @@ def write_xlsx(
 
     # Notas (formato longo) --------------------------------------------------
     ws = wb.create_sheet(_sheet_name("Notas", taken))
-    end = _table(ws, LONG_COLUMNS, long_rows(runs), [34, 11, 17, 9, 28, 22, 30, 8, 10, 10, 30, 80])
-    _diverging(ws, f"H2:H{end}", runs[0].threshold)
+    end = _table(ws, LONG_COLUMNS, long_rows(runs), [34, 11, 17, 9, 28, 22, 30, 8, 10, 10, 10, 30, 80])
+    score_col = get_column_letter(LONG_COLUMNS.index("Nota") + 1)
+    _diverging(ws, f"{score_col}2:{score_col}{end}", runs[0].threshold)
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:L{end}"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(LONG_COLUMNS))}{end}"
 
     # Matriz por rodada ------------------------------------------------------
     for run in runs:

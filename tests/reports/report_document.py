@@ -427,20 +427,24 @@ def _history_blocks(history: list[dict], figure: Path | None) -> list[Block]:
 
 
 def _origin_table(runs: list[Run]) -> Table:
+    in_index = {True: "sim", False: "não", None: "—"}
     rows = []
     for run in runs:
         for o in origin_stats(run):
             rows.append(
-                [run.name, o.origin, str(o.n_cases), pct(o.abstained, o.n_cases)]
+                [run.name, o.origin, in_index[o.in_index], str(o.n_cases), pct(o.abstained, o.n_cases)]
                 + [fmt(o.means[d.key]) for d in DIMENSIONS]
                 + [pct(o.all_passed, o.n_cases)]
             )
     return Table(
-        headers=["Rodada", "Origem", "Casos", "Abstenções"] + [d.short for d in DIMENSIONS] + ["Todas ≥ limiar"],
+        headers=["Rodada", "Origem", "No índice", "Casos", "Abstenções"]
+        + [d.short for d in DIMENSIONS]
+        + ["Todas ≥ limiar"],
         rows=rows,
-        widths=[0.2, 0.07, 0.06, 0.09] + [0.095] * len(DIMENSIONS) + [0.105],
-        align=["l", "l", "r", "r"] + ["r"] * len(DIMENSIONS) + ["r"],
-        caption="Médias por dimensão separadas pela origem da pergunta.",
+        widths=[0.17, 0.065, 0.07, 0.055, 0.085] + [0.09] * len(DIMENSIONS) + [0.105],
+        align=["l", "l", "c", "r", "r"] + ["r"] * len(DIMENSIONS) + ["r"],
+        caption="Médias por dimensão separadas pela origem da pergunta. \"No índice\" = o índice da rodada contém "
+        "os artigos dessa origem.",
         small=True,
     )
 
@@ -611,9 +615,11 @@ def build_document(
         doc.append(section("Por origem da pergunta"))
         doc.append(
             Para(
-                "Origem = o acervo de onde vieram a pergunta e a resposta de referência. Num acervo que não "
-                "contém o assunto, o comportamento certo é se abster (\"não encontrei...\"); nesse caso as "
-                "notas de fidelidade e de relevância julgam uma recusa."
+                "Origem = o acervo de onde vieram a pergunta e a resposta de referência. O pdf-v1 e o md-v1 têm "
+                "um acervo cada; as versões v2 têm os mesmos artigos dos dois, num formato só. Quando o índice "
+                "não contém a origem da pergunta (\"No índice\" = não), o comportamento certo é se abster "
+                "(\"não encontrei...\"), e as notas de fidelidade e de relevância julgam uma recusa. Quando "
+                "contém, uma abstenção é resposta perdida."
             )
         )
         doc.append(_origin_table(runs))

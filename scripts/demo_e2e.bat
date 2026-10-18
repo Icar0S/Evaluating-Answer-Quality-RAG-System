@@ -17,7 +17,9 @@ REM
 REM Variaveis opcionais: DEMO_GENERATION_MODEL (padrao gemma3:4b),
 REM DEMO_JUDGE_MODEL (padrao qwen3:8b), DEMO_SLOWMO (ms entre acoes, padrao 400),
 REM DEMO_GOLDENS (so as N primeiras perguntas de referencia de cada acervo),
-REM OLLAMA_MODELS_DIR (pasta de modelos do Ollama a reaproveitar).
+REM OLLAMA_MODELS_DIR (pasta de modelos do Ollama a reaproveitar),
+REM DEMO_PDF_INDEX / DEMO_MD_INDEX (versao do indice de cada RAG, padrao pdf-v1 e
+REM md-v1, acervos diferentes; pdf-v2 e md-v2 = os mesmos artigos nos dois formatos).
 
 cd /d "%~dp0.."
 chcp 65001 >nul
@@ -46,6 +48,9 @@ if /i "%MODE%"=="parar" (
 if not defined DEMO_GENERATION_MODEL set "DEMO_GENERATION_MODEL=gemma3:4b"
 if not defined DEMO_JUDGE_MODEL set "DEMO_JUDGE_MODEL=qwen3:8b"
 if not defined DEMO_EMBEDDING_MODEL set "DEMO_EMBEDDING_MODEL=nomic-embed-text"
+REM Definidas aqui (e nao so no compose) porque os testes e o relatorio tambem leem.
+if not defined DEMO_PDF_INDEX set "DEMO_PDF_INDEX=pdf-v1"
+if not defined DEMO_MD_INDEX set "DEMO_MD_INDEX=md-v1"
 
 REM O relatorio (modo padrao) roda em Python na maquina: o orquestrador so usa
 REM a biblioteca padrao, e o RAGAS e o relatorio usam os venvs de tests\.
@@ -134,7 +139,7 @@ if not defined READY (
     goto :erro
 )
 REM O RAG dos Markdown sobe em paralelo; se nao vier, a demonstracao segue so
-REM com o dos PDFs (os testes do md-v1 se auto-pulam).
+REM com o dos PDFs (os testes do RAG dos Markdown se auto-pulam).
 set "READY_MD="
 for /l %%i in (1,1,60) do (
     if not defined READY_MD (
@@ -146,12 +151,12 @@ for /l %%i in (1,1,60) do (
         )
     )
 )
-echo    RAG dos PDFs ^(pdf-v1^):     http://localhost:8010   chat: http://localhost:5510/chat.html
+echo    RAG dos PDFs ^(!DEMO_PDF_INDEX!^):     http://localhost:8010   chat: http://localhost:5510/chat.html
 if defined READY_MD (
-    echo    RAG dos Markdown ^(md-v1^): http://localhost:8011   chat: http://localhost:5510/chat.html?api=http://localhost:8011
+    echo    RAG dos Markdown ^(!DEMO_MD_INDEX!^): http://localhost:8011   chat: http://localhost:5510/chat.html?api=http://localhost:8011
     curl.exe -s --max-time 5 http://localhost:8011/health 2>nul | findstr /r /c:"vector_store_documents.:0[,}]" >nul
     if not errorlevel 1 (
-        echo [AVISO] O indice md-v1 esta vazio: faltam os .md em data\new_papers_marks
+        echo [AVISO] O indice !DEMO_MD_INDEX! esta vazio: faltam os .md em data\new_papers_marks
         echo         ^(o acervo nao e versionado^). Os testes do RAG dos Markdown vao se auto-pular.
     )
 ) else (

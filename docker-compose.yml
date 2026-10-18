@@ -3,10 +3,10 @@
 #
 #   ollama      embeddings (nomic-embed-text), gerador (gemma3:4b) e juiz (qwen3:8b)
 #   models      baixa os três modelos que faltarem, uma vez, e sai
-#   ingest      indexa os PDFs de data/source_pdfs (índice pdf-v1), se estiver vazio
-#   ingest-md   indexa os Markdown de data/new_papers_marks (índice md-v1), se estiver vazio
-#   backend     RAG dos PDFs (pdf-v1): API em http://localhost:8010
-#   backend-md  RAG dos Markdown (md-v1): API em http://localhost:8011
+#   ingest      indexa os PDFs de data/source_pdfs (índice pdf-v1 ou DEMO_PDF_INDEX), se estiver vazio
+#   ingest-md   indexa os Markdown de data/new_papers_marks (índice md-v1 ou DEMO_MD_INDEX), se estiver vazio
+#   backend     RAG dos PDFs: API em http://localhost:8010
+#   backend-md  RAG dos Markdown: API em http://localhost:8011
 #   frontend    nginx servindo frontend/ em http://localhost:5510
 #
 # Os dois RAGs usam o mesmo Ollama, com o mesmo gerador e os mesmos
@@ -28,22 +28,26 @@
 name: rag-test-specialist
 
 # RAG_INDEX escolhe a versão do índice (backend/app/config.py, RAG_INDICES) e,
-# com ela, a coleção e a pasta dos documentos. A pasta é relativa à raiz do
+# com ela, a coleção, a pasta e a lista de documentos que entram (a imagem leva
+# as listas, backend/app/rag/index_versions). A pasta é relativa à raiz do
 # projeto, /app na imagem: por isso os documentos montam em /app/data/...
+# Padrão: pdf-v1 e md-v1, acervos diferentes. DEMO_PDF_INDEX=pdf-v2 e
+# DEMO_MD_INDEX=md-v2: os mesmos 61 artigos nos dois formatos. Cada versão tem
+# coleção própria no volume, e o ingest indexa a que estiver vazia.
 x-backend-env: &backend-env
   OLLAMA_BASE_URL: http://ollama:11434
   GENERATION_MODEL: ${DEMO_GENERATION_MODEL:-gemma3:4b}
   EMBEDDING_MODEL: ${DEMO_EMBEDDING_MODEL:-nomic-embed-text}
   GENERATION_TIMEOUT_SECONDS: "300"
   ACTIVE_PROVIDER: local
-  RAG_INDEX: pdf-v1
+  RAG_INDEX: ${DEMO_PDF_INDEX:-pdf-v1}
   VECTOR_STORE_DIR: /data/vector_store
   LOGS_DIR: /data/logs
   CORS_ORIGINS: http://localhost:5510,http://127.0.0.1:5510
 
 x-backend-md-env: &backend-md-env
   <<: *backend-env
-  RAG_INDEX: md-v1
+  RAG_INDEX: ${DEMO_MD_INDEX:-md-v1}
 
 x-backend-build: &backend-build
   context: .
@@ -104,7 +108,7 @@ services:
     restart: "no"
 
   # Sem nenhum .md na pasta (o acervo não é versionado), o índice fica vazio:
-  # o backend-md sobe assim mesmo, e os testes do RAG md-v1 se auto-pulam.
+  # o backend-md sobe assim mesmo, e os testes do RAG dos Markdown se auto-pulam.
   ingest-md:
     build: *backend-build
     image: rag-test-specialist/backend

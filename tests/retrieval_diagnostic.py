@@ -64,8 +64,9 @@ def main() -> int:
                 if not question:
                     continue
                 chunks, _ = retrieval.retrieve(question, k)
-                docs = [c["document"] for c in chunks]
-                rank = docs.index(golden["source_document"]) + 1 if golden["source_document"] in docs else None
+                # Pelo nome sem extensão: nas versões v2, o "X.md" de um golden está no pdf-v2 como "X.pdf".
+                stem = Path(golden["source_document"]).stem
+                rank = next((i for i, c in enumerate(chunks, start=1) if Path(c["document"]).stem == stem), None)
                 row["ranks"][index][lang] = rank
                 hits[lang] += rank is not None
         print(f"{index}: " + " · ".join(f"{lang.upper()} {hits[lang]}/{len(goldens)}" for lang in langs), flush=True)
