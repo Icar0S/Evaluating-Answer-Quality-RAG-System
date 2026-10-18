@@ -170,6 +170,8 @@ def question_metrics(
         "fragments_single_chunk": sum(found["single_chunk"]),
         "union_fractions": found["union_fractions"],
         "chunks": _ranked(arm_chunks, relevant, with_text=with_text),
+        # Para o E5 ("documento morto": tem pergunta e nunca vem nos 10 primeiros trechos dela).
+        "documents_at_10": [c.get("document") for c in chunks_at_10],
     }
 
 
