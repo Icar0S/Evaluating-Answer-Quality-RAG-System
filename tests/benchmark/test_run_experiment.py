@@ -360,3 +360,35 @@ def test_margem_do_proprio_cartao_vale_para_as_metricas_que_ele_mediu(tmp_path: 
     assert (verdict["metric"], verdict["margin"], verdict["margin_from"]) == ("attribution.misattribution", 0.0,
                                                                               "cartão")
     assert verdict["delta"]["delta"] == -0.5
+
+
+def test_delta_por_grupo_booleano_e_campo_ausente(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(rx, "index_documents", lambda index: {"doc1", "doc2", "doc3"})
+    monkeypatch.setattr(rx, "latest_margins", lambda exclude=None: (None, None))
+    card = {**SWEEP, "classe_por": "has_acronym", "pares": [["base", "k8"]]}
+    for arm_id, hits in (("base", (0, 1, 0)), ("k8", (1, 1, 1))):
+        rows = {f"q{i}": (hit, 0.7, False, [hit]) for i, hit in enumerate(hits, start=1)}
+        (tmp_path / f"c1_{arm_id}.json").write_text(json.dumps(_c1_sweep(rows, {})), encoding="utf-8")
+    goldens = [{"name": "q1", "has_acronym": True}, {"name": "q2", "has_acronym": False}, {"name": "q3"}]
+
+    result = rx.scoreboard(card, tmp_path, limit=None, goldens=goldens)
+
+    groups = {cls: d["delta"] for cls, d in result["by_class"]["base→k8"].items()}
+    assert groups == {"True": 1.0, "False": 0.0, "sem classe": 1.0}
+
+
+def test_retomar_com_caminho_relativo_vira_absoluto(tmp_path: Path, monkeypatch):
+    goldens = tmp_path / "goldens.json"
+    goldens.write_text("[]", encoding="utf-8")
+    card_path = tmp_path / "EX.yaml"
+    card_path.write_text(json.dumps({k: v for k, v in CARD.items() if k != "margem"}
+                                    | {"pares": [], "goldens": str(goldens)}), encoding="utf-8")
+    out = tmp_path / "out" / "EX_1"
+    monkeypatch.chdir(tmp_path)
+    seen = {}
+    monkeypatch.setattr(rx, "scoreboard", lambda card, folder, *args, **kwargs: seen.setdefault("out", folder) and {})
+    monkeypatch.setattr(rx, "write_summary", lambda card, folder, result, text: folder / "resumo.md")
+
+    rx.main([str(card_path), "--retomar", "out/EX_1", "--so-placar"])
+
+    assert seen["out"] == out.resolve() and seen["out"].is_absolute()

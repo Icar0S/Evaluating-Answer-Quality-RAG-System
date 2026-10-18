@@ -661,7 +661,9 @@ def by_class(card: dict, arms: dict[str, dict], measures: dict[str, dict], pairs
         clusters = {**measures[x]["clusters"], **measures[y]["clusters"]}
         groups: dict[str, list[str]] = {}
         for name in sorted(set(a) & set(b)):
-            groups.setdefault(classes.get(name) or "sem classe", []).append(name)
+            # Como texto: o campo pode ser booleano (has_acronym), e False é um grupo, não "sem classe".
+            value = classes.get(name)
+            groups.setdefault("sem classe" if value is None else str(value), []).append(name)
         result[f"{x}→{y}"] = {
             cls: placar.paired_delta({n: a[n] for n in names}, {n: b[n] for n in names}, clusters)
             for cls, names in sorted(groups.items())
@@ -843,7 +845,8 @@ def main(argv: list[str] | None = None) -> int:
     print_card(card)
     split = args.split or card.get("split")
     started = datetime.now(timezone.utc).astimezone()
-    out = args.retomar or OUT_ROOT / f"{card['id']}_{started.strftime('%Y%m%dT%H%M%S')}"
+    # Absoluto: os passos gravam o caminho do log relativo à raiz, e um --retomar relativo quebrava isso.
+    out = args.retomar.resolve() if args.retomar else OUT_ROOT / f"{card['id']}_{started.strftime('%Y%m%dT%H%M%S')}"
     out.mkdir(parents=True, exist_ok=True)
     # Retomar com outro recorte ou outro cartão misturaria saídas de rodadas diferentes, sem aviso.
     params = {"limite": args.limite, "cartao": card_text, **({"split": split} if split else {})}

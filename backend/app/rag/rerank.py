@@ -10,6 +10,7 @@ Resposta sem número vale 0. Sempre o Ollama local, como o embedding.
 from __future__ import annotations
 
 import re
+import time
 
 import httpx
 
@@ -21,6 +22,7 @@ SYSTEM_PROMPT = (
     "0 a 10: 0 = o trecho não tem nada a ver com a pergunta; 10 = o trecho contém a resposta."
 )
 _NUMBER = re.compile(r"\d+")
+ATTEMPTS = 3
 # Nota já pedida, por (modelo, pergunta, trecho): no mesmo processo, a mesma pergunta não paga duas vezes (o
 # diagnóstico da C1 busca a lista do braço e a de 10, com os mesmos candidatos).
 _SCORES: dict[tuple[str, str, str], float] = {}
@@ -51,8 +53,17 @@ def _ask(model: str, question: str, text: str, client: httpx.Client | None) -> f
     own = client is None
     client = client or httpx.Client(timeout=settings.generation_timeout_seconds)
     try:
-        resp = client.post(f"{settings.ollama_base_url}/api/chat", json=payload)
-        resp.raise_for_status()
+        for attempt in range(1, ATTEMPTS + 1):
+            try:
+                resp = client.post(f"{settings.ollama_base_url}/api/chat", json=payload)
+                resp.raise_for_status()
+                break
+            except httpx.HTTPError:
+                # O Ollama devolve um 500 de vez em quando (visto no E0 e no E8); nota inventada enviesaria o
+                # resultado, então só depois da última tentativa o erro sobe.
+                if attempt == ATTEMPTS:
+                    raise
+                time.sleep(2 * attempt)
         match = _NUMBER.search(resp.json().get("message", {}).get("content", ""))
     finally:
         if own:

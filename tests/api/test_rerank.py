@@ -48,3 +48,24 @@ def test_retrieve_reordena_pela_nota_e_fica_com_os_k(monkeypatch):
     # Empate na nota fica com o maior cosseno (b, 0,8, antes de c, 0,7); o cosseno continua no similarity_score.
     assert [(c["chunk_id"], c["rerank_score"], c["similarity_score"]) for c in chunks] == [
         ("b::c0", 9.0, 0.8), ("c::c0", 9.0, 0.7)]
+
+
+def test_erro_do_ollama_tenta_de_novo_e_so_na_ultima_sobe(ollama, monkeypatch):
+    import httpx
+
+    monkeypatch.setattr(rerank.time, "sleep", lambda seconds: None)
+    real, failures = ollama.handle, {"left": 2}
+
+    def flaky(request):
+        if request.url.path == "/api/chat" and failures["left"] > 0:
+            failures["left"] -= 1
+            return httpx.Response(500, json={"error": "falha passageira"})
+        return real(request)
+
+    monkeypatch.setattr(ollama, "handle", flaky)
+    ollama.completion = "6"
+    assert rerank.score("Q", "T") == 6.0
+
+    failures["left"] = rerank.ATTEMPTS
+    with pytest.raises(httpx.HTTPStatusError):
+        rerank.score("outra pergunta", "T")
