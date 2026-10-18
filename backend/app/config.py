@@ -21,18 +21,47 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # O modelo de embedding faz parte da versão: um índice só pode ser consultado
 # com o modelo que o construiu (vetores de modelos diferentes não se comparam,
 # e a busca erra sem dar erro). Por isso RAG_INDEX fixa também EMBEDDING_MODEL.
-RAG_INDICES: dict[str, dict[str, str]] = {
+#
+# Versões diferentes podem ler a mesma pasta (pdf-v1 e pdf-v2 leem
+# data/source_pdfs). Quem diz o que entra em cada uma é a lista de documentos
+# dela, com o SHA-256 de cada arquivo, em app/rag/index_versions/<versão>.sha256
+# (scripts/ingest_documents.py --register). Arquivo da pasta fora da lista fica
+# de fora.
+#
+# "origins": de quais acervos de perguntas de referência (tests/deepeval/goldens:
+# "pdf" = dataset.json, "md" = dataset_md.json) a versão contém os artigos. Uma
+# pergunta de origem que a versão não contém mede se o RAG se abstém.
+RAG_INDICES: dict[str, dict[str, Any]] = {
     "pdf-v1": {
         "collection": "rag_test_specialist",
         "source_dir": "data/source_pdfs",
         "embedding_model": "nomic-embed-text",
-        "description": "artigos em PDF; texto do PyMuPDF, chunks dentro de cada página",
+        "origins": ("pdf",),
+        "description": "os 39 artigos originais em PDF; texto do PyMuPDF, chunks dentro de cada página",
     },
     "md-v1": {
         "collection": "rag_md_v1",
         "source_dir": "data/new_papers_marks",
         "embedding_model": "nomic-embed-text",
-        "description": "artigos em Markdown; sintaxe de tabela convertida em texto, documento inteiro em chunks",
+        "origins": ("md",),
+        "description": "os 22 artigos originais em Markdown; sintaxe de tabela convertida em texto, documento inteiro "
+        "em chunks",
+    },
+    # Os mesmos 61 artigos nos dois formatos (data/sync_corpora.py, 17/10/2026): comparar pdf-v2 e md-v2 é
+    # comparar formatos, não acervos.
+    "pdf-v2": {
+        "collection": "rag_pdf_v2",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf", "md"),
+        "description": "os 61 artigos em PDF: os 39 do pdf-v1 e os 22 do md-v1 diagramados a partir do Markdown",
+    },
+    "md-v2": {
+        "collection": "rag_md_v2",
+        "source_dir": "data/new_papers_marks",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf", "md"),
+        "description": "os 61 artigos em Markdown: os 22 do md-v1 e os 39 do pdf-v1 convertidos pelo pymupdf4llm",
     },
 }
 
@@ -175,6 +204,12 @@ class Settings(BaseSettings):
             (name for name, spec in RAG_INDICES.items() if spec["collection"] == self.vector_store_collection),
             self.vector_store_collection,
         )
+
+    @property
+    def index_origins(self) -> list[str] | None:
+        """Acervos de perguntas de referência que o índice em uso contém (RAG_INDICES, "origins")."""
+        spec = RAG_INDICES.get(self.index_name)
+        return list(spec["origins"]) if spec else None
 
     @property
     def source_pdfs_path(self) -> Path:

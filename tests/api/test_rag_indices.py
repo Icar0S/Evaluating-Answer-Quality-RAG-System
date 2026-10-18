@@ -47,6 +47,94 @@ def test_health_e_chat_dizem_qual_indice_respondeu(client, monkeypatch):
     assert client.post("/chat", json={"question": "O que e RAG?"}).json()["metadata"]["rag_index"] == "md-v1"
 
 
+def test_health_diz_de_quais_acervos_o_indice_tem_os_artigos(client, monkeypatch):
+    # É por aqui que o teste E2E das perguntas de referência sabe se o certo é
+    # responder (acervo do índice) ou se abster (acervo alheio).
+    assert client.get("/health").json()["rag_index_origins"] == ["pdf"]
+
+    monkeypatch.setenv("RAG_INDEX", "md-v2")
+    get_settings.cache_clear()
+
+    assert client.get("/health").json()["rag_index_origins"] == ["pdf", "md"]
+
+
+def test_cada_versao_registrada_tem_lista_e_o_v2_contem_o_v1_inteiro():
+    # As listas são versionadas: é o que faz pdf-v1 e pdf-v2 continuarem
+    # diferentes lendo a mesma pasta, aqui e no Docker.
+    lists = {name: ingestion.registered_documents(name) for name in RAG_INDICES}
+    assert all(docs for docs in lists.values()), [name for name, docs in lists.items() if not docs]
+    for v1, v2 in (("pdf-v1", "pdf-v2"), ("md-v1", "md-v2")):
+        assert lists[v1].items() <= lists[v2].items(), f"{v1} não está inteiro (mesmo arquivo, mesmo hash) em {v2}"
+        assert set(RAG_INDICES[v1]["origins"]) < set(RAG_INDICES[v2]["origins"])
+
+
+@pytest.fixture
+def test_version(tmp_path: Path, monkeypatch) -> Path:
+    """Versão "teste-v1" registrada numa pasta temporária, com as listas também em tmp."""
+    folder = tmp_path / "acervo"
+    folder.mkdir()
+    monkeypatch.setitem(
+        RAG_INDICES,
+        "teste-v1",
+        {"collection": "teste_v1", "source_dir": str(folder), "embedding_model": "nomic-embed-text",
+         "origins": ("pdf",), "description": "teste"},
+    )
+    monkeypatch.setattr(ingestion, "INDEX_VERSIONS_DIR", tmp_path / "index_versions")
+    monkeypatch.setenv("RAG_INDEX", "teste-v1")
+    get_settings.cache_clear()
+    return folder
+
+
+def test_register_grava_a_lista_da_pasta_uma_vez_so(test_version: Path):
+    (test_version / "b.md").write_text("bbb", encoding="utf-8")
+    (test_version / "A.md").write_text("aaa", encoding="utf-8")
+    (test_version / "notas.txt").write_text("fora", encoding="utf-8")
+
+    path = ingestion.register_documents("teste-v1", test_version)
+
+    assert set(ingestion.registered_documents("teste-v1")) == {"A.md", "b.md"}
+    assert path.read_text(encoding="utf-8").startswith("# teste-v1: 2 documento(s)")
+    with pytest.raises(FileExistsError):
+        ingestion.register_documents("teste-v1", test_version)
+
+
+def test_ingestao_da_versao_so_pega_a_lista_e_avisa_o_que_faltou_ou_mudou(test_version: Path, monkeypatch, ollama):
+    for name in ("a.md", "b.md", "de_outra_versao.md"):
+        (test_version / name).write_text(f"{name} " + "conteudo " * 900, encoding="utf-8")
+    ingestion.register_documents("teste-v1", test_version)
+    lista = ingestion.INDEX_VERSIONS_DIR / "teste-v1.sha256"
+    # A lista tem a.md e b.md (com o hash antigo) e um arquivo que não está mais na pasta.
+    linhas = [l for l in lista.read_text(encoding="utf-8").splitlines() if "de_outra_versao" not in l]
+    lista.write_text("\n".join(linhas + ["0" * 64 + "  sumiu.md"]) + "\n", encoding="utf-8")
+    (test_version / "b.md").write_text("b.md mudou " + "conteudo " * 900, encoding="utf-8")
+    added: list[dict] = []
+    monkeypatch.setattr(vector_store, "add_chunks", lambda **kwargs: added.append(kwargs))
+
+    result = ingestion.ingest_documents()
+
+    documents = {m["document"] for call in added for m in call["metadatas"]}
+    assert documents == {"a.md", "b.md"}
+    assert result["missing_documents"] == ["sumiu.md"]
+    assert result["changed_documents"] == ["b.md"]
+    assert result["ignored_in_folder"] == 1
+    manifest = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
+    assert (manifest["registered_documents"], manifest["missing_documents"]) == (3, ["sumiu.md"])
+    assert [d["file"] for d in manifest["documents"]] == ["a.md", "b.md"]
+
+
+def test_pasta_explicita_ignora_a_lista_da_versao(test_version: Path, monkeypatch, ollama):
+    # --source (e o estudo de mutação, que ingere a cópia dele) pega a pasta inteira, como antes das listas.
+    (test_version / "a.md").write_text("conteudo " * 900, encoding="utf-8")
+    ingestion.register_documents("teste-v1", test_version)
+    (test_version / "novo.md").write_text("conteudo " * 900, encoding="utf-8")
+    monkeypatch.setattr(vector_store, "add_chunks", lambda **kwargs: None)
+
+    result = ingestion.ingest_documents(source_dir=test_version)
+
+    assert result["documents_processed"] == 2
+    assert result["registered_documents"] is None
+
+
 def test_sintaxe_de_tabela_vira_texto_e_o_resto_fica_intacto():
     markdown = "| A Software |  | Engineering |\n| --- | --- | --- |\n|  | Models: |  |\nTexto com |pipe| no meio."
 

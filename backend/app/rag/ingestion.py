@@ -23,13 +23,17 @@ import fitz  # PyMuPDF
 import httpx
 import tiktoken
 
-from app.config import get_settings
+from app.config import PROJECT_ROOT, RAG_INDICES, get_settings
 from app.logging_utils import logger
 from app.rag import vector_store
 
 _encoding = tiktoken.get_encoding("cl100k_base")
 
 SUPPORTED_SUFFIXES = (".pdf", ".md")
+
+# Lista de documentos de cada versão registrada (config.RAG_INDICES): uma linha "<sha256>  <arquivo>" por
+# documento, "#" para comentário. Versões diferentes leem a mesma pasta; é a lista que diz o que entra em cada uma.
+INDEX_VERSIONS_DIR = Path(__file__).resolve().parent / "index_versions"
 
 # Versão da conversão Markdown -> texto, gravada no manifesto. Só a SINTAXE de
 # tabela vira texto: linhas separadoras somem e as células não vazias de cada
@@ -179,7 +183,69 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def write_manifest(source_dir: Path, documents: list[dict], chunks: int, duration_ms: float) -> Path:
+def registered_documents(index: str) -> dict[str, str] | None:
+    """{arquivo: sha256} registrados para a versão, ou None se ela não tem lista."""
+    path = INDEX_VERSIONS_DIR / f"{index}.sha256"
+    if not path.is_file():
+        return None
+    documents: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip() and not line.startswith("#"):
+            digest, name = line.split(None, 1)
+            documents[name.strip()] = digest
+    return documents
+
+
+def register_documents(index: str, source_dir: Path) -> Path:
+    """Grava a lista de documentos da versão com o que está na pasta agora.
+
+    Uma vez só: versão registrada não muda, e mudar o acervo é registrar uma versão nova.
+    """
+    path = INDEX_VERSIONS_DIR / f"{index}.sha256"
+    if path.exists():
+        raise FileExistsError(f"{path} já existe: versão registrada não muda (registre uma versão nova)")
+    files = sorted(
+        (p for p in source_dir.iterdir() if p.suffix.lower() in SUPPORTED_SUFFIXES), key=lambda p: p.name.lower()
+    )
+    if not files:
+        raise FileNotFoundError(f"nenhum documento em {source_dir}")
+    header = (
+        f"# {index}: {len(files)} documento(s) de {source_dir.name}, registrados em "
+        f"{datetime.now(timezone.utc).date().isoformat()} (scripts/ingest_documents.py --register)"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [header] + [f"{_sha256(p)}  {p.name}" for p in files]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    return path
+
+
+def select_documents(source_dir: Path | None = None) -> tuple[Path, list[Path], dict]:
+    """Pasta e documentos que a ingestão do índice em uso pega.
+
+    Na pasta da própria versão registrada, só os arquivos da lista dela, na ordem de sempre (a da pasta). Com
+    outra pasta (`source_dir`, ou uma versão sem lista), tudo o que estiver nela, como antes das listas. O dict
+    diz o que a lista pedia e não estava na pasta ("missing") e quantos arquivos da pasta ficaram de fora.
+    """
+    settings = get_settings()
+    doc_dir = source_dir or settings.source_pdfs_path
+    files = sorted(p for p in doc_dir.iterdir() if p.suffix.lower() in SUPPORTED_SUFFIXES) if doc_dir.is_dir() else []
+    spec = RAG_INDICES.get(settings.index_name)
+    own_folder = spec is not None and (PROJECT_ROOT / spec["source_dir"]).resolve() == doc_dir.resolve()
+    registered = registered_documents(settings.index_name) if source_dir is None and own_folder else None
+    if registered is None:
+        return doc_dir, files, {"registered": None, "missing": [], "ignored_in_folder": 0}
+    selected = [p for p in files if p.name in registered]
+    present = {p.name for p in files}
+    return doc_dir, selected, {
+        "registered": registered,
+        "missing": sorted(name for name in registered if name not in present),
+        "ignored_in_folder": len(files) - len(selected),
+    }
+
+
+def write_manifest(
+    source_dir: Path, documents: list[dict], chunks: int, duration_ms: float, extra: dict | None = None
+) -> Path:
     """Registra o que entrou nesta versão do índice: arquivos (com hash), parâmetros e modelo.
 
     É o que permite dizer, meses depois, contra QUAL acervo uma avaliação rodou.
@@ -198,6 +264,7 @@ def write_manifest(source_dir: Path, documents: list[dict], chunks: int, duratio
         "n_documents": len(documents),
         "n_chunks": chunks,
         "duration_ms": round(duration_ms),
+        **(extra or {}),
         "documents": documents,
     }
     path = settings.vector_store_path / "manifests" / f"{settings.vector_store_collection}.json"
@@ -207,11 +274,12 @@ def write_manifest(source_dir: Path, documents: list[dict], chunks: int, duratio
 
 
 def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict:
-    """Reprocessa todos os PDFs e Markdown de source_dir (ou da pasta do índice ativo)."""
+    """Reprocessa os PDFs e Markdown do índice ativo (ver select_documents) ou de source_dir."""
     settings = get_settings()
     start = time.perf_counter()
-    doc_dir = source_dir or settings.source_pdfs_path
-    doc_files = sorted(p for p in doc_dir.iterdir() if p.suffix.lower() in SUPPORTED_SUFFIXES) if doc_dir.is_dir() else []
+    doc_dir, doc_files, selection = select_documents(source_dir)
+    for name in selection["missing"]:
+        logger.warning(f"{settings.index_name}: {name} está na lista da versão e não está em {doc_dir}")
 
     if not doc_files:
         return {
@@ -219,6 +287,7 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
             "documents_processed": 0,
             "chunks_created": 0,
             "collection": settings.vector_store_collection,
+            "missing_documents": selection["missing"],
             "duration_ms": (time.perf_counter() - start) * 1000,
         }
 
@@ -267,8 +336,20 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
         first_batch = False
         chunks_created += len(batch)
 
+    # Arquivo da lista que mudou depois do registro: a ingestão segue, mas o índice já não é a versão registrada.
+    registered = selection["registered"]
+    changed = [d["file"] for d in manifest_docs if registered and d["sha256"] != registered[d["file"]]]
+    for name in changed:
+        logger.warning(f"{settings.index_name}: {name} mudou desde que a versão foi registrada (SHA-256 diferente)")
+    extra = {
+        "registered_documents": len(registered) if registered is not None else None,
+        "missing_documents": selection["missing"],
+        "changed_documents": changed,
+        "ignored_in_folder": selection["ignored_in_folder"],
+    }
+
     duration_ms = (time.perf_counter() - start) * 1000
-    manifest = write_manifest(doc_dir, manifest_docs, chunks_created, duration_ms)
+    manifest = write_manifest(doc_dir, manifest_docs, chunks_created, duration_ms, extra)
     return {
         "status": "ok",
         "documents_processed": len(manifest_docs),
@@ -277,4 +358,5 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
         "index": settings.index_name,
         "manifest": str(manifest),
         "duration_ms": duration_ms,
+        **extra,
     }

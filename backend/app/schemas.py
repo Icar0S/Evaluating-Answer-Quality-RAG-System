@@ -57,6 +57,9 @@ class HealthResponse(BaseModel):
     embedding_model: str
     vector_store_documents: int
     rag_index: str | None = None
+    # Acervos de perguntas de referência que o índice contém (config.RAG_INDICES, "origins"): o teste E2E das
+    # perguntas de referência sabe por aqui se o certo é responder ou se abster.
+    rag_index_origins: list[str] | None = None
 
 
 class ErrorResponse(BaseModel):

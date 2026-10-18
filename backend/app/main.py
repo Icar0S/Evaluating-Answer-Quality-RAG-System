@@ -58,6 +58,7 @@ async def health() -> HealthResponse:
         embedding_model=active.embedding_model,
         vector_store_documents=doc_count,
         rag_index=get_settings().index_name,
+        rag_index_origins=get_settings().index_origins,
     )
 
 
