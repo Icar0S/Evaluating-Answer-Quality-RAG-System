@@ -1,0 +1,59 @@
+# Cartão do E1 (plano-benchmark.md, §8). Formato provisório: a §9 do plano não chegou (docs/benchmark-status.md).
+id: E1
+titulo: Idioma da pergunta
+pergunta: Pergunta em português sobre acervo em inglês — o que resolve?
+hipotese: >
+  O bgem3-pt fecha a maior parte do buraco entre o português e o teto em inglês, sem piorar o inglês. A
+  tradução fecha parecido, ao custo de uma chamada de LLM por pergunta.
+exploratorio: false
+goldens: tests/benchmark/goldens/v2.json
+
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+juiz:
+  modelo: qwen3:8b
+  num_ctx: 8192
+
+bracos:
+  nomic-pt: {indice: pdf-v1, lingua: pt, camadas: [c1, c2], papel: baseline}
+  bgem3-pt: {indice: pdf-v1-bgem3, lingua: pt, camadas: [c1, c2], papel: candidato}
+  # Só a busca usa a tradução; o gerador recebe a pergunta original. A tradução foi feita uma vez, antes
+  # (tests/benchmark/translate_questions.py), e a C1 e a C2 leem a mesma.
+  traducao:
+    indice: pdf-v1
+    lingua: pt
+    camadas: [c1, c2]
+    papel: candidato
+    set:
+      retrieval_query_translation: true
+      retrieval_translation_cache: tests/benchmark/goldens/v2_traducoes.json
+  # Régua da C1: não disputam vaga nem vão à C2. O input_en dos goldens foi escrito à mão.
+  nomic-en: {indice: pdf-v1, lingua: en, camadas: [c1], papel: referencia}
+  bgem3-en: {indice: pdf-v1-bgem3, lingua: en, camadas: [c1], papel: referencia}
+
+pares: [[nomic-pt, bgem3-pt], [nomic-pt, traducao], [nomic-en, bgem3-en], [nomic-pt, nomic-en]]
+teto: nomic-en
+
+metrica_primaria: {camada: c1, metrica: evidence_at_k}
+guardas:
+  - {nome: não-inferioridade em inglês, par: [nomic-en, bgem3-en], metrica: c1.evidence_at_k, tolerancia_perguntas: 1}
+  - {nome: latência da recuperação, par: [nomic-pt, bgem3-pt], metrica: c1.retrieval_ms, tolerancia: 1000}
+  - {nome: latência com a tradução, par: [nomic-pt, traducao], metrica: c1.retrieval_ms, tolerancia: 1000}
+finalistas: os dois candidatos (o portão só corta acima de dois)
+saida: >
+  Tabela braço × idioma, a fração do buraco fechado ((braço − baseline) / (teto − baseline)) e a concentração
+  por braço (liga com o H5a do E5).
+precisa_construir:
+  - a versão pdf-v1-bgem3 (a lista do pdf-v1 e o embedding bge-m3)
+  - a tradução só na busca (RETRIEVAL_QUERY_TRANSLATION), com a tradução gravada uma vez
+  - o bge-m3 na lista MODELS do serviço models do docker-compose.yml
+didatica: >
+  O teto em inglês vira régua. A turma vê quanto do buraco cada estratégia fecha, e não só "subiu ou desceu".

@@ -2,7 +2,8 @@
 # (scripts\demo_e2e.bat; README, "Demonstração E2E ao vivo").
 #
 #   ollama      embeddings (nomic-embed-text), gerador (gemma3:4b) e juiz (qwen3:8b)
-#   models      baixa os três modelos que faltarem, uma vez, e sai
+#   models      baixa os modelos que faltarem, uma vez, e sai (com o bge-m3, o embedding do
+#               índice pdf-v1-bgem3 do benchmark, E1 do plano-benchmark.md)
 #   ingest      indexa os PDFs de data/source_pdfs (índice pdf-v1 ou DEMO_PDF_INDEX), se estiver vazio
 #   ingest-md   indexa os Markdown de data/new_papers_marks (índice md-v1 ou DEMO_MD_INDEX), se estiver vazio
 #   backend     RAG dos PDFs: API em http://localhost:8010
@@ -86,7 +87,7 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: ollama:11434
-      MODELS: "${DEMO_EMBEDDING_MODEL:-nomic-embed-text} ${DEMO_GENERATION_MODEL:-gemma3:4b} ${DEMO_JUDGE_MODEL:-qwen3:8b}"
+      MODELS: "${DEMO_EMBEDDING_MODEL:-nomic-embed-text} ${DEMO_GENERATION_MODEL:-gemma3:4b} ${DEMO_JUDGE_MODEL:-qwen3:8b} bge-m3"
     entrypoint: ["/bin/sh", "-c"]
     # Só baixa o que falta: com os modelos já na pasta, sobe sem internet.
     command:

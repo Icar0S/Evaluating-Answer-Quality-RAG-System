@@ -11,6 +11,9 @@ Três etapas configuráveis, nesta ordem:
 
 Os três pontos são alvo direto dos operadores de mutação da camada de
 recuperação (R1–R4, ver tests/mutation/operators/catalog.yaml).
+
+Com RETRIEVAL_QUERY_TRANSLATION, a busca embeda a pergunta traduzida para o
+inglês (app/rag/translation.py); quem chama continua com a original.
 """
 from __future__ import annotations
 
@@ -19,7 +22,7 @@ import time
 
 from app.config import get_settings
 from app.rag.ingestion import embed_texts
-from app.rag import vector_store
+from app.rag import translation, vector_store
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -79,7 +82,8 @@ def retrieve(question: str, top_k: int | None = None) -> tuple[list[dict], float
     fetch_k = max(k * settings.retrieval_fetch_multiplier, k) if use_mmr else k
     start = time.perf_counter()
 
-    [query_embedding] = embed_texts([question])
+    # Dentro do tempo medido: a tradução feita na hora é custo da busca.
+    [query_embedding] = embed_texts([translation.query_for_retrieval(question)])
     if use_mmr:
         result = vector_store.query(query_embedding, top_k=fetch_k, include_embeddings=True)
     else:

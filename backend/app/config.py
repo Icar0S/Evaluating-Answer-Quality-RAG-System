@@ -79,6 +79,14 @@ RAG_INDICES: dict[str, dict[str, Any]] = {
         "origins": ("pdf",),
         "description": "réplica do pdf-v1 (mesma lista, mesmo modelo, coleção nova) para o ruído da reingestão no E0",
     },
+    # Com RAG_INDEX definido, o validador sobrescreve EMBEDDING_MODEL: trocar de embedding é trocar de versão.
+    "pdf-v1-bgem3": {
+        "collection": "rag_pdf_v1_bgem3",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "bge-m3",
+        "origins": ("pdf",),
+        "description": "o pdf-v1 (mesma lista, mesmo chunking) com o embedding multilíngue bge-m3, para o E1",
+    },
 }
 
 
@@ -130,6 +138,15 @@ class Settings(BaseSettings):
     retrieval_use_mmr: bool = False
     retrieval_mmr_lambda: float = 0.7
     retrieval_fetch_multiplier: int = 3
+    # Traducao da pergunta para o ingles, so na busca (app/rag/translation.py):
+    # o acervo e quase todo em ingles. O gerador continua recebendo a pergunta
+    # original. Desligada por padrao (comportamento historico); o E1 do
+    # plano-benchmark.md liga. Modelo vazio = GENERATION_MODEL, no Ollama local.
+    # O cache e um JSON {pergunta: traducao}, relativo a raiz do projeto, gravado
+    # uma vez por tests/benchmark/translate_questions.py.
+    retrieval_query_translation: bool = False
+    retrieval_translation_model: str | None = None
+    retrieval_translation_cache: str | None = None
 
     # Paths (relativos à raiz do projeto)
     source_pdfs_dir: str = "data/source_pdfs"
@@ -192,6 +209,8 @@ class Settings(BaseSettings):
         "generation_num_predict",
         "generation_think",
         "rag_index",
+        "retrieval_translation_model",
+        "retrieval_translation_cache",
         mode="before",
     )
     @classmethod

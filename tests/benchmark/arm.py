@@ -25,7 +25,7 @@ def provenance(overrides: dict | None = None) -> dict:
     """A configuração efetiva do braço em uso (chamar com as sobrescritas já aplicadas)."""
     from app import providers
     from app.config import get_settings
-    from app.rag import generation, ingestion
+    from app.rag import generation, ingestion, translation
 
     settings = get_settings()
     path = ingestion.manifest_path()
@@ -51,6 +51,7 @@ def provenance(overrides: dict | None = None) -> dict:
             "mmr_lambda": settings.retrieval_mmr_lambda,
             "fetch_multiplier": settings.retrieval_fetch_multiplier,
             "min_similarity_score": settings.min_similarity_score,
+            "query_translation": translation.provenance(),
         },
         "generation": {
             "provider": active.name,

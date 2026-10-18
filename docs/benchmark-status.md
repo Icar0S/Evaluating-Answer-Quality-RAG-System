@@ -1,7 +1,8 @@
 # Benchmark de estratégias de RAG — estado da implementação
 
 **Plano:** [plano-benchmark.md](../plano-benchmark.md) · **Branch:** `feat/indices-v2`
-(mudanças ainda sem commit) · **Última atualização:** 18/10/2026 (Fase A concluída; análise do E5 pronta)
+(um commit por etapa) · **Última atualização:** 18/10/2026 (runner e cartões prontos; E1 construído; E0
+completo rodando)
 
 Este documento registra o que já foi construído do plano, etapa por etapa: o que
 mudou, onde, como usar, os testes que rodaram no fim de cada etapa e as decisões
@@ -26,10 +27,10 @@ tomadas no caminho.
 | **A5** | Goldens v2: esquema, validador, sorteio do split por documento, migração dos casos existentes como `rascunho` | **concluída** |
 | **A6** | C2/C4 no `generate_answers.py`: proveniência do braço, custo por resposta, ordem embaralhada com semente, abstenção | **concluída** |
 | **A7** | Goldens v2: núcleo de ≥ 60 perguntas em ≥ 20 PDFs e ≥ 30 de fora, como `rascunho` para a revisão humana | **concluída** (falta a revisão humana) |
-| B0 | Runner de experimentos e cartões em YAML | aguarda a §9 |
-| B1 | E0 — rodada A/A | aguarda B0 |
-| B2 | E1 — idioma (`pdf-v1-bgem3`, tradução da pergunta) | aguarda B0 e o download do `bge-m3` |
-| B3 | E6 — parâmetros de recuperação (C1) | aguarda B0 |
+| **B0** | Runner de experimentos e cartões em YAML | **concluída** (formato provisório até a §9) |
+| B1 | E0 — rodada A/A | fumaça ok; rodada completa em andamento (~3 h) |
+| **B2** | E1 — idioma (`pdf-v1-bgem3`, tradução da pergunta) | **construído** (versão, tradução gravada, cartão); a rodada vem depois do E0, que dá a margem |
+| B3 | E6 — parâmetros de recuperação (C1) | em construção (a recalibração do limiar está pronta) |
 | **B4** | E5 — concentração das fontes: análise e primeira leitura no baseline | **análise pronta** (faltam o cruzamento com a C2 e o `pdf-v1-noref` do H5b) |
 | B5–B9 | E2, E3, E4, E7, E8, E9 | aguardam B0 |
 | C | Placar (regra de veredito, Holm, interação) e as seções novas do relatório | aguarda a §11 |
@@ -39,14 +40,14 @@ tomadas no caminho.
 Rodados no fim de cada etapa. Nenhum precisa de Ollama, GPU ou rede.
 
 ```
-tests/api       (pytest, backend/.venv)                     VERDE — 51 testes (35 antes do benchmark)
-tests/benchmark (pytest, backend/.venv; entra no CI)        VERDE — 31 testes
+tests/api       (pytest, backend/.venv)                     VERDE — 55 testes (35 antes do benchmark)
+tests/benchmark (pytest, backend/.venv; entra no CI)        VERDE — 47 testes
 tests/reports   (pytest, tests/reports/.venv)               VERDE — 44 testes
 tests/jeveval   (pytest -m "not live", tests/jeveval/.venv) VERDE — 63 testes
 goldens v2      (validar --indice pdf-v1 --evidencia)       VERDE — 103 goldens, 0 erro, 0 aviso
 ```
 
-O `pytest` da raiz (o do CI) roda `tests/api` e `tests/benchmark` juntos: 82
+O `pytest` da raiz (o do CI) roda `tests/api` e `tests/benchmark` juntos: 102
 testes.
 
 ---
@@ -542,6 +543,141 @@ s; 70 de dentro, de 21 documentos, e 30 de fora):
 Os candidatos foram escritos por um LLM (eu), como o plano prevê, e conferidos
 contra a fonte pelo validador. A pergunta, a resposta esperada e os rótulos
 são julgamento meu e pedem a revisão.
+
+### B0 — Runner de experimentos e cartões em YAML (18/10)
+
+> **Formato provisório.** A §9 do plano, que especifica o runner e o YAML, não
+> chegou. O que está aqui segue as §4, §5 e §8 e o `tests/compare_indices.py`,
+> que o plano dá como modelo. Quando a §9 chegar, o formato se ajusta a ela.
+
+**O que mudou.**
+
+| Arquivo | Mudança |
+|---|---|
+| `tests/benchmark/run_experiment.py` (novo) | o runner: lê o cartão, mostra no terminal, roda o funil (índices → C1 → respostas → RAGAS → placar) e grava tudo numa pasta por rodada. Retomável |
+| `tests/benchmark/placar.py` (novo) | Δ pareado com IC 95% por bootstrap de documentos (2.000 reamostras, semente fixa), McNemar exato, Holm, a margem de ruído (P95 de \|Δ\|) e o veredito provisório |
+| `tests/benchmark/cartoes/E0.yaml` (novo) | o primeiro cartão |
+| `backend/app/config.py`, `index_versions/pdf-v1-aa.sha256` | a versão `pdf-v1-aa`: a lista do `pdf-v1` numa coleção nova, para o ruído da reingestão (A5 do E0). Ingerida: 894 chunks, em 32 s |
+| `tests/retrieval_diagnostic.py` | grava a latência de cada busca (`retrieval_ms`) e aceita `--langs` |
+| `.gitignore` | as rodadas em `tests/benchmark/out/` ficam fora do git (só o `.gitkeep` entra) |
+| `tests/benchmark/test_placar.py`, `test_run_experiment.py` (novos) | 4 + 6 testes, com saídas falsas; um deles valida os cartões do repositório |
+
+**O cartão.** Um YAML por experimento, em `tests/benchmark/cartoes/`:
+
+| Chave | O que é |
+|---|---|
+| `id`, `titulo`, `pergunta`, `hipotese`, `didatica` | obrigatórias; o runner mostra no terminal, e o resumo traz o cartão inteiro |
+| `goldens` | o arquivo de goldens (v2) |
+| `fixos` | sobrescritas de `Settings` para todos os braços: no E0 e no E1, a geração do §8.2 |
+| `juiz` | `modelo` e `num_ctx` do RAGAS |
+| `bracos` | cada braço: `indice`, `lingua` (pt ou en), `camadas` (c1, c2), `ordem` (semente que embaralha as perguntas), `set` (sobrescritas só dele) e `papel` (baseline, candidato, ruido, referencia). Ou `rejulgar: <braço>` com `ordem_juiz`: julga de novo as respostas de outro braço |
+| `pares` | os pares comparados, Δ = segundo − primeiro. Sem a chave, o baseline contra cada braço |
+| `margem` | só no E0: os grupos de pares A/A (`gerador_juiz`, `juiz`, `c1`); o placar grava `margem.json` |
+| `teto` | o braço-régua da fração do buraco fechado (E1) |
+| `metrica_primaria` | `camada` e `metrica`: a do veredito |
+| `guardas` | `nome`, `par`, `metrica` (`grupo.metrica`, como `c1.retrieval_ms`) e `tolerancia` (absoluta) ou `tolerancia_perguntas` (n perguntas, que vira n / N) |
+| `ollama_base_url` | opcional; o padrão é `http://127.0.0.1:11434`, pelo achado do `localhost` |
+
+**A rodada.** Cada passo grava o seu arquivo em
+`tests/benchmark/out/<id>_<data>/` e é pulado se o arquivo já está completo:
+
+| Arquivo | Passo |
+|---|---|
+| `cartao.yaml`, `parametros.json` | o cartão como foi escrito; retomar com outro cartão ou outro `--limite` é recusado |
+| `c1_<braço>.json` | o diagnóstico de recuperação, na língua do braço, com os fixos e o `set` |
+| `respostas_<braço>.json` | `generate_answers.py --local`, com os fixos, o `set` e a semente da ordem |
+| `respostas_<braço>_dentro.json`, `ragas_<braço>.json` | só as perguntas de dentro do índice vão ao juiz. O processo do juiz não herda o índice nem o embedding do braço (§4, princípio 8) |
+| `placar.json`, `resumo.md` | médias, pares, margem ou veredito, guardas e buraco fechado |
+| `execucao.json` | os passos, com tempo e log, de cada chamada: a original, cada retomada, cada `--so-placar` |
+
+Antes de cada passo medido, o runner carrega no Ollama o embedding do braço e
+o gerador. Sem isso, a primeira pergunta de cada braço paga o carregamento: na
+fumaça, 6,0 s contra ~1,5 s das outras, porque o juiz tira o gerador da
+memória entre um braço e outro.
+
+**O veredito, provisório até a §11.** Vale para a métrica primária, com a
+margem do E0 completo mais recente: o grupo `c1` para métrica da C1, e o
+`gerador_juiz` para métrica da C2.
+
+- |Δ| ≤ margem: "sem diferença relevante";
+- |Δ| > margem e o IC sem o zero: "melhor" ou "pior";
+- o resto: "inconclusivo". Sem E0 completo: "sem margem do E0".
+
+O McNemar exato e o Holm estão no `placar.py`, mas o placar ainda não os usa:
+a família do Holm e o papel do McNemar são da §11.
+
+**Como usar**, da raiz:
+
+```
+backend\.venv\Scripts\python.exe tests\benchmark\run_experiment.py tests\benchmark\cartoes\E0.yaml
+backend\.venv\Scripts\python.exe tests\benchmark\run_experiment.py tests\benchmark\cartoes\E0.yaml --limite 3
+backend\.venv\Scripts\python.exe tests\benchmark\run_experiment.py tests\benchmark\cartoes\E0.yaml --retomar tests\benchmark\out\E0_<data>
+backend\.venv\Scripts\python.exe tests\benchmark\run_experiment.py tests\benchmark\cartoes\E0.yaml --retomar tests\benchmark\out\E0_<data> --so-placar
+```
+
+**Fumaça do E0** (`--limite 3`: 3 perguntas de dentro e 3 de fora, nos 5
+braços). Os 10 passos passaram, em ~9 min.
+
+- O RAGAS leva ~35 s por caso com o `qwen3:8b`. A rodada completa, com 70
+  perguntas de dentro e 4 julgamentos, deve levar perto de 3 h.
+- Nas 3 perguntas, A1, A2 e A3 deram as mesmas respostas, token a token, e o
+  rejulgamento (A4) deu as mesmas notas: Δ = 0 em toda métrica de qualidade.
+  Três perguntas não dizem nada do ruído, só que o encanamento funciona.
+- O custo varia: a latência da geração difere em até 4,5 s entre braços A/A.
+  Foi isso que levou ao aquecimento acima.
+- A c01, em português, recuperou só os artigos em português, e o modelo se
+  absteve: a abstenção indevida de A1 é 1 em 3.
+
+### B2 — E1: o que o experimento precisava (18/10)
+
+O plano (§8, E1) pede três construções, e as três estão prontas. A rodada vem
+depois do E0, porque o veredito usa a margem dele.
+
+| Arquivo | Mudança |
+|---|---|
+| `backend/app/config.py`, `index_versions/pdf-v1-bgem3.sha256` | a versão `pdf-v1-bgem3`: a lista do `pdf-v1` (`--register --like pdf-v1`), coleção própria e `embedding_model: bge-m3`. Ingerida: 39 documentos e 894 chunks, como o `pdf-v1`, em 57 s. O C0 dá o mesmo do `pdf-v1` |
+| `backend/app/rag/translation.py` (novo) | a tradução da pergunta para o inglês, só na busca. Com cache, lê a tradução gravada; fora dele, faz uma chamada ao Ollama local (temperatura 0, sem raciocínio) |
+| `backend/app/rag/retrieval.py` | `retrieve()` embeda `translation.query_for_retrieval(question)`, dentro do tempo medido. Quem chama continua com a pergunta original, e o gerador também |
+| `backend/app/config.py`, `.env.example` | `RETRIEVAL_QUERY_TRANSLATION` (desligada por padrão), `RETRIEVAL_TRANSLATION_MODEL` (vazio = o gerador) e `RETRIEVAL_TRANSLATION_CACHE` |
+| `tests/benchmark/arm.py` | a proveniência do braço grava a tradução: a versão do prompt, o modelo, o cache e o SHA-256 dele |
+| `tests/benchmark/translate_questions.py` (novo) | traduz as 103 perguntas uma vez e grava `tests/benchmark/goldens/v2_traducoes.json`, com o tempo de cada tradução e marcas automáticas de defeito |
+| `docker-compose.yml` | o `bge-m3` entra na lista `MODELS` do serviço `models` |
+| `tests/benchmark/run_experiment.py` | avalia as guardas, calcula a fração do buraco fechado até o `teto` e soma o tempo gravado da tradução à latência da busca do braço |
+| `tests/benchmark/cartoes/E1.yaml` (novo) | o cartão, com os cinco braços do plano e as guardas |
+| `tests/api/test_translation.py`, `tests/benchmark/test_translate_questions.py` (novos) | 4 + 3 testes |
+
+**As guardas, como ficaram no cartão.** Não-inferioridade em inglês:
+`bgem3-en` ≥ `nomic-en` − 1 pergunta na evidência@4 (tolerância de 1/N). A
+latência ≤ +1 s por pergunta vale para os dois candidatos, contra o
+`nomic-pt`. No braço da tradução, a latência soma o tempo gravado da tradução,
+porque a busca com o cache não pagou a chamada.
+
+**A tradução, medida.** Feita com o `gemma3:4b`, o gerador do benchmark, numa
+chamada por pergunta. Ela não é corrigida à mão: corrigida, viraria o
+`input_en` escrito à mão, que é o braço de teto.
+
+| Prompt | Com marca de defeito | Delas, de dentro | Tempo por tradução (média · máx.) |
+|---|---|---|---|
+| v1: só a instrução | 10 de 103 | 5 | 666 ms · 1,2 s |
+| v2: regras explícitas e três exemplos neutros | 4 de 103 | 0 | 700 ms · 1,2 s |
+
+- **O v1 respondia em vez de traduzir.** "Qual é a fórmula química da água?"
+  virou "H2O". A pergunta sobre os seeds do MetaRAG virou "...and 10 different
+  random seeds foram usadas.": um dado inventado e meio em português. A
+  pergunta de injeção devolveu o próprio prompt do tradutor. E uma pergunta
+  perdeu o nome do método (MeTMaP), justo a palavra que a busca precisava.
+- **O v2 fica.** As 70 perguntas de dentro saem sem marca. Os exemplos do
+  prompt não se parecem com nenhum golden. Sobram defeitos em 4 perguntas fora
+  de escopo: o pedido de poema e o de opinião voltam sem tradução, a da Copa
+  vira "Brazil" e a de culinária perde o "você é um assistente de culinária".
+  A pergunta de injeção vira uma recusa, sem marca. Tudo isso só pesa na
+  abstenção e na AUC do braço, não na evidência.
+- **As marcas** (`flags` no arquivo): `curta` (menos da metade do tamanho da
+  pergunta), `sem_pergunta` (a pergunta tem "?" e a tradução não),
+  `portugues` (duas ou mais palavras que só existem em português) e `prompt`
+  (repete a instrução do tradutor).
+- **A guarda de latência fica justa.** A busca custa ~250 ms; com os ~700 ms
+  da tradução, o Δ esperado fica perto de +0,7 s, contra a tolerância de 1 s.
 
 ### B4 — E5: a análise de concentração e a primeira leitura (18/10)
 
