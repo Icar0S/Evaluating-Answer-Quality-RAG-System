@@ -192,12 +192,16 @@ def assign_splits(goldens: list[dict], seed: int, reassign: bool = False) -> int
     for key, questions in sorted(units.items()):
         by_stratum[_stratum(questions)].append(key)
     rng = random.Random(seed)
+    # A alternância continua de um estrato para o outro: estrato com número ímpar de unidades não dá a sobra
+    # sempre ao mesmo split.
+    offset = 0
     for stratum in sorted(by_stratum):
         keys = by_stratum[stratum]
         rng.shuffle(keys)
         for i, key in enumerate(keys):
             for g in units[key]:
-                g["split"] = SPLITS[i % 2]
+                g["split"] = SPLITS[(offset + i) % 2]
+        offset += len(keys)
     return len(pending)
 
 
