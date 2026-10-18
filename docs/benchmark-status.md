@@ -32,10 +32,10 @@ tomadas no caminho.
 | **B2** | E1 — idioma (`pdf-v1-bgem3`, tradução da pergunta) | **concluída**: o bge-m3 vence (evidência@4 de 0,13 para 0,66 em português; fidelidade +0,15), ao preço da abstenção correta (0,83 → 0,63) |
 | **B3** | E6 — parâmetros de recuperação (C1) | **seleção feita** em português (nomic e bge-m3) e em inglês: o limiar recalibrado separa quando a recuperação funciona; o MMR nunca ajudou; a confirmação (`top_k` 8 e o limiar, no bge-m3) vem a seguir |
 | **B4** | E5 — concentração das fontes | **concluída**: o cruzamento com a C2 (as respostas apoiadas nos ímãs são piores), o H5a (os ímãs somem com o bge-m3) e o H5b (a bibliografia não é ímã); falta a demanda real das aulas |
-| **B5** | E2 — formato: PDF × Markdown | **seleção feita** em inglês: o Markdown não ganha do PDF; o Docling empata com o pymupdf4llm e vai ao degrau 3 (`md-dl-sec`) na confirmação |
+| **B5** | E2 — formato: PDF × Markdown | **concluída** (só a C1, em inglês): a conversão do Docling perde 8 de 39 perguntas para o PDF; o chunker por seção, com orçamento igual, só empata com o PDF |
 | **B6** | E3 — cabeçalho contextual e atribuição errada | **construído** (cabeçalho no embedding ou no trecho, títulos em rascunho, regra de citação v2, atribuição errada, cartão); roda depois do E1 |
-| **B7** | E7 — busca híbrida (BM25 + RRF) | **concluída**: +0,20 de evidência@4 em inglês (Holm 0,001), quase nada em português com o nomic; sem a interação com a sigla |
-| **B8** | E8 — reranker | **construído** com o LLM como reranker (a alternativa sem dependência nova do plano); roda depois do E1 |
+| **B7** | E7 — busca híbrida (BM25 + RRF) | **concluída**: +0,20 de evidência@4 em inglês, sem a interação com a sigla; com o bge-m3 em português, **piora** (−0,11): o BM25 traz o ímã de idioma de volta |
+| **B8** | E8 — reranker (o LLM via Ollama) | **concluída**: a precisão@4 sobe em português (+0,08), a nota separa as perguntas de fora pior que o cosseno, e a busca fica 40× mais lenta (~11 s): não recomendado |
 | B9 | E4, E9 | aguardam (o E4 precisa dos distratores e de perguntas revisadas por degrau; o E9 é opcional) |
 | C | Placar (regra de veredito, Holm, interação) e as seções novas do relatório | aguarda a §11 |
 
@@ -1070,6 +1070,32 @@ O Markdown não ganha do PDF:
 - Na curva, o `md-dl` alcança o PDF com 9 trechos (~7.100 tokens): a
   evidência está no Markdown, mas chega mais tarde na lista.
 
+**A confirmação** (`cartoes/E2c.yaml`, `tests/benchmark/out/E2c_20261018T201049/`,
+em inglês, as 39 perguntas de dentro de `confirmacao`, 4 min):
+
+| Degrau | evidência@4 | tokens de contexto | Δ [IC 95%] | Veredito |
+|---|---|---|---|---|
+| 1 · `pdf` | 21 de 39 | 2.575 | — | — |
+| 1b · `pdf-cont` (contra 1) | 23 de 39 | 3.180 | +0,05 [−0,06; +0,18] | inconclusivo |
+| 2 · `md-dl` (contra 1b) | 15 de 39 | 3.187 | −0,21 [−0,37; −0,06] | **pior** |
+| 3 · `md-dl-sec`, k = 4 (contra 2) | 15 de 39 | 1.700 | 0,00 [−0,24; +0,18] | sem diferença relevante |
+| 3 · `md-dl-sec`, k = 8 (contra 2) | 22 de 39 | 3.400 | +0,18 [−0,03; +0,37] | inconclusivo |
+| 3 · `md-dl-sec`, k = 8 (contra 1) | — | — | +0,03 [−0,15; +0,18] | sem diferença relevante |
+
+- **O Markdown perde do PDF neste acervo.** A conversão do Docling custa 8
+  perguntas contra o `pdf-cont`, mais em `numero` (−5 de 13) e `tabela` (−3 de
+  16). O chunker por seção, com o mesmo orçamento de tokens, devolve o que a
+  conversão tirou e empata com o PDF, sem passar dele.
+- **Conferido: não é viés da medida.** A evidência dos goldens foi copiada do
+  texto do PDF, e o Docling reorganiza tabelas. Pelo validador
+  (`goldens validar --indice md-dl --evidencia`), só 2 dos 86 fragmentos não
+  casam no texto do Docling, contra 0 no PDF; a perda de 8 perguntas não vem
+  daí. No pymupdf4llm são 14 de 86: o resultado da seleção dele tem parte de
+  medida.
+- **A leitura para a turma:** "o Markdown é melhor" não vale aqui. O que o MD
+  permite (o corte por seção) só compensa o que a conversão perde, e a escada
+  mostra os dois efeitos separados.
+
 ### B6 — E3: o cabeçalho contextual e a atribuição errada (18/10)
 
 | Arquivo | Mudança |
@@ -1121,6 +1147,26 @@ perguntas de dentro):
   (o BM25 custa menos de 1 ms; o índice é montado uma vez, fora do tempo
   medido).
 
+**A híbrida com o bge-m3** (`cartoes/E7-bgem3.yaml`,
+`tests/benchmark/out/E7-bgem3_20261018T200351/`, exploratório, 6 min): **em
+português, ela piora.**
+
+| Par | evidência@4 | precisão@4 | Δ evidência [IC 95%] | Veredito | Holm |
+|---|---|---|---|---|---|
+| bge-m3 → + híbrida (português) | 46 → 38 de 70 | 0,71 → 0,44 | −0,11 [−0,22; −0,02] | **pior** | 0,02 |
+| bge-m3 → + híbrida (inglês) | 44 → 53 de 70 | 0,73 → 0,80 | +0,13 [+0,05; +0,23] | melhor | 0,008 |
+
+- **A guarda "sem sigla não piora" não passa** em português: −6 das 34
+  perguntas sem sigla.
+- **O porquê:** o BM25 casa as palavras da pergunta em português com os quatro
+  artigos em português do acervo, e o RRF põe esses trechos de volta na lista.
+  O ímã de idioma, que o bge-m3 tinha resolvido no vetor, volta pelo canal
+  lexical. Em inglês, onde a pergunta e o acervo falam a mesma língua, a
+  híbrida soma de novo.
+- **A lição** é a do cartão: duas melhorias que funcionam sozinhas não somam
+  por obrigação. Para perguntas em português, a combinação recomendada é o
+  bge-m3 sem a híbrida; a híbrida só vale com a pergunta na língua do acervo.
+
 ### B8 — E8: o reranker (18/10)
 
 O plano propõe um cross-encoder (`bge-reranker-v2-m3`) e dá uma "alternativa
@@ -1138,6 +1184,29 @@ Foi a escolhida: o cross-encoder pediria o torch no venv do backend.
 **O custo:** 20 chamadas de LLM por pergunta. O número fixo de candidatos e o
 cache existem para a lista de 10 do diagnóstico reusar as notas da lista do
 braço, em vez de pedir 50 notas a mais.
+
+**A rodada** (`tests/benchmark/out/E8_20261018T171129/`, as 70 perguntas de
+dentro). Um HTTP 500 passageiro do Ollama derrubou o braço em português na
+primeira tentativa; o reranker ganhou três tentativas por chamada, e a rodada
+foi retomada.
+
+| Par | precisão@4 | evidência@4 | Hit@1 | MRR@10 | AUC das de fora: cosseno · nota | latência da busca |
+|---|---|---|---|---|---|---|
+| `base` → `rerank` (português) | 0,16 → **0,23** | 9 → 15 de 70 | 0,19 → 0,37 | 0,23 → 0,37 | 0,80 · **0,67** | 0,26 → **11,7 s** |
+| `base-en` → `rerank-en` | 0,61 → 0,64 | 37 → 45 de 70 | 0,71 → 0,77 | 0,79 → 0,83 | 0,97 · **0,63** | 0,27 → **10,0 s** |
+
+- **Veredito na precisão@4** (margem de 0,010 do E0): em português, melhor,
+  +0,08 [+0,04; +0,12]; em inglês, inconclusivo, +0,03 [−0,02; +0,08]. O
+  reranker ajuda mais onde o cosseno é pior: em português, o Hit@1 dobra.
+- **A segunda hipótese cai:** a nota do LLM separa as perguntas de fora *pior*
+  que o cosseno (0,67 contra 0,80 em português; 0,63 contra 0,97 em inglês).
+  Uma nota de 0 a 10 do `gemma3:4b` é grossa demais para virar portão.
+- **O custo inviabiliza o uso interativo:** 40 vezes a latência da busca. As
+  guardas passam (o MRR sobe; a latência ficou dentro dos 15 s da guarda, que
+  foi folgada de propósito), mas a recomendação é não ligar o reranker com o
+  LLM no assistente. O cross-encoder que o plano propõe custaria uma chamada
+  em lote, e não 20 sequenciais; fica como continuação, porque pede o torch no
+  venv do backend.
 
 ### B4 — E5: a análise de concentração e a primeira leitura (18/10)
 
