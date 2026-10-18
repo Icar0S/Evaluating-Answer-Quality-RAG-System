@@ -137,3 +137,20 @@ def test_tokens_de_contexto_e_curva_de_tokens_quando_os_trechos_trazem_a_contage
 
     assert (metrics["context_tokens"], metrics["tokens_curve"], metrics["evidence_curve"]) == (30, [30, 35], [True, True])
     assert without_count["context_tokens"] is None
+
+
+def test_auc_da_nota_do_reranker_quando_os_trechos_trazem_a_nota():
+    def metrics(score: float, inside: bool) -> dict:
+        chunks = [{**chunk("a.pdf", SOURCE, 0.7), "rerank_score": score}]
+        return c1.question_metrics(arm_chunks=chunks, chunks_at_10=chunks, source_document="a.pdf" if inside else None,
+                                   fragments=[SOURCE] if inside else [], top1_similarity=0.7)
+
+    inside = [("a.pdf", metrics(s, True)) for s in (8.0, 9.0, 10.0)]
+    outside = [metrics(s, False) for s in (1.0, 2.0)]
+
+    summary = c1.summarize(inside, outside)
+
+    # O cosseno (0,7 em todas) não separa; a nota separa por completo.
+    assert summary["top1_similarity_auc"]["auc"] == 0.5
+    assert summary["top1_rerank_auc"]["auc"] == 1.0
+    assert inside[0][1]["chunks"][0]["rerank_score"] == 8.0

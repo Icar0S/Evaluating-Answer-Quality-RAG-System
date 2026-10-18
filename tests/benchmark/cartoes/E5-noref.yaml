@@ -1,0 +1,39 @@
+# Cartão do H5b do E5 (plano-benchmark.md, §8). Formato provisório: a §9 do plano não chegou.
+id: E5-noref
+titulo: A bibliografia é ímã? (H5b do E5)
+pergunta: Cortar o bloco de referências dos artigos muda a recuperação?
+hipotese: >
+  Os chunks de bibliografia aparecem como ímã acima do esperado; se o ímã some e a evidência@4 sobe, o ajuste é
+  cortar a bibliografia. A primeira leitura do E5 previu outra coisa: nas perguntas de dentro, a bibliografia
+  quase não aparece (0,7% em português e 2,5% em inglês dos trechos), e nas de fora, em inglês, é 16,7%. Cortar
+  mexeria pouco na evidência e mais na separação das perguntas de fora.
+exploratorio: false
+goldens: tests/benchmark/goldens/v2.json
+# Conferido antes de rodar (tests/benchmark/noref_check.py): nenhum dos 86 fragmentos de evidência dos goldens
+# cai no bloco cortado.
+
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+
+bracos:
+  base: {indice: pdf-v1, camadas: [c1], papel: baseline}
+  noref: {indice: pdf-v1-noref, camadas: [c1]}
+  # Em inglês, para a leitura sem o ímã de idioma; é lá que a bibliografia aparecia nas perguntas de fora.
+  base-en: {indice: pdf-v1, lingua: en, camadas: [c1], papel: referencia}
+  noref-en: {indice: pdf-v1-noref, lingua: en, camadas: [c1]}
+
+pares: [[base, noref], [base-en, noref-en]]
+metrica_primaria: {camada: c1, metrica: evidence_at_k}
+saida: >
+  A evidência@4 e a AUC do primeiro trecho com e sem a bibliografia, e o E5 (ímãs, chunk ímã) do noref ao lado
+  do baseline (python -m tests.benchmark.e5 sobre o c1 de cada braço).
+didatica: >
+  A bibliografia tem o título de outros artigos: quando o acervo não tem a resposta, ela parece ter.

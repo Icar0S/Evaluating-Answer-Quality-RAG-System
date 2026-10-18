@@ -54,7 +54,7 @@ import run_all as ra  # noqa: E402
 
 from app.config import RAG_INDICES  # noqa: E402
 from app.rag.generation import NOT_FOUND_MARKER  # noqa: E402
-from tests.benchmark import abstention, c1, limiar, placar  # noqa: E402
+from tests.benchmark import abstention, attribution, c1, limiar, placar  # noqa: E402
 
 OUT_ROOT = ROOT / "tests" / "benchmark" / "out"
 RAGAS_RESULTS = ROOT / "tests" / "ragas" / "results"
@@ -67,13 +67,16 @@ C1_METRICS = ("hit_at_1", "hit_at_k", "hit_at_10", "mrr_at_10", "precision_at_k"
 RAGAS_METRICS = ("faithfulness", "answer_relevancy", "context_precision", "context_recall", "context_relevance")
 # Métricas em que menos é melhor (o resto: mais é melhor).
 LOWER_IS_BETTER = {"undue_abstention", "generation_ms", "retrieval_ms", "prompt_tokens", "completion_tokens",
-                   "context_tokens", "false_block"}
+                   "context_tokens", "false_block", "misattribution", "no_citation"}
 # Os grupos do placar: uma métrica do cartão (guarda) se escreve grupo.metrica, como c1.evidence_at_k.
-METRIC_GROUPS = ("c1", "c2", "abstention", "cost")
+METRIC_GROUPS = ("c1", "c2", "abstention", "attribution", "cost")
 # Métricas de 0 ou 1 por pergunta: nelas o placar aplica o McNemar exato (provisório até a §11).
 BINARY_METRICS = {"c1.hit_at_1", "c1.hit_at_k", "c1.hit_at_10", "c1.evidence_at_k", "c1.correct_abstention",
-                  "c1.false_block", "abstention.correct_abstention", "abstention.undue_abstention"}
+                  "c1.false_block", "abstention.correct_abstention", "abstention.undue_abstention",
+                  "attribution.misattribution", "attribution.no_citation", "attribution.cites_source"}
 SPLITS = ("selecao", "confirmacao")
+# c1: a recuperação; c2: as respostas e o juiz; respostas: só as respostas (recusa, atribuição e custo).
+LAYERS = ("c1", "c2", "respostas")
 # Valor de `set` que o runner calcula: o limiar recalibrado na C1 do baseline da própria rodada (E6).
 RECALIBRATED = "recalibrado"
 
@@ -125,8 +128,8 @@ def validate_card(card: dict) -> list[str]:
     for arm in arms.values():
         if arm["kind"] == "rejulgar" and arms.get(arm["of"], {}).get("kind") != "rodada":
             errors.append(f"{arm['id']}: rejulgar aponta para {arm['of']!r}, que não é uma rodada")
-        if arm["kind"] == "rodada" and not set(arm["layers"]) <= {"c1", "c2"}:
-            errors.append(f"{arm['id']}: camadas {arm['layers']} (só c1 e c2)")
+        if arm["kind"] == "rodada" and not set(arm["layers"]) <= set(LAYERS):
+            errors.append(f"{arm['id']}: camadas {arm['layers']} (só {', '.join(LAYERS)})")
         if arm["kind"] == "rodada" and not (INDEX_VERSIONS / f"{arm['index']}.sha256").is_file():
             errors.append(f"{arm['id']}: a versão {arm['index']!r} não tem lista de documentos registrada")
     if sum(arm["papel"] == "baseline" for arm in arms.values()) > 1:
@@ -136,8 +139,8 @@ def validate_card(card: dict) -> list[str]:
             errors.append(f"par {pair}: tem de ser dois braços do cartão")
     for owner, primary in [("o cartão", card["metrica_primaria"])] + [
             (arm["id"], arm["primary"]) for arm in arms.values() if arm.get("primary")]:
-        if primary.get("camada") not in ("c1", "c2") or not primary.get("metrica"):
-            errors.append(f"metrica_primaria de {owner} precisa de camada (c1 ou c2) e metrica")
+        if primary.get("camada") not in METRIC_GROUPS or not primary.get("metrica"):
+            errors.append(f"metrica_primaria de {owner} precisa de camada ({', '.join(METRIC_GROUPS)}) e metrica")
     if card.get("split") and card["split"] not in SPLITS:
         errors.append(f"split {card['split']!r}: {' ou '.join(SPLITS)}")
     for arm_id in card.get("curva") or []:
@@ -158,6 +161,9 @@ def validate_card(card: dict) -> list[str]:
             errors.append(f"guarda {name}: metrica no formato grupo.metrica ({', '.join(METRIC_GROUPS)})")
         if ("tolerancia" in guard) == ("tolerancia_perguntas" in guard):
             errors.append(f"guarda {name}: precisa de tolerancia ou de tolerancia_perguntas (uma das duas)")
+        if guard.get("grupo") is not None and not (isinstance(guard["grupo"], dict) and "campo" in guard["grupo"]
+                                                   and "valor" in guard["grupo"]):
+            errors.append(f"guarda {name}: grupo precisa de campo e valor")
     return errors
 
 
@@ -406,9 +412,10 @@ class Experiment:
             if arm["kind"] == "rodada" and "c1" in arm["layers"]:
                 self.c1(arm)
         for arm in self.arms.values():
-            if arm["kind"] == "rodada" and "c2" in arm["layers"]:
+            if arm["kind"] == "rodada" and {"c2", "respostas"} & set(arm["layers"]):
                 answers = self.answers(arm)
-                if answers:
+                # "respostas" para nas respostas: recusa, atribuição e custo não precisam do juiz.
+                if answers and "c2" in arm["layers"]:
                     self.judge(arm["id"], self.inside_answers(arm, answers))
         for arm in self.arms.values():
             if arm["kind"] == "rejulgar":
@@ -451,7 +458,8 @@ def arm_measures(out: Path, arm: dict, arms: dict[str, dict], questions: dict[st
     """
     classes = classes or {}
     source = arms[arm["of"]] if arm["kind"] == "rejulgar" else arm
-    measures: dict = {"clusters": {}, "c1": {}, "c2": {}, "abstention": {}, "cost": {}, "summary": {}, "curves": {}}
+    measures: dict = {"clusters": {}, "c1": {}, "c2": {}, "abstention": {}, "attribution": {}, "cost": {},
+                      "summary": {}, "curves": {}}
     translation_ms = translation_milliseconds(arm, questions or {}) if arm.get("lang") == "pt" else {}
     diag_path = out / f"c1_{arm['id']}.json"
     if arm["kind"] == "rodada" and diag_path.is_file():
@@ -486,7 +494,7 @@ def arm_measures(out: Path, arm: dict, arms: dict[str, dict], questions: dict[st
         if blocked_outside:
             measures["c1"]["correct_abstention"] = {n: float(b) for n, b in blocked_outside.items()}
     answers_path = out / f"respostas_{source['id']}.json"
-    if answers_path.is_file() and arm["kind"] == "rodada" and "c2" in arm["layers"]:
+    if answers_path.is_file() and arm["kind"] == "rodada" and {"c2", "respostas"} & set(arm["layers"]):
         documents = index_documents(source["index"])
         answers = json.loads(answers_path.read_text(encoding="utf-8"))["answers"]
         inside = {a["name"]: a for a in answers if a.get("source_document")
@@ -505,6 +513,19 @@ def arm_measures(out: Path, arm: dict, arms: dict[str, dict], questions: dict[st
             measures["cost"][metric] = values
         measures["summary"]["truncated"] = sum(1 for a in answers if a.get("truncated"))
         measures["summary"]["errors"] = sum(1 for a in answers if a.get("error"))
+        provenance = json.loads(answers_path.read_text(encoding="utf-8")).get("arm") or {}
+        if (provenance.get("prompt") or {}).get("require_citation"):
+            # Só nos braços com citação obrigatória (E3): sem a regra, toda resposta seria "sem citação".
+            categories = {n: attribution.classify(a, refused(a)) for n, a in inside.items()}
+            answered = [n for n, c in categories.items() if c != "recusa"]
+            measures["attribution"] = {
+                "misattribution": {n: float(attribution.misattributed(a, refused(a), inside=n in inside))
+                                   for n, a in {**inside, **outside}.items()},
+                "no_citation": {n: float(categories[n] == "sem_citacao") for n in answered},
+                "cites_source": {n: float(categories[n] == "fonte") for n in answered},
+            }
+            measures["summary"]["attribution"] = {c: sum(v == c for v in categories.values())
+                                                  for c in attribution.CATEGORIES}
     ragas_path = out / f"ragas_{arm['id']}.json"
     if ragas_path.is_file():
         ragas = json.loads(ragas_path.read_text(encoding="utf-8"))
@@ -551,16 +572,28 @@ def latest_margins(exclude: Path | None = None) -> tuple[dict | None, str | None
     return None, None
 
 
-def guard_results(card: dict, measures: dict[str, dict]) -> list[dict]:
+def _restricted(measures: dict, names: set[str]) -> dict:
+    """As medidas do braço só nestas perguntas (a guarda de um subgrupo)."""
+    return {**measures, **{group: {metric: {n: v for n, v in values.items() if n in names}
+                                   for metric, values in measures[group].items()} for group in METRIC_GROUPS}}
+
+
+def guard_results(card: dict, measures: dict[str, dict], goldens: list[dict] | None = None) -> list[dict]:
     """Cada guarda do cartão: o Δ do par na métrica e se ele fica dentro da tolerância.
 
     `tolerancia_perguntas: n` vira n / (perguntas medidas); `tolerancia` é absoluta (ms, por exemplo). Métrica em
     que menos é melhor (latência) passa se o Δ não sobe mais que a tolerância; as outras, se não caem mais.
+    `grupo: {campo, valor}` restringe a guarda às perguntas com esse valor no golden (E7: as sem sigla).
     """
     results = []
     for guard in card.get("guardas") or []:
         x, y = guard["par"]
-        delta = compare(measures[x], measures[y]).get(guard["metrica"])
+        a, b = measures[x], measures[y]
+        if guard.get("grupo"):
+            field, value = guard["grupo"]["campo"], guard["grupo"]["valor"]
+            names = {g["name"] for g in goldens or [] if g.get(field) == value}
+            a, b = _restricted(a, names), _restricted(b, names)
+        delta = compare(a, b).get(guard["metrica"])
         if delta is None:
             results.append({**guard, "delta": None, "passed": None})
             continue
@@ -653,32 +686,40 @@ def scoreboard(card: dict, out: Path, limit: int | None, goldens: list[dict] | N
     thresholds = {a: json.loads(p.read_text(encoding="utf-8")) for a in arms if (p := out / f"limiar_{a}.json").is_file()}
     result: dict = {"limite": limit, "split": split or card.get("split"), "exploratory": bool(card.get("exploratorio")),
                     "pairs": comparisons, "summary": {a: m["summary"] for a, m in measures.items()},
-                    "means": means, "guards": guard_results(card, measures),
+                    "means": means, "guards": guard_results(card, measures, goldens),
                     "gap_closed": gap_closed(card, arms, means),
                     "tests": significance(card, arms, measures, pairs),
                     "by_class": by_class(card, arms, measures, pairs, groups),
                     "class_field": card.get("classe_por") or "question_class",
                     "curves": {a: curve_means(m) for a, m in measures.items() if m["curves"]},
                     "thresholds": thresholds}
+    own: dict = {}
     if card.get("margem"):
-        margins = {group: placar.noise_margins([compare(measures[x], measures[y]) for x, y in group_pairs])
-                   for group, group_pairs in card["margem"].items()}
-        result["margins"] = margins
-        (out / "margem.json").write_text(json.dumps({"experiment": card["id"], "limite": limit, "margins": margins,
+        own = {group: placar.noise_margins([compare(measures[x], measures[y]) for x, y in group_pairs])
+               for group, group_pairs in card["margem"].items()}
+        result["margins"] = own
+        (out / "margem.json").write_text(json.dumps({"experiment": card["id"], "limite": limit, "margins": own,
                                                       "generated_at": datetime.now(timezone.utc).isoformat()},
                                                      ensure_ascii=False, indent=2), encoding="utf-8")
-    else:
+    # Veredito nos pares que não são de margem. A margem de uma métrica vem do A/A do próprio cartão, se ele
+    # mediu (E3: a citação muda o prompt, e a margem refaz-se); senão, do E0 completo mais recente.
+    margin_pairs = {tuple(p) for group in (card.get("margem") or {}).values() for p in group}
+    verdict_pairs = [(x, y) for x, y in pairs if (x, y) not in margin_pairs]
+    if verdict_pairs:
         margin_data, margin_source = latest_margins(exclude=out)
+        e0 = (margin_data or {}).get("margins", {})
         result["margin_source"] = margin_source
         result["verdicts"] = {}
-        for x, y in pairs:
+        for x, y in verdict_pairs:
             metric = primary_metric(card, arms[y])
             # A C1 tem a margem dela (A1 × A5); o resto, a do gerador e do juiz (A1 × A2 × A3).
             group = "c1" if metric.startswith("c1.") else "gerador_juiz"
-            margin = ((margin_data or {}).get("margins", {}).get(group) or {}).get(metric)
+            from_card = metric in (own.get(group) or {})
+            margin = (own if from_card else e0).get(group, {}).get(metric)
             delta = comparisons[f"{x}→{y}"].get(metric)
             result["verdicts"][f"{x}→{y}"] = {
                 "metric": metric, "margin": margin, "delta": delta,
+                "margin_from": "cartão" if from_card else margin_source,
                 "verdict": placar.verdict(delta, margin, higher_is_better=metric.split(".", 1)[1] not in LOWER_IS_BETTER),
             }
     (out / "placar.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -703,10 +744,15 @@ def _summary_extras(card: dict, result: dict, arms: list[str]) -> list[str]:
                          f"de fora: {cv.get('false_block_count')} pergunta(s); abstenção correta na amostra: "
                          f"{t['in_sample']['correct_abstention']}")
         lines.append("")
-    aucs = {a: ((result["summary"].get(a) or {}).get("c1") or {}).get("top1_similarity_auc") for a in arms}
-    if any(aucs.values()):
-        lines += ["## Separação entre perguntas de dentro e de fora (AUC da similaridade do primeiro trecho)", ""]
-        lines += [f"- **{a}:** {v['auc']} [{v.get('ci_low')}; {v.get('ci_high')}]" for a, v in aucs.items() if v]
+    c1_summary = {a: (result["summary"].get(a) or {}).get("c1") or {} for a in arms}
+    if any(s.get("top1_similarity_auc") for s in c1_summary.values()):
+        lines += ["## Separação entre perguntas de dentro e de fora (AUC do primeiro trecho)", ""]
+        for a, s in c1_summary.items():
+            auc, rerank_auc = s.get("top1_similarity_auc"), s.get("top1_rerank_auc")
+            if auc:
+                extra = (f"; nota do reranker {rerank_auc['auc']} [{rerank_auc.get('ci_low')}; "
+                         f"{rerank_auc.get('ci_high')}]") if rerank_auc else ""
+                lines.append(f"- **{a}:** cosseno {auc['auc']} [{auc.get('ci_low')}; {auc.get('ci_high')}]{extra}")
         lines.append("")
     shown = [a for a in card.get("curva") or [] if result.get("curves", {}).get(a)]
     if shown:
@@ -757,7 +803,8 @@ def write_summary(card: dict, out: Path, result: dict, card_text: str) -> Path:
         lines += ["## Guardas", ""]
         for guard in result["guards"]:
             state = {True: "passa", False: "NÃO PASSA", None: "não medida"}[guard["passed"]]
-            lines.append(f"- **{guard['nome']}** ({' → '.join(guard['par'])}, {guard['metrica']}): {state} — "
+            group = f", só {guard['grupo']['campo']} = {guard['grupo']['valor']}" if guard.get("grupo") else ""
+            lines.append(f"- **{guard['nome']}** ({' → '.join(guard['par'])}, {guard['metrica']}{group}): {state} — "
                          f"Δ {_fmt(guard['delta'])}, tolerância {guard.get('tolerance')}")
         lines.append("")
     if result.get("margins"):
@@ -771,7 +818,9 @@ def write_summary(card: dict, out: Path, result: dict, card_text: str) -> Path:
         for pair, v in result["verdicts"].items():
             test = (result.get("tests") or {}).get(pair)
             extra = f"; McNemar p {test['p_value']}, Holm {test['p_holm']}" if test else ""
-            lines.append(f"- **{pair}:** {v['verdict']} — {v['metric']} {_fmt(v['delta'])}, margem {v['margin']}{extra}")
+            own = " (do A/A do cartão)" if v.get("margin_from") == "cartão" else ""
+            lines.append(f"- **{pair}:** {v['verdict']} — {v['metric']} {_fmt(v['delta'])}, margem {v['margin']}{own}"
+                         f"{extra}")
     if result.get("limite"):
         lines += ["", f"> Rodada de fumaça (--limite {result['limite']}): números sem valor de veredito."]
     path = out / "resumo.md"

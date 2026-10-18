@@ -37,7 +37,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # e não da pasta, que pode ter documentos de outras versões. As chaves de
 # INDEX_SETTINGS_KEYS são opcionais: presentes, fixam o parâmetro de chunking da
 # versão por cima do .env, como o modelo de embedding.
-INDEX_SETTINGS_KEYS = ("chunk_size_tokens", "chunk_overlap_tokens", "chunk_across_pages", "chunker")
+INDEX_SETTINGS_KEYS = (
+    "chunk_size_tokens", "chunk_overlap_tokens", "chunk_across_pages", "chunker", "strip_references", "chunk_header",
+)
 
 RAG_INDICES: dict[str, dict[str, Any]] = {
     "pdf-v1": {
@@ -150,6 +152,55 @@ RAG_INDICES: dict[str, dict[str, Any]] = {
         "description": "os 39 artigos do pdf-v1 convertidos em Markdown pelo Docling (degrau 2 do E2, "
         "data/convert_docling.py)",
     },
+    # Degrau 3 do E2: só o chunker muda (corte nos títulos, a janela dentro de cada seção). As duas ficam
+    # prontas; a seleção do E2 diz qual vai à confirmação.
+    "md-p4llm-sec": {
+        "collection": "rag_md_p4llm_sec",
+        "source_dir": "data/new_papers_marks",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf",),
+        "chunk_size_tokens": 800,
+        "chunk_overlap_tokens": 120,
+        "chunker": "section",
+        "description": "o md-p4llm com o chunker por seção (degrau 3 do E2)",
+    },
+    "md-dl-sec": {
+        "collection": "rag_md_dl_sec",
+        "source_dir": "data/md_dl",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf",),
+        "chunk_size_tokens": 800,
+        "chunk_overlap_tokens": 120,
+        "chunker": "section",
+        "description": "o md-dl com o chunker por seção (degrau 3 do E2)",
+    },
+    # H5b do E5: a bibliografia é ímã? O bloco cortado é o que a C0 acha (corpus_quality.references_block).
+    "pdf-v1-noref": {
+        "collection": "rag_pdf_v1_noref",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf",),
+        "strip_references": True,
+        "description": "o pdf-v1 sem o bloco de referências de cada artigo (H5b do E5)",
+    },
+    # E3: o cabeçalho "Artigo: <título> · pág. N" (backend/app/rag/titles.json) só no texto embedado, ou no
+    # próprio trecho (embedding, prompt e juízes).
+    "pdf-hdr-emb": {
+        "collection": "rag_pdf_hdr_emb",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf",),
+        "chunk_header": "embedding",
+        "description": "o pdf-v1 com o cabeçalho do artigo só no texto embedado (E3)",
+    },
+    "pdf-hdr": {
+        "collection": "rag_pdf_hdr",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf",),
+        "chunk_header": "text",
+        "description": "o pdf-v1 com o cabeçalho do artigo no texto do trecho (E3)",
+    },
 }
 
 
@@ -194,6 +245,14 @@ class Settings(BaseSettings):
     # "section" corta nos titulos "#" e corre a janela dentro de cada secao
     # (degrau 3 do E2). No PDF nao muda nada: o texto do PyMuPDF nao tem titulos.
     chunker: Literal["token", "section"] = "token"
+    # Corta o bloco de referências de cada documento antes do chunking (o que a
+    # C0 acha). False = historico. So a versao pdf-v1-noref (H5b do E5) liga.
+    strip_references: bool = False
+    # Cabecalho contextual "Artigo: <titulo> · pag. N" (app/rag/titles.py; E3 do
+    # plano-benchmark.md): "embedding" poe o cabecalho so no texto embedado (o
+    # guardado, o prompt e os juizes nao mudam); "text", no proprio trecho.
+    # "none" = historico.
+    chunk_header: Literal["none", "embedding", "text"] = "none"
 
     # Retrieval
     top_k: int = 4
@@ -210,6 +269,17 @@ class Settings(BaseSettings):
     retrieval_use_mmr: bool = False
     retrieval_mmr_lambda: float = 0.7
     retrieval_fetch_multiplier: int = 3
+    # Busca hibrida (app/rag/bm25.py; E7 do plano-benchmark.md): a vetorial e a
+    # lexical (BM25) fundidas por RRF, com o k do RRF abaixo (60, o da
+    # literatura). Desligada por padrao (comportamento historico).
+    retrieval_hybrid: bool = False
+    retrieval_rrf_k: int = 60
+    # Reranker com o LLM local (app/rag/rerank.py; E8 do plano-benchmark.md): o
+    # LLM da nota de 0 a 10 a cada candidato, e os top_k de maior nota seguem.
+    # Modelo vazio = GENERATION_MODEL. Desligado por padrao (historico).
+    retrieval_rerank: bool = False
+    retrieval_rerank_model: str | None = None
+    retrieval_rerank_candidates: int = 20
     # Traducao da pergunta para o ingles, so na busca (app/rag/translation.py):
     # o acervo e quase todo em ingles. O gerador continua recebendo a pergunta
     # original. Desligada por padrao (comportamento historico); o E1 do
@@ -260,6 +330,10 @@ class Settings(BaseSettings):
     prompt_require_grounding: bool = True
     prompt_require_abstention: bool = True
     prompt_require_citation: bool = False
+    # Redacao da regra de citacao: "v1" (a de sempre, que o estudo de mutacao
+    # le literalmente) ou "v2" (cita [arquivo] quando o trecho nao tem pagina;
+    # E3 do plano-benchmark.md). So vale com PROMPT_REQUIRE_CITATION.
+    prompt_citation_rule: Literal["v1", "v2"] = "v1"
 
     # Prompt versioning
     prompt_version: str = "v1"
@@ -283,6 +357,7 @@ class Settings(BaseSettings):
         "rag_index",
         "retrieval_translation_model",
         "retrieval_translation_cache",
+        "retrieval_rerank_model",
         mode="before",
     )
     @classmethod

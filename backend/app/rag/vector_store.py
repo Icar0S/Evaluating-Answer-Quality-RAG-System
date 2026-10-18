@@ -107,6 +107,28 @@ def get_all(include_embeddings: bool = False, batch_size: int = 5000) -> dict[st
     return result
 
 
+def get_by_ids(ids: list[str], include_embeddings: bool = False) -> dict[str, list]:
+    """Os chunks destes ids (textos, metadados e, se pedido, vetores), na ordem pedida; id que não existe some.
+
+    Para a busca híbrida (E7): o trecho que só o BM25 achou precisa do cosseno com a pergunta, que o limiar e o
+    MMR usam.
+    """
+    result: dict[str, list] = {"ids": [], "documents": [], "metadatas": [], "embeddings": []}
+    if not ids:
+        return result
+    include = ["documents", "metadatas"] + (["embeddings"] if include_embeddings else [])
+    found = get_collection().get(ids=list(ids), include=include)
+    position = {chunk_id: i for i, chunk_id in enumerate(found["ids"])}
+    for chunk_id in ids:
+        if chunk_id in position:
+            i = position[chunk_id]
+            result["ids"].append(chunk_id)
+            result["documents"].append(found["documents"][i])
+            result["metadatas"].append(found["metadatas"][i])
+            result["embeddings"].append(list(found["embeddings"][i]) if include_embeddings else [])
+    return result
+
+
 def query(embedding: list[float], top_k: int, include_embeddings: bool = False) -> dict[str, Any]:
     """Busca os top_k chunks mais proximos.
 

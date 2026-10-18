@@ -335,3 +335,56 @@ def test_register_by_stem_pega_os_mesmos_artigos_em_outro_formato(test_version: 
     (test_version / "b.pdf").write_text("de novo", encoding="utf-8")
     with pytest.raises(ValueError, match="b: 2 arquivo"):
         ingestion.register_documents("teste-v1-y", test_version, like="teste-v1", by_stem=True)
+
+
+def test_noref_corta_o_bloco_de_referencias_pagina_a_pagina():
+    refs = [f"[{i}] A. Author{i}, B. Other et al. Title number {i}. In Proceedings of ICSE, 20{10 + i}."
+            for i in range(1, 9)]
+    pages = [(1, "Introduction\nRAG systems answer questions."),
+             (2, "Conclusion\nWe proposed a method.\nReferences\n" + "\n".join(refs[:4])), (3, "\n".join(refs[4:]))]
+    doc = ingestion.DocumentText(Path("a.pdf"), "pdf", pages, pages_total=3)
+
+    stripped, removed = ingestion.strip_references(doc)
+
+    # O título e as 8 referências saem; a página 3, só de referências, some; as outras ficam como estavam.
+    assert removed == 9
+    assert stripped.segments == [(1, "Introduction\nRAG systems answer questions."),
+                                 (2, "Conclusion\nWe proposed a method.")]
+    assert ingestion.strip_references(stripped) == (stripped, 0)
+    assert Settings(_env_file=None, rag_index="pdf-v1-noref").strip_references is True
+
+
+def test_cabecalho_contextual_no_texto_ou_so_no_embedding(tmp_path: Path, monkeypatch, ollama):
+    docs = tmp_path / "acervo"
+    docs.mkdir()
+    (docs / "RAGAS.md").write_text("# RAGAS\n" + "metric " * 50, encoding="utf-8")
+    stored = {}
+    monkeypatch.setattr(vector_store, "add_chunks", lambda **kwargs: stored.update(kwargs))
+    monkeypatch.setattr(ingestion.titles, "load_titles", lambda: {"RAGAS": "Título de teste"})
+    embedded = []
+    real_embed = ingestion.embed_texts
+    monkeypatch.setattr(ingestion, "embed_texts", lambda texts, model=None: embedded.extend(texts) or real_embed(texts))
+
+    for mode in ("embedding", "text"):
+        stored.clear()
+        embedded.clear()
+        monkeypatch.setenv("CHUNK_HEADER", mode)
+        get_settings.cache_clear()
+        ingestion.ingest_documents(source_dir=docs)
+        header = "Artigo: Título de teste"
+        assert embedded[0].startswith(header)
+        # No modo embedding, o trecho guardado (o do prompt e dos juízes) não muda; no modo text, muda.
+        assert stored["documents"][0].startswith(header) is (mode == "text")
+
+
+def test_regra_de_citacao_v2_so_com_a_flag(monkeypatch):
+    monkeypatch.setenv("PROMPT_REQUIRE_CITATION", "true")
+    get_settings.cache_clear()
+    # Padrão: a v1 literal, que o estudo de mutação lê.
+    assert generation.CITATION_RULE in generation.build_system_prompt()
+
+    monkeypatch.setenv("PROMPT_CITATION_RULE", "v2")
+    get_settings.cache_clear()
+    prompt = generation.build_system_prompt()
+
+    assert generation.CITATION_RULE_V2 in prompt and generation.CITATION_RULE not in prompt

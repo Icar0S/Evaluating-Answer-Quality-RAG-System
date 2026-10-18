@@ -1,0 +1,58 @@
+# Cartão do E6 em português com o embedding do E1 (plano-benchmark.md, §8). Formato provisório: a §9 não chegou.
+#
+# Em português com o nomic-embed-text, a varredura ficou no chão (2 de 31 perguntas da seleção com evidência).
+# Com o bge-m3, o E1 achou a evidência em 46 de 70 perguntas em português: a varredura volta a ter o que
+# mostrar. Os braços de chunk ficam de fora: em inglês (E6-en), nenhum passou da seleção, e cada um pediria uma
+# versão nova com o bge-m3.
+id: E6-bgem3
+titulo: Parâmetros de recuperação em português, com o bge-m3 (varredura exploratória)
+pergunta: Com o embedding que resolve o idioma, qual top_k, MMR e limiar servem às perguntas em português?
+hipotese: >
+  MMR melhora a cobertura@4 em fato_distribuido; um limiar calibrado melhora a abstenção correta com falso
+  bloqueio pequeno. Em inglês (E6-en), o MMR piorou e o limiar recalibrado foi o único a sobreviver ao Holm.
+exploratorio: true
+goldens: tests/benchmark/goldens/v2.json
+split: selecao
+
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+
+bracos:
+  base: {indice: pdf-v1-bgem3, camadas: [c1], papel: baseline}
+  k2: {indice: pdf-v1-bgem3, camadas: [c1], set: {top_k: 2}}
+  k8: {indice: pdf-v1-bgem3, camadas: [c1], set: {top_k: 8}}
+  mmr-05:
+    indice: pdf-v1-bgem3
+    camadas: [c1]
+    set: {retrieval_use_mmr: true, retrieval_mmr_lambda: 0.5}
+    metrica_primaria: {camada: c1, metrica: coverage_at_k}
+  mmr-07:
+    indice: pdf-v1-bgem3
+    camadas: [c1]
+    set: {retrieval_use_mmr: true, retrieval_mmr_lambda: 0.7}
+    metrica_primaria: {camada: c1, metrica: coverage_at_k}
+  lim-recal:
+    indice: pdf-v1-bgem3
+    camadas: [c1]
+    set: {min_similarity_score: recalibrado}
+    metrica_primaria: {camada: c1, metrica: correct_abstention}
+
+pares: [[base, k2], [base, k8], [base, mmr-05], [base, mmr-07], [base, lim-recal]]
+metrica_primaria: {camada: c1, metrica: evidence_at_k}
+guardas:
+  - {nome: falso bloqueio do limiar recalibrado, par: [base, lim-recal], metrica: c1.false_block, tolerancia_perguntas: 1}
+curva: [base, k8]
+saida: >
+  A tabela da varredura em selecao, a AUC do limiar e o Δ por classe de pergunta. O que passar vai à
+  confirmação, com a C2.
+didatica: >
+  O mesmo parâmetro pode não fazer nada com um embedding e fazer diferença com outro: a ordem dos experimentos
+  importa.

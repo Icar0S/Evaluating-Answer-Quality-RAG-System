@@ -31,9 +31,12 @@ tomadas no caminho.
 | **B1** | E0 — rodada A/A | **concluída** (margem de ruído em `tests/benchmark/out/E0_20261018T082340/margem.json`) |
 | **B2** | E1 — idioma (`pdf-v1-bgem3`, tradução da pergunta) | **construído** (versão, tradução gravada, cartão); a rodada vem depois do E0, que dá a margem |
 | **B3** | E6 — parâmetros de recuperação (C1) | **seleção feita** (em português, no chão; em inglês, o limiar recalibrado é o único que sobrevive ao Holm); a confirmação vem depois do E1 |
-| **B4** | E5 — concentração das fontes: análise e primeira leitura no baseline | **análise pronta** (faltam o cruzamento com a C2 e o `pdf-v1-noref` do H5b) |
+| **B4** | E5 — concentração das fontes: análise e primeira leitura no baseline | **análise e cruzamento com a C2 prontos**; o H5b (`pdf-v1-noref`) está construído e conferido, e roda depois do E1 |
 | **B5** | E2 — formato: PDF × Markdown | **construído até o degrau 2**; a seleção em português ficou no chão, e a em inglês roda depois do E1 |
-| B6–B9 | E3, E4, E7, E8, E9 | aguardam |
+| **B6** | E3 — cabeçalho contextual e atribuição errada | **construído** (cabeçalho no embedding ou no trecho, títulos em rascunho, regra de citação v2, atribuição errada, cartão); roda depois do E1 |
+| **B7** | E7 — busca híbrida (BM25 + RRF) | **construído** (BM25 em Python puro, fusão RRF, guarda de subgrupo, cartão); roda depois do E1 |
+| **B8** | E8 — reranker | **construído** com o LLM como reranker (a alternativa sem dependência nova do plano); roda depois do E1 |
+| B9 | E4, E9 | aguardam (o E4 precisa dos distratores e de perguntas revisadas por degrau; o E9 é opcional) |
 | C | Placar (regra de veredito, Holm, interação) e as seções novas do relatório | aguarda a §11 |
 
 ### Portões, estado atual
@@ -955,6 +958,73 @@ quatro degraus acham a evidência nas mesmas 2 das 31 perguntas. Como no E6, o
 ímã de idioma esconde o formato. A escada roda também com as perguntas em
 inglês (`cartoes/E2-en.yaml`), depois do E1.
 
+**O degrau 3, pronto para a confirmação.** As versões `md-p4llm-sec` e
+`md-dl-sec` (a lista do degrau 2 e `chunker: section`) estão registradas; a
+seleção diz qual vai. O corte nos títulos muda a distribuição de tamanhos, como
+o plano previu:
+
+| Versão | Chunks | Tokens por chunk: média · p10 · mediana | Chunks com menos de 50 tokens |
+|---|---|---|---|
+| `md-p4llm` (janela) | 775 | 784 · 800 · 800 | 0 |
+| `md-p4llm-sec` | 1.276 | 438 · 54 · 401 | 118 |
+| `md-dl` (janela) | 716 | 779 · 800 · 800 | 0 |
+| `md-dl-sec` | 1.243 | 411 · 55 · 356 | 119 |
+
+Os chunks de menos de 50 tokens são, na maior parte, títulos sem texto (uma
+seção que só abre subseções). O corte segue o plano ao pé da letra. Por isso a
+confirmação do degrau 3 compara também com orçamento de tokens igual: k = 8
+com ~420 tokens por chunk dá os ~3.200 do k = 4 com 800.
+
+### B6 — E3: o cabeçalho contextual e a atribuição errada (18/10)
+
+| Arquivo | Mudança |
+|---|---|
+| `backend/app/rag/titles.json` (novo), `tests/benchmark/draft_titles.py` (novo) | o título de cada um dos 39 artigos, rascunhado pelos metadados do PDF (33) ou pelo texto de maior fonte da primeira página (6). Três rascunhos saíram errados e foram corrigidos: "123" (um número solto na página), "R C : A Fine-grained…" e "RAGA : Automated…" (versalete perdido; são o RAGChecker e o RAGAS). **Todos ficam com `revisado: false` até a revisão humana**, como o plano pede |
+| `backend/app/rag/titles.py` (novo) | a tabela e o cabeçalho "Artigo: <título> · pág. N" |
+| `backend/app/rag/ingestion.py`, `backend/app/config.py` | `CHUNK_HEADER`: `embedding` põe o cabeçalho só no texto embedado (o guardado, o prompt e os juízes não mudam); `text`, no próprio trecho, fora da janela de 800 tokens. O manifesto grava o modo e o SHA-256 da tabela de títulos. As versões `pdf-hdr-emb` e `pdf-hdr` |
+| `backend/app/rag/generation.py`, `backend/app/config.py` | a regra de citação v2 (§6): cita `[arquivo]` quando o trecho não tem página. Atrás de `PROMPT_CITATION_RULE=v2`; a v1 continua o padrão, literal, porque o estudo de mutação a lê |
+| `tests/benchmark/attribution.py` (novo) | as categorias da §6: recusa, (a) sem citação, (b) citação fabricada (arquivo ou página que não veio), (c) cita outro documento recebido, (d) cita a fonte. Atribuição errada = (b) nas de dentro, mais a resposta não abstida que cita algo numa pergunta de fora; o denominador é o total de respostas |
+| `tests/benchmark/run_experiment.py` | o grupo `attribution` no placar, só quando a proveniência da rodada diz que a citação era obrigatória; a camada `respostas` (as respostas sem o juiz, para a A/A da atribuição); a margem do A/A do próprio cartão valendo para as métricas que ele mediu, e a do E0 para o resto |
+| `tests/benchmark/cartoes/E3.yaml` (novo) | `pdf-v1` (baseline), `pdf-hdr-emb` e `pdf-hdr`, os três com a citação v2, e a A/A curta com citação |
+
+**Uma limitação, antes de rodar:** só 7 perguntas de dentro nomeiam o artigo
+(`names_article`). A interação do cabeçalho com o nome do artigo fica só
+ilustrativa.
+
+### B7 — E7: a busca híbrida (18/10)
+
+| Arquivo | Mudança |
+|---|---|
+| `backend/app/rag/bm25.py` (novo) | BM25 (Okapi, k1 = 1,5, b = 0,75) em Python puro, com índice invertido, montado com o texto da coleção (`get_all`) e guardado por coleção e contagem de chunks. Tokens: letras e dígitos, sem acento e sem caixa |
+| `backend/app/rag/retrieval.py` | `RETRIEVAL_HYBRID`: a lista do vetor e a do BM25 (cada uma com top_k × `RETRIEVAL_FETCH_MULTIPLIER`) fundidas por RRF (k = 60, `RETRIEVAL_RRF_K`). O trecho que só o BM25 achou ganha o cosseno pelo vetor guardado, porque o limiar e o MMR usam o `similarity_score`. Cada trecho diz de onde veio (`found_by`). O índice BM25 é montado fora do tempo medido. Com a flag desligada, a busca é a de sempre |
+| `backend/app/rag/vector_store.py` | `get_by_ids()`, para o vetor dos trechos do BM25 |
+| `tests/benchmark/c1.py` | as listas da C1 guardam o `found_by` |
+| `tests/benchmark/run_experiment.py` | guarda de subgrupo (`grupo: {campo, valor}`), para "sem sigla não piora" |
+| `tests/benchmark/cartoes/E7.yaml` (novo) | `pdf-v1` × híbrida, em português e em inglês, com o Δ por `has_acronym` |
+| `tests/api/test_hybrid.py` (novo) | 5 testes: tokens, ranking, cache, a fusão com o cosseno do trecho do BM25, e a busca de sempre sem a flag |
+
+Em português, a sigla e o nome próprio são as palavras que a pergunta e o
+acervo em inglês têm em comum. O BM25 pode achar o documento que o embedding
+não acha, e é isso que o E7 mede no `has_acronym`.
+
+### B8 — E8: o reranker (18/10)
+
+O plano propõe um cross-encoder (`bge-reranker-v2-m3`) e dá uma "alternativa
+sem dependência nova: usar o LLM como reranker via Ollama, que é mais lento".
+Foi a escolhida: o cross-encoder pediria o torch no venv do backend.
+
+| Arquivo | Mudança |
+|---|---|
+| `backend/app/rag/rerank.py` (novo) | cada candidato vira uma chamada ao Ollama local que pede uma nota de 0 a 10 para "o trecho ajuda a responder a pergunta?", com temperatura 0, sem raciocínio e 4 tokens de saída. Resposta sem número vale 0. A nota já pedida fica em cache no processo |
+| `backend/app/rag/retrieval.py`, `backend/app/config.py` | `RETRIEVAL_RERANK`: 20 candidatos (`RETRIEVAL_RERANK_CANDIDATES`, os 4 × 5 do plano), ordenados pela nota (empate: o maior cosseno), e os k primeiros seguem. A nota vai em `rerank_score`; o cosseno continua em `similarity_score`. Com o reranker, o MMR não roda. `RETRIEVAL_RERANK_MODEL` vazio = o gerador |
+| `tests/benchmark/c1.py` | a nota do primeiro trecho por pergunta e a AUC dela, ao lado da do cosseno |
+| `tests/benchmark/cartoes/E8.yaml` (novo) | `pdf-v1` × reranker, em português e em inglês |
+| testes | 5 em `tests/api/test_rerank.py` e 1 em `test_c1.py` |
+
+**O custo:** 20 chamadas de LLM por pergunta. O número fixo de candidatos e o
+cache existem para a lista de 10 do diagnóstico reusar as notas da lista do
+braço, em vez de pedir 50 notas a mais.
+
 ### B4 — E5: a análise de concentração e a primeira leitura (18/10)
 
 O E5 não é um braço: é uma análise sobre o diagnóstico de qualquer braço. Ela
@@ -1020,6 +1090,21 @@ atribuição errada precisa de citação e fica para o E3.
 **O que falta no E5:**
 
 - ~~rodar o cruzamento na C2 do E0~~: feito, na seção do B1;
-- o `pdf-v1-noref` do H5b;
+- rodar o H5b (`cartoes/E5-noref.yaml`), já construído (abaixo);
 - a demanda real das aulas. Para começar a coletar, basta um `LOGS_DIR` por
   aula no backend local (§8, E5).
+
+**O H5b, construído.**
+
+| Arquivo | Mudança |
+|---|---|
+| `backend/app/rag/ingestion.py` | `strip_references()`: o bloco de referências que a C0 acha (`corpus_quality.references_block`) é cortado antes do chunking, página a página; página que fica sem texto sai. O manifesto grava quantas linhas saíram de cada documento |
+| `backend/app/config.py` | `STRIP_REFERENCES` (falso por padrão) entra nas chaves que a versão fixa; a versão `pdf-v1-noref`, com a lista do `pdf-v1` |
+| `tests/benchmark/noref_check.py` (novo) | a conferência que o plano pede antes de rodar: fragmento de evidência dos goldens que casa no texto inteiro e não casa sem o bloco seria evidência perdida |
+| `tests/benchmark/cartoes/E5-noref.yaml` (novo) | `pdf-v1` × `pdf-v1-noref`, em português e em inglês, só C1 |
+| testes | 1 de corte (`test_rag_indices.py`) e 1 da conferência (`test_noref_check.py`) |
+
+A conferência passou: **nenhum dos 86 fragmentos de evidência dos goldens cai
+no bloco cortado**. O corte tira 5.207 linhas, 17% do texto dos 39 artigos, e
+38 páginas que eram só bibliografia. Um artigo não tem bloco (o RETORCH, o
+resumo de uma página).

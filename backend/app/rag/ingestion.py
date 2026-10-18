@@ -17,7 +17,7 @@ import hashlib
 import json
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,7 +27,7 @@ import tiktoken
 
 from app.config import PROJECT_ROOT, RAG_INDICES, get_settings
 from app.logging_utils import logger
-from app.rag import corpus_quality, vector_store
+from app.rag import corpus_quality, titles, vector_store
 
 _encoding = tiktoken.get_encoding("cl100k_base")
 
@@ -147,6 +147,29 @@ def read_document(path: Path) -> DocumentText:
     return DocumentText(path, "pdf", list(pages), pages_total=total)
 
 
+def strip_references(doc: DocumentText) -> tuple[DocumentText, int]:
+    """O documento sem o bloco de referências que a C0 acha (corpus_quality.references_block), e quantas linhas
+    saíram. É o H5b do E5 (versão pdf-v1-noref): a bibliografia é ímã? Sem bloco, o documento volta como está.
+
+    O bloco é achado no texto inteiro e cortado página a página: o texto do documento é a junção das páginas
+    com uma quebra de linha, e as páginas vêm sem quebra nas pontas. Página que fica sem texto sai, como na
+    leitura do PDF.
+    """
+    block = corpus_quality.references_block(doc.text.splitlines(), markdown=doc.format == "md")
+    if block is None:
+        return doc, 0
+    start, end = block
+    segments: list[tuple[int | None, str]] = []
+    first = 0
+    for page, text in doc.segments:
+        lines = text.splitlines()
+        kept = "\n".join(line for i, line in enumerate(lines, start=first) if not start <= i < end).strip()
+        first += len(lines)
+        if kept:
+            segments.append((page, kept))
+    return DocumentText(doc.path, doc.format, segments, doc.raw_markdown, doc.pages_total), end - start
+
+
 def effective_overlap(chunk_size_tokens: int, overlap_tokens: int) -> int:
     """Sobreposição que o chunker usa de fato: uma sobreposição >= ao chunk vira chunk // 4."""
     if overlap_tokens >= chunk_size_tokens:
@@ -253,6 +276,12 @@ def chunk_document(
             chunk_id = f"{stem}::p{page_num}::c{idx}"
             records.append(ChunkRecord(chunk_id=chunk_id, document=doc_name, page=page_num, text=chunk))
     return records
+
+
+def with_header(records: list[ChunkRecord]) -> list[ChunkRecord]:
+    """O cabeçalho contextual no texto do chunk (CHUNK_HEADER=text; E3, pdf-hdr): "Artigo: <título> · pág. N"
+    antes do trecho. Fica fora da janela de tokens: o chunk cresce, e o prompt também."""
+    return [replace(r, text=f"{titles.header(r.document, r.page)}\n{r.text}") for r in records]
 
 
 def build_chunk_records(
@@ -455,6 +484,9 @@ def write_manifest(
         "chunk_boundary_offset_tokens": settings.chunk_boundary_offset_tokens,
         "chunk_across_pages": settings.chunk_across_pages,
         "chunker": settings.chunker,
+        "strip_references": settings.strip_references,
+        "chunk_header": settings.chunk_header,
+        "titles_sha256": titles.titles_sha256() if settings.chunk_header != "none" else None,
         "md_normalization": MD_NORMALIZATION if any(d["format"] == "md" for d in documents) else None,
         "n_documents": len(documents),
         "n_chunks": chunks,
@@ -502,7 +534,11 @@ def measure_corpus_quality() -> dict:
             not_measured.append(entry["file"])
             continue
         doc = read_document(file)
+        if manifest.get("strip_references"):
+            doc, _ = strip_references(doc)
         records = chunk_document(doc, *params)
+        if manifest.get("chunk_header") == "text":
+            records = with_header(records)
         if len(records) != entry["chunks"]:
             not_measured.append(entry["file"])
             continue
@@ -544,6 +580,9 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
     for doc_path in doc_files:
         try:
             doc = read_document(doc_path)
+            removed = None
+            if settings.strip_references:
+                doc, removed = strip_references(doc)
             records = chunk_document(
                 doc,
                 settings.chunk_size_tokens,
@@ -552,6 +591,8 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
                 across_pages=settings.chunk_across_pages,
                 chunker=settings.chunker,
             )
+            if settings.chunk_header == "text":
+                records = with_header(records)
             all_records.extend(records)
             manifest_docs.append(
                 {
@@ -560,6 +601,7 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
                     "bytes": doc_path.stat().st_size,
                     "sha256": _sha256(doc_path),
                     "chunks": len(records),
+                    **({"references_lines_removed": removed} if removed is not None else {}),
                     **document_quality(doc, records),
                 }
             )
@@ -572,7 +614,11 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
     batch_size = 64
     for i in range(0, len(all_records), batch_size):
         batch = all_records[i : i + batch_size]
-        embeddings = embed_texts([r.text for r in batch])
+        if settings.chunk_header == "embedding":
+            # Só o texto embedado leva o cabeçalho (E3, pdf-hdr-emb): o guardado, o prompt e os juízes não mudam.
+            embeddings = embed_texts([f"{titles.header(r.document, r.page)}\n{r.text}" for r in batch])
+        else:
+            embeddings = embed_texts([r.text for r in batch])
         vector_store.add_chunks(
             ids=[r.chunk_id for r in batch],
             embeddings=embeddings,

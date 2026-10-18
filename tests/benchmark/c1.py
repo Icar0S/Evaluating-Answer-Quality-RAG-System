@@ -156,6 +156,11 @@ def _ranked(chunks: list[dict], relevant: list[bool] | None = None, with_text: b
         }
         if relevant is not None:
             item["relevant"] = relevant[i]
+        if chunk.get("found_by"):
+            # Busca híbrida (E7): o trecho veio do vetor, do BM25 ou dos dois.
+            item["found_by"] = chunk["found_by"]
+        if chunk.get("rerank_score") is not None:
+            item["rerank_score"] = chunk["rerank_score"]
         if with_text:
             item["text"] = chunk.get("text")
         items.append(item)
@@ -177,7 +182,9 @@ def question_metrics(
     arm_tokens = _tokens(arm_chunks)
     base = {"n_chunks": len(arm_chunks), "top1_similarity": top1_similarity, "blocked_by_threshold": blocked,
             # Os tokens de contexto que o gerador recebe: o custo do E6 (chunk × top_k com orçamento igual).
-            "context_tokens": sum(arm_tokens) if arm_tokens is not None else (0 if not arm_chunks else None)}
+            "context_tokens": sum(arm_tokens) if arm_tokens is not None else (0 if not arm_chunks else None),
+            # A nota do reranker no primeiro trecho (E8), quando houver.
+            "top1_rerank": arm_chunks[0].get("rerank_score") if arm_chunks else None}
     if source_document is None:
         return {**base, "chunks": _ranked(arm_chunks, with_text=with_text)}
 
@@ -297,6 +304,11 @@ def summarize(inside: list[tuple[str, dict]], outside: list[dict], threshold: fl
     inside_top1 = [m["top1_similarity"] for _, m in inside if m.get("top1_similarity") is not None]
     outside_top1 = [m["top1_similarity"] for m in outside if m.get("top1_similarity") is not None]
     summary["top1_similarity_auc"] = auc_bootstrap(inside_top1, outside_top1)
+    # Com o reranker (E8): a nota do primeiro trecho separa as de fora melhor que o cosseno?
+    inside_rerank = [m["top1_rerank"] for _, m in inside if m.get("top1_rerank") is not None]
+    outside_rerank = [m["top1_rerank"] for m in outside if m.get("top1_rerank") is not None]
+    if inside_rerank and outside_rerank:
+        summary["top1_rerank_auc"] = auc_bootstrap(inside_rerank, outside_rerank)
     if threshold > 0:
         summary["false_block_rate"] = (
             sum(m["blocked_by_threshold"] for _, m in inside) / len(inside) if inside else None

@@ -1,0 +1,45 @@
+# Cartão do E7 (plano-benchmark.md, §8). Formato provisório: a §9 do plano não chegou (docs/benchmark-status.md).
+id: E7
+titulo: Busca híbrida (BM25 + vetorial, fusão RRF)
+pergunta: Somar a busca por palavra-chave à busca vetorial ajuda nas perguntas com sigla e nome próprio?
+hipotese: >
+  O ganho da híbrida é maior com has_acronym = true (RAGAS, ARES, MetaRAG, Defects4J) do que sem (interação).
+  Em português, a sigla e o nome próprio são as palavras que a pergunta e o acervo em inglês têm em comum: o
+  BM25 pode achar o documento que o embedding não acha.
+exploratorio: false
+goldens: tests/benchmark/goldens/v2.json
+# O Δ por grupo sai por has_acronym: a hipótese é a interação.
+classe_por: has_acronym
+
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+
+# Cada lista da híbrida traz top_k × RETRIEVAL_FETCH_MULTIPLIER (12) candidatos; o RRF usa k = 60.
+bracos:
+  base: {indice: pdf-v1, camadas: [c1], papel: baseline}
+  hibrida: {indice: pdf-v1, camadas: [c1], set: {retrieval_hybrid: true}}
+  base-en: {indice: pdf-v1, lingua: en, camadas: [c1], papel: referencia}
+  hibrida-en: {indice: pdf-v1, lingua: en, camadas: [c1], set: {retrieval_hybrid: true}}
+
+pares: [[base, hibrida], [base-en, hibrida-en]]
+metrica_primaria: {camada: c1, metrica: evidence_at_k}
+guardas:
+  - nome: sem sigla não piora
+    par: [base, hibrida]
+    metrica: c1.evidence_at_k
+    tolerancia_perguntas: 1
+    grupo: {campo: has_acronym, valor: false}
+  - {nome: latência da recuperação, par: [base, hibrida], metrica: c1.retrieval_ms, tolerancia: 200}
+saida: >
+  A evidência@4 por has_acronym, em português e em inglês, e exemplos de trechos que só o BM25 trouxe
+  (found_by: bm25 nas listas da C1).
+didatica: >
+  A busca vetorial entende sentido; o BM25 acha a palavra exata. Cada uma falha num tipo de pergunta.

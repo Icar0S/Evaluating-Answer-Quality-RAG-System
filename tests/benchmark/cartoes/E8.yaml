@@ -1,0 +1,46 @@
+# Cartão do E8 (plano-benchmark.md, §8). Formato provisório: a §9 do plano não chegou (docs/benchmark-status.md).
+#
+# O reranker é o LLM (o gerador, gemma3:4b) via Ollama: a "alternativa sem dependência nova" que o plano dá ao
+# cross-encoder bge-reranker-v2-m3, que pediria o torch no venv do backend. Cada candidato ganha uma nota de 0 a
+# 10 (app/rag/rerank.py); os 4 de maior nota seguem.
+id: E8
+titulo: Reranker (o LLM lê a pergunta e o trecho juntos)
+pergunta: Reordenar os candidatos com um modelo que lê a pergunta e o trecho juntos melhora o que chega ao gerador e a abstenção?
+hipotese: >
+  Buscar 20 trechos, reordenar com o reranker e ficar com 4 sobe a precisão@4 e o MRR; a nota do reranker
+  separa melhor as perguntas de fora do que o cosseno.
+exploratorio: false
+goldens: tests/benchmark/goldens/v2.json
+
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+  # 20 candidatos, os 4 × 5 do plano (RETRIEVAL_FETCH_MULTIPLIER=5 com TOP_K=4).
+  retrieval_rerank_candidates: 20
+
+bracos:
+  base: {indice: pdf-v1, camadas: [c1], papel: baseline}
+  rerank: {indice: pdf-v1, camadas: [c1], set: {retrieval_rerank: true}}
+  # Em inglês, sem o ímã de idioma: os 20 candidatos têm o documento certo com mais frequência, e o reranker
+  # tem o que escolher.
+  base-en: {indice: pdf-v1, lingua: en, camadas: [c1], papel: referencia}
+  rerank-en: {indice: pdf-v1, lingua: en, camadas: [c1], set: {retrieval_rerank: true}}
+
+pares: [[base, rerank], [base-en, rerank-en]]
+metrica_primaria: {camada: c1, metrica: precision_at_k}
+guardas:
+  - {nome: MRR@10 não piora, par: [base, rerank], metrica: c1.mrr_at_10, tolerancia_perguntas: 1}
+  - {nome: MRR@10 não piora (inglês), par: [base-en, rerank-en], metrica: c1.mrr_at_10, tolerancia_perguntas: 1}
+  - {nome: latência, par: [base, rerank], metrica: c1.retrieval_ms, tolerancia: 15000}
+saida: >
+  A precisão@4 e o MRR, a AUC da nota do reranker contra a do cosseno para as perguntas de fora, e o custo em
+  latência (20 chamadas de LLM por pergunta).
+didatica: >
+  Recuperar muito e escolher bem é diferente de recuperar pouco.

@@ -1,0 +1,53 @@
+# Cartão do E3 (plano-benchmark.md, §8). Formato provisório: a §9 do plano não chegou (docs/benchmark-status.md).
+id: E3
+titulo: Cabeçalho contextual no chunk
+pergunta: 'Colocar "Artigo: <título> · pág. N" antes de cada trecho reduz a resposta com fonte errada?'
+hipotese: >
+  No embedding, o cabeçalho sobe o Hit@4 nas perguntas com names_article = true, e não nas outras (interação);
+  no texto que o gerador lê, ele reduz a atribuição errada.
+exploratorio: false
+goldens: tests/benchmark/goldens/v2.json
+classe_por: names_article
+
+# A citação obrigatória é fixa do E3, nos três braços, com a regra v2 (§6) e o mesmo PROMPT_VERSION.
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+  prompt_require_citation: true
+  prompt_citation_rule: v2
+juiz:
+  modelo: qwen3:8b
+  num_ctx: 8192
+
+bracos:
+  base: {indice: pdf-v1, camadas: [c1, c2], papel: baseline}
+  # A rodada A/A curta com citação (o prompt mudou, a margem se refaz): só as respostas, em outra ordem. A
+  # atribuição e a recusa não precisam do juiz.
+  base-aa: {indice: pdf-v1, camadas: [respostas], ordem: 2, papel: ruido}
+  hdr-emb: {indice: pdf-hdr-emb, camadas: [c1, c2]}
+  hdr: {indice: pdf-hdr, camadas: [c1, c2]}
+
+pares: [[base, hdr-emb], [base, hdr], [base, base-aa]]
+margem: {gerador_juiz: [[base, base-aa]]}
+metrica_primaria: {camada: attribution, metrica: misattribution}
+guardas:
+  - {nome: evidência não piora (hdr-emb), par: [base, hdr-emb], metrica: c1.evidence_at_k, tolerancia_perguntas: 1}
+  - {nome: evidência não piora (hdr), par: [base, hdr], metrica: c1.evidence_at_k, tolerancia_perguntas: 1}
+  - {nome: sem citação não sobe (hdr-emb), par: [base, hdr-emb], metrica: attribution.no_citation, tolerancia_perguntas: 1}
+  - {nome: sem citação não sobe (hdr), par: [base, hdr], metrica: attribution.no_citation, tolerancia_perguntas: 1}
+confusoes:
+  - "names_article tem 7 perguntas de dentro: a interação do cabeçalho com o nome do artigo é só ilustrativa."
+  - "Os títulos de backend/app/rag/titles.json são rascunho (revisado: false) até a revisão humana."
+  - "O cabeçalho fica fora da janela de 800 tokens: o prompt do hdr cresce ~20 tokens por trecho."
+saida: >
+  A tabela das categorias (a)–(d) por braço, o Hit@4 por names_article e exemplos de respostas que mudaram de
+  categoria.
+didatica: >
+  A resposta pode estar certa e a fonte errada. O teste mostra as duas coisas separadas.

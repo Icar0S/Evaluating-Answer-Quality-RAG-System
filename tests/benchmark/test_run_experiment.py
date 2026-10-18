@@ -281,3 +281,82 @@ def test_delta_por_grupo_usa_o_campo_do_cartao(tmp_path: Path, monkeypatch):
 
     assert result["class_field"] == "content_type"
     assert {cls: d["delta"] for cls, d in result["by_class"]["base→k8"].items()} == {"tabela": 1.0, "texto": 0.0}
+
+
+def test_guarda_de_um_subgrupo_olha_so_as_perguntas_dele(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(rx, "index_documents", lambda index: {"doc1", "doc2"})
+    monkeypatch.setattr(rx, "latest_margins", lambda exclude=None: (None, None))
+    card = {**SWEEP, "pares": [["base", "k8"]], "guardas": [
+        {"nome": "sem sigla", "par": ["base", "k8"], "metrica": "c1.evidence_at_k", "tolerancia_perguntas": 1,
+         "grupo": {"campo": "has_acronym", "valor": False}}]}
+    # Com sigla, k8 ganha uma; sem sigla, perde as duas: a guarda do subgrupo vê só a perda, e 2 perguntas
+    # passam da tolerância de 1.
+    for arm_id, hits in (("base", (0, 1, 1)), ("k8", (1, 0, 0))):
+        rows = {f"q{i}": (hit, 0.7, False, [hit]) for i, hit in enumerate(hits, start=1)}
+        (tmp_path / f"c1_{arm_id}.json").write_text(json.dumps(_c1_sweep(rows, {})), encoding="utf-8")
+    goldens = [{"name": "q1", "has_acronym": True}, {"name": "q2", "has_acronym": False},
+               {"name": "q3", "has_acronym": False}]
+
+    [guard] = rx.scoreboard(card, tmp_path, limit=None, goldens=goldens)["guards"]
+
+    assert (guard["delta"]["n"], guard["delta"]["delta"], guard["tolerance"], guard["passed"]) == (2, -1.0, 0.5, False)
+    assert rx.validate_card({**card, "guardas": [{**card["guardas"][0], "grupo": {"campo": "x"}}]})[0].endswith(
+        "grupo precisa de campo e valor")
+
+
+def test_atribuicao_so_com_a_citacao_obrigatoria(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(rx, "index_documents", lambda index: {"docA", "docB"})
+    monkeypatch.setattr(rx, "latest_margins", lambda exclude=None: (None, None))
+    card = {**{k: v for k, v in CARD.items() if k != "margem"}, "pares": [],
+            "bracos": {"A1": {"indice": "pdf-v1", "camadas": ["c2"], "papel": "baseline"}}}
+    answers = [
+        {"name": "qA", "source_document": "docA.pdf", "sources": ["docA.pdf (pág. 1)"],
+         "actual_output": "É isso [docA.pdf, pág. 1]."},
+        {"name": "qB", "source_document": "docB.pdf", "sources": ["docB.pdf (pág. 2)"],
+         "actual_output": "É aquilo [docZ.pdf, pág. 5]."},
+        {"name": "f1", "source_document": None, "sources": ["docA.pdf (pág. 1)"],
+         "actual_output": "Inventei [docA.pdf, pág. 1]."},
+    ]
+    for require_citation in (False, True):
+        data = {"n_cases": 3, "answers": answers, "arm": {"prompt": {"require_citation": require_citation}}}
+        (tmp_path / "respostas_A1.json").write_text(json.dumps(data), encoding="utf-8")
+
+        result = rx.scoreboard(card, tmp_path, limit=None)
+
+        means = result["means"]["A1"]
+        if not require_citation:
+            assert "attribution.misattribution" not in means
+            continue
+        # qB fabrica a citação; f1, de fora, cita sem se abster: 2 de 3 respostas.
+        assert means["attribution.misattribution"] == pytest.approx(2 / 3, abs=1e-4)
+        assert means["attribution.cites_source"] == 0.5
+        assert result["summary"]["A1"]["attribution"]["fabricada"] == 1
+
+
+def test_margem_do_proprio_cartao_vale_para_as_metricas_que_ele_mediu(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(rx, "index_documents", lambda index: {"docA", "docB"})
+    monkeypatch.setattr(rx, "latest_margins", lambda exclude=None: (
+        {"margins": {"gerador_juiz": {"c2.faithfulness": 0.2}}}, "tests/benchmark/out/E0_x/margem.json"))
+    card = {**{k: v for k, v in CARD.items() if k != "margem"},
+            "metrica_primaria": {"camada": "attribution", "metrica": "misattribution"},
+            "bracos": {"base": {"indice": "pdf-v1", "camadas": ["c2"], "papel": "baseline"},
+                       "aa": {"indice": "pdf-v1", "camadas": ["respostas"], "ordem": 2, "papel": "ruido"},
+                       "hdr": {"indice": "pdf-v1", "camadas": ["c2"]}},
+            "pares": [["base", "hdr"], ["base", "aa"]], "margem": {"gerador_juiz": [["base", "aa"]]}}
+    assert rx.validate_card(card) == []
+    cited = {"source_document": "docA.pdf", "sources": ["docA.pdf (pág. 1)"]}
+    for arm_id, outputs in (("base", ("[docA.pdf, pág. 1]", "[docZ.pdf, pág. 1]")),
+                            ("aa", ("[docA.pdf, pág. 1]", "[docZ.pdf, pág. 1]")),
+                            ("hdr", ("[docA.pdf, pág. 1]", "[docA.pdf, pág. 1]"))):
+        answers = [{**cited, "name": f"q{i}", "actual_output": f"É isso {o}."} for i, o in enumerate(outputs, 1)]
+        data = {"n_cases": 2, "answers": answers, "arm": {"prompt": {"require_citation": True}}}
+        (tmp_path / f"respostas_{arm_id}.json").write_text(json.dumps(data), encoding="utf-8")
+
+    result = rx.scoreboard(card, tmp_path, limit=None)
+
+    # O par de margem não tem veredito; o outro usa a margem do A/A do cartão (0, as respostas são iguais).
+    assert set(result["verdicts"]) == {"base→hdr"}
+    verdict = result["verdicts"]["base→hdr"]
+    assert (verdict["metric"], verdict["margin"], verdict["margin_from"]) == ("attribution.misattribution", 0.0,
+                                                                              "cartão")
+    assert verdict["delta"]["delta"] == -0.5
