@@ -1,0 +1,604 @@
+# Benchmark de estratégias de RAG — estado da implementação
+
+**Plano:** [plano-benchmark.md](../plano-benchmark.md) · **Branch:** `feat/indices-v2`
+(mudanças ainda sem commit) · **Última atualização:** 18/10/2026 (Fase A concluída; análise do E5 pronta)
+
+Este documento registra o que já foi construído do plano, etapa por etapa: o que
+mudou, onde, como usar, os testes que rodaram no fim de cada etapa e as decisões
+tomadas no caminho.
+
+> **A lista de etapas é provisória.** O plano chegou cortado no meio da tabela
+> de prioridade: faltam as seções 9 a 14, inclusive a lista de passos da §14
+> ("Fase A", "passo 26"). As etapas abaixo saíram das §5 a §8 e da ordem de
+> prioridade (E0, E1, E6, E5, E2). Vão ser conferidas com a §14 quando ela
+> chegar. As que dependem das seções que faltam estão marcadas.
+
+---
+
+## 1. Onde está
+
+| Etapa | Entrega | Estado |
+|---|---|---|
+| **A1** | Versões derivadas (`--register --like`), parâmetros de chunking por versão, sobreposição efetiva no manifesto | **concluída** |
+| **A2** | `vector_store.get_all()` (BM25 do E7, diagnóstico de FP1) | **concluída** |
+| **A3** | C0 · Acervo: métricas por documento no manifesto, e cálculo para as versões já ingeridas | **concluída** |
+| **A4** | C1 · Recuperação: métricas sem juiz e o diagnóstico estendido | **concluída** |
+| **A5** | Goldens v2: esquema, validador, sorteio do split por documento, migração dos casos existentes como `rascunho` | **concluída** |
+| **A6** | C2/C4 no `generate_answers.py`: proveniência do braço, custo por resposta, ordem embaralhada com semente, abstenção | **concluída** |
+| **A7** | Goldens v2: núcleo de ≥ 60 perguntas em ≥ 20 PDFs e ≥ 30 de fora, como `rascunho` para a revisão humana | **concluída** (falta a revisão humana) |
+| B0 | Runner de experimentos e cartões em YAML | aguarda a §9 |
+| B1 | E0 — rodada A/A | aguarda B0 |
+| B2 | E1 — idioma (`pdf-v1-bgem3`, tradução da pergunta) | aguarda B0 e o download do `bge-m3` |
+| B3 | E6 — parâmetros de recuperação (C1) | aguarda B0 |
+| **B4** | E5 — concentração das fontes: análise e primeira leitura no baseline | **análise pronta** (faltam o cruzamento com a C2 e o `pdf-v1-noref` do H5b) |
+| B5–B9 | E2, E3, E4, E7, E8, E9 | aguardam B0 |
+| C | Placar (regra de veredito, Holm, interação) e as seções novas do relatório | aguarda a §11 |
+
+### Portões, estado atual
+
+Rodados no fim de cada etapa. Nenhum precisa de Ollama, GPU ou rede.
+
+```
+tests/api       (pytest, backend/.venv)                     VERDE — 51 testes (35 antes do benchmark)
+tests/benchmark (pytest, backend/.venv; entra no CI)        VERDE — 31 testes
+tests/reports   (pytest, tests/reports/.venv)               VERDE — 44 testes
+tests/jeveval   (pytest -m "not live", tests/jeveval/.venv) VERDE — 63 testes
+goldens v2      (validar --indice pdf-v1 --evidencia)       VERDE — 103 goldens, 0 erro, 0 aviso
+```
+
+O `pytest` da raiz (o do CI) roda `tests/api` e `tests/benchmark` juntos: 82
+testes.
+
+---
+
+## 2. Decisões tomadas
+
+**Nomes das versões.** O plano (§8.2) previa os braços do E2 como `md2-p4llm`,
+`md2-dl` e `md2-dl-sec`, e dizia que esses nomes substituíam o `md-v2` que o
+README anunciava. Depois do commit em que o plano foi escrito (`fcf039a`), o
+`md-v2` e o `pdf-v2` passaram a existir como versões de verdade (os 61 artigos
+sincronizados), e `md2-*` passaria a parecer um pedaço do `md-v2`. Ficou assim:
+
+- versão de acervo continua com `-vN` (`pdf-v1`, `md-v2`, `md-v3`...), como no
+  README;
+- braço do benchmark é a versão-base mais o que mudou (`pdf-v1-bgem3`,
+  `pdf-v1-cont`, `pdf-hdr`, `pdf-v1-noref`, `esc-dif-030`), como no plano;
+- os braços do E2 viram `md-p4llm`, `md-dl` e `md-dl-sec` (e `md-dl-sec-hdr` no
+  E3). Todos cabem no limite de ~13 caracteres da aba da planilha.
+
+**O que mudou no repositório depois de `fcf039a`** e muda o que o plano diz:
+
+- A identidade do documento pelo nome sem extensão (§6, C1) já existia no
+  `tests/retrieval_diagnostic.py` e no `demo_e2e.source_rank`. Faltava nas
+  contas do E5, que agora a usam (`tests/benchmark/e5.py`, por `c1.doc_stem`).
+- As duas pastas de acervo têm 61 arquivos, e cada versão fixa a lista dos seus
+  documentos (`backend/app/rag/index_versions/`). Todo braço derivado do
+  `pdf-v1` ou do `md-v1` precisa da lista da base: é a etapa A1.
+- A conversão pymupdf4llm dos 39 PDFs (degrau 2 do E2) já existe: são os 39
+  arquivos que o `md-v2` acrescentou a `data/new_papers_marks`. Só a conversão
+  do Docling é nova, numa pasta própria (os nomes colidiriam).
+- Toda entrada nova em `RAG_INDICES` precisa de `origins`: o `/health` lê o
+  campo sem valor padrão.
+
+**Achado que pede decisão: `localhost` custa 2 s por chamada ao Ollama nesta
+máquina.** O Ollama escuta só em `127.0.0.1:11434` (IPv4). Com
+`OLLAMA_BASE_URL=http://localhost:11434`, que é o valor do `.env` e o padrão do
+`config.py`, cada conexão tenta primeiro o IPv6 (`::1`) e espera ~2 s a recusa.
+E o backend abre um cliente novo por chamada.
+
+| | Embedding (média de 5) | Diagnóstico, 4 índices × 10 perguntas × 2 línguas |
+|---|---|---|
+| `http://localhost:11434` | 2.289 ms | 6 min 12 s |
+| `http://127.0.0.1:11434` | 250 ms | 44 s, com as mesmas listas ranqueadas |
+
+Medi só o embedding. A geração abre o cliente do mesmo jeito, no mesmo
+endereço, e deve pagar o mesmo atraso: no chat, são pelo menos duas conexões
+por pergunta. Isso vale para a latência medida até hoje e para o custo do C4:
+o braço de tradução do E1 pagaria uma conexão a mais. As rodadas do benchmark usam
+`OLLAMA_BASE_URL=http://127.0.0.1:11434` no ambiente, sem mexer no `.env`. A
+correção (trocar o `.env`, o padrão do `config.py` e do `.env.example`, ou
+reaproveitar a conexão) muda o assistente e ficou para você decidir.
+
+---
+
+## 3. Etapas concluídas
+
+### A1 — Versões derivadas e parâmetros de chunking por versão (17/10)
+
+**Por quê.** Quase todo braço do plano é uma versão derivada: os mesmos
+documentos do `pdf-v1` e uma mudança só (`pdf-v1-bgem3`, `pdf-v1-cont`,
+`pdf-hdr`, `pdf-v1-noref`, os chunks de 400 e 1200 do E6). O `--register`
+grava a lista com o que está na pasta, e `data/source_pdfs` tem hoje 61 PDFs,
+22 deles diagramados a partir do Markdown. Registrado assim, um `pdf-v1-bgem3`
+indexaria 61 artigos em silêncio, e a comparação com o `pdf-v1` mediria o
+tamanho e o formato do acervo junto com o embedding.
+
+**O que mudou.**
+
+| Arquivo | Mudança |
+|---|---|
+| `backend/app/rag/ingestion.py` | `register_documents(..., like=)` copia a lista da versão-base, na mesma ordem, e recusa se a pasta não tem algum documento dela ou se ele mudou (SHA-256). O cabeçalho da lista nova registra a base. `effective_overlap()` sai do `chunk_text` e o manifesto grava `chunk_overlap_tokens_effective` ao lado do pedido |
+| `backend/app/config.py` | `INDEX_SETTINGS_KEYS` (`chunk_size_tokens`, `chunk_overlap_tokens`): chaves opcionais da versão, copiadas pelo validador por cima do `.env`, como o modelo de embedding |
+| `scripts/ingest_documents.py` | `--like BASE`, só com `--register` |
+| `README.md` | parágrafo sobre versão derivada, na seção das versões do índice |
+| `tests/api/test_rag_indices.py` | 5 testes novos |
+
+**Como usar.**
+
+```powershell
+# 1. a entrada em backend/app/config.py (RAG_INDICES), com coleção própria e origins
+# 2. a lista, copiada da base:
+backend\.venv\Scripts\python scripts\ingest_documents.py --index pdf-v1-bgem3 --register --like pdf-v1
+# 3. a ingestão, como qualquer versão:
+backend\.venv\Scripts\python scripts\ingest_documents.py --index pdf-v1-bgem3
+```
+
+**Testes novos.** A lista copiada é igual à da base, com a mesma ordem, mesmo
+com outro arquivo na pasta. A cópia é recusada se um documento da base sumiu ou
+mudou, e também se a base não tem lista. Uma versão com `chunk_size_tokens`
+ganha do `CHUNK_SIZE_TOKENS` do ambiente, e uma versão sem a chave segue o
+ambiente, como antes. O manifesto grava 150 pedido e 25 efetivo para chunk de
+100. Toda versão registrada tem os campos que o backend lê, as coleções não se
+repetem, e nenhuma pede sobreposição que seria trocada sem aviso.
+
+**O que ficou para depois.** A chave `chunker` (`token` ou `section`) que o
+plano lista com as duas acima entra com o chunker por seção, no E2. Antes
+disso, ela seria um valor que não faz nada.
+
+### A2 — Leitura da coleção inteira (17/10)
+
+`vector_store.get_all(include_embeddings=False, batch_size=5000)` devolve todos
+os chunks da coleção ativa: ids, textos e metadados, e os vetores se pedidos.
+Lê em lotes com `limit`/`offset`, porque o degrau de mil artigos do E4 passa de
+30 mil chunks. É o que o BM25 do E7 indexa e o que dá, no E5, a fração de
+chunks de cada documento no índice (o "esperado ao acaso" do ímã).
+
+Testes novos em `tests/api/test_vector_store.py` (2), com uma coleção falsa:
+paginação, ordem, vetores convertidos em lista e coleção vazia. Conferido
+também no índice real do `pdf-v1`: 894 chunks, igual ao `count()` do Chroma,
+dos 39 documentos.
+
+### A3 — C0 · Acervo no manifesto (17/10)
+
+**O que mede.** As métricas da §6 (C0), por documento, sobre o mesmo texto que
+o chunker recebe. Ficam no manifesto ao lado de `file` e `sha256`, e um resumo
+da versão fica em `c0`, no topo:
+
+| Campo | Definição |
+|---|---|
+| `pages_total`, `pages_with_text` | PDF; a ingestão descarta página sem texto, sem aviso |
+| `tokens`, `chunk_tokens` | cl100k do texto inteiro; média, p10 e p90 dos tokens por chunk |
+| `glued_word_rate` | fração das letras em tokens alfabéticos de 18+ letras fora do dicionário |
+| `table_rows`, `headings` | Markdown cru: linhas de tabela (sem a separadora) e títulos `#`. No PDF, `None` e 0 |
+| `references_found`, `references_share` | o bloco de referências foi achado? que fração dos tokens ele tem? |
+
+**O que mudou.**
+
+| Arquivo | Mudança |
+|---|---|
+| `backend/app/rag/corpus_quality.py` (novo) | as métricas, puras, sem dependência nova; `C0_VERSION = "c0-v1"` |
+| `backend/app/rag/c0_long_words.txt` (novo) | 2.774 palavras de 18+ letras (248 em inglês, 2.526 em português), das listas do pyspellchecker 0.8.3 (MIT) |
+| `backend/app/rag/ingestion.py` | `read_document()` e `chunk_document()`: a leitura sai do chunker, e o C0 usa a mesma extração, sem ler o PDF duas vezes. `build_chunk_records()` mantém a assinatura (o `verify_mutants.py` do estudo de mutação usa). `markdown_structure()`. `measure_corpus_quality()` |
+| `scripts/ingest_documents.py` | `--c0`: calcula o C0 de uma versão já ingerida e grava no manifesto, sem reingerir |
+| `tests/api/test_corpus_quality.py` (novo) | 9 testes |
+
+**O bloco de referências.** Começa no último título "References"/"Referências"
+seguido de linhas com cara de referência (ano, "et al.", "Proceedings", doi,
+lista de autores, numeração `[12]`). Termina no que vier primeiro:
+
+- um título de apêndice;
+- no Markdown, qualquer outro título;
+- no PDF, um título de letra ("A Experimental Setup", ou "A" numa linha e o
+  título na seguinte) seguido de linhas sem cara de referência;
+- a densidade de linhas com marca abaixo de 15% numa janela de 25 linhas.
+
+A regra foi conferida à mão nos 100 documentos (os 39 PDFs, as 39 conversões
+do pymupdf4llm e os 22 Markdown originais), olhando onde cada bloco acaba. A
+primeira versão cortava cedo as referências em duas colunas, em que os autores
+quebram em linhas sem ano (RAGAS, ARES, RAGChecker). Ela ganhou as marcas de
+lista de autores e o título de apêndice partido em duas linhas.
+
+**Como usar.**
+
+```powershell
+backend\.venv\Scripts\python scripts\ingest_documents.py --index pdf-v1 --c0
+```
+
+A ingestão grava o C0 sozinha. O `--c0` serve para as versões já ingeridas.
+Ele confere o SHA-256 de cada arquivo e o número de chunks contra o
+manifesto, e deixa de fora, em `c0.not_measured`, o que não bate, porque o
+texto desse documento não é o que está no índice.
+
+**Resultado nas quatro versões** (17/10, manifestos copiados antes):
+
+| Versão | Docs | Tokens | Chunk: média / p10 | Grude: média · docs > 5% | Bibliografia · docs sem bloco |
+|---|---|---|---|---|---|
+| `pdf-v1` | 39 | 524.705 | 647 / 263 | 0,1% · 0 | 20,9% · 1 |
+| `md-v1` | 22 | 576.171 | 789 / 800 | 39,1% · 18 | 20,4% · 2 |
+| `pdf-v2` | 61 | 1.116.033 | 623 / 268 | 14,1% · 18 | 15,5% · 13 |
+| `md-v2` | 61 | 1.095.445 | 787 / 800 | 14,2% · 18 | 20,9% · 3 |
+
+O que a tabela já diz:
+
+- **O corte por página encolhe o chunk do PDF.** Um em cada dez chunks do
+  `pdf-v1` tem 263 tokens ou menos, contra os 800 pedidos. No Markdown, o
+  p10 é 800. É a confusão que o degrau 1b do E2 (`pdf-v1-cont`) isola.
+- **O grude está todo nos 22 Markdown originais.** 18 deles passam de 5% das
+  letras, e a média é 39%. Nas 39 conversões do pymupdf4llm, o máximo é 1,15%,
+  e nos 39 PDFs, 1,19%. O README dizia "16 de 22, de 3% a 25% das palavras",
+  em outra unidade e com método não registrado.
+- **Um quinto do índice é bibliografia.** São 20,9% dos tokens no `pdf-v1`
+  (de 6,5% a 39,6% por artigo), o que dá peso à hipótese H5b do E5 (trechos de
+  referência como ímã).
+- **O `2025_01_RETORCH_ICTSS24_ResearchGate.pdf` tem uma página só**, a de
+  resumo do ResearchGate, e por isso um chunk só. Não serve de documento-fonte
+  nos goldens v2.
+- **Os 22 PDFs gerados perderam o título "REFERENCES".** O fpdf2 reflui o
+  texto, e o título cai no meio da linha ("...IEEE REFERENCES"). Daí os 13
+  documentos sem bloco no `pdf-v2` e os 15,5% contra 20,9% do `md-v2`.
+
+**Limitações.**
+
+- O `glued_word_rate` ainda não foi conferido contra uma amostra rotulada à
+  mão, como o plano pede (200 linhas de 6 arquivos). Sobrenome e identificador
+  de código longos contam como grude: é o piso de ~1% dos PDFs.
+- Nos Markdown originais com colunas intercaladas, o bloco de referências
+  mistura texto do artigo: o `TestingLLM.md` sai com 60%. Dois dos 22 não têm
+  título de referências nenhum.
+
+### A4 — C1 · Recuperação sem juiz (18/10)
+
+**O que mede.** As métricas da §6 (C1), por pergunta e braço, em
+`tests/benchmark/c1.py` (só biblioteca padrão):
+
+- Hit@1, Hit@k e Hit@10, o rank de sempre e o MRR@10 pelo rank do documento
+  entre os distintos;
+- precisão@k: fração dos trechos que são da fonte ou que, sozinhos, casam um
+  fragmento da evidência;
+- cobertura@k e evidência@k: fragmentos do `context` casados por 25-gramas,
+  τ = 60%, sobre a união dos k trechos, com o texto normalizado;
+- similaridade do primeiro trecho, sem limiar, e o bloqueio pelo limiar do
+  braço.
+
+Cada média sai com IC de 95% por bootstrap **por documento**, porque as
+perguntas de um mesmo documento erram juntas (§7). A abstenção pelo limiar sai
+como taxa nas perguntas de fora, falso bloqueio nas de dentro, e AUC da
+similaridade com IC.
+
+**O que mudou.**
+
+| Arquivo | Mudança |
+|---|---|
+| `tests/benchmark/c1.py` (novo) | as métricas e os agregados; `C1_VERSION = "c1-v1"` |
+| `tests/retrieval_diagnostic.py` | grava, por pergunta e braço, a lista ranqueada que o gerador recebe (`top_k` e MMR do braço) e a de k = 10, cada uma da sua própria busca. Também grava as métricas e o resumo em `c1`. `--set CHAVE=VALOR` aplica a configuração de consulta de um braço (MMR, limiar, `top_k`) sem mexer no ambiente. Golden com `source_document: null` vai para `out_rows`; pergunta cujo documento a versão não tem conta como de fora nela |
+| `pytest.ini` | `tests/benchmark` entra no `pytest` da raiz, e no CI |
+| `tests/benchmark/test_c1.py`, `test_retrieval_diagnostic.py`, `conftest.py` (novos) | 13 testes, herméticos: recuperação falsa e configuração isolada do `.env` |
+
+**Compatível com o que já existia.** `rows[].ranks` continua com o mesmo
+formato, que o relatório lê, e a linha `índice: PT x/10 · EN y/10`, que o
+`compare_indices.py` resume, continua igual. Golden sem a chave
+`source_document`, como os 10 de `dataset.json`, continua de fora.
+
+**Conferido nos índices reais** com os 10 goldens dos Markdown
+(`dataset_md.json`). Os ranks repetem os números do README: `md-v1` PT 2/10 e
+EN 10/10, `pdf-v2` EN 5/10, `md-v2` EN 7/10. Em inglês:
+
+| Índice | Hit@4 | MRR@10 | Precisão@4 | Cobertura@4 | Evidência@4 | Cobertura@10 |
+|---|---|---|---|---|---|---|
+| `md-v1` | 1,00 [1,00; 1,00] | 0,90 | 0,57 [0,42; 0,75] | 0,18 [0,03; 0,41] | 0,10 [0,00; 0,33] | 0,42 |
+| `pdf-v2` | 0,50 [0,18; 0,89] | 0,47 | 0,28 | 0,18 | 0,10 | 0,32 |
+| `md-v2` | 0,70 [0,44; 0,90] | 0,59 | 0,38 | 0,18 | 0,10 | 0,28 |
+
+**O documento certo não basta.** No `md-v1`, em inglês, o documento certo vem
+entre os 4 trechos em 10 de 10 perguntas, mas só 18% dos fragmentos da
+evidência chegam ao gerador, e só uma pergunta recebe a evidência inteira. O
+caso dos "sete pontos de falha" mostra o porquê. O artigo vem em 1º, mas pelos
+chunks `c2`, `c4` e `c0`. As descrições de FP1 a FP7 estão nos chunks `c5` e
+`c6`, e nenhum dos dois vem. Conferido à mão: contra todos os chunks do
+artigo, os 7 fragmentos casam com 100%. O Hit@k do diagnóstico antigo media
+"o artigo veio", não "a resposta veio".
+
+**Cuidados com estes números.**
+
+- São 10 perguntas de 9 documentos: os ICs vão de 0 a 0,33 na evidência.
+- O `context` de 5 desses goldens traz notas editoriais ("No Markdown, este
+  trecho está com as palavras grudadas..."), que não estão na fonte e puxam a
+  cobertura para baixo. Os goldens v2 (A5) levam as notas para `observacao`.
+- O τ = 60% ainda não foi calibrado à mão com 20 pares, como o plano pede.
+  Nos Markdown com colunas intercaladas, há fragmentos com 55% a 57% dos
+  gramas presentes, logo abaixo do τ.
+
+### A5 — Goldens v2: esquema, validador, split e migração (18/10)
+
+**O que mudou.**
+
+| Arquivo | Mudança |
+|---|---|
+| `tests/benchmark/goldens.py` (novo) | o esquema do §7, o validador e o sorteio do split, com uma CLI (`validar`, `sortear-split`) |
+| `tests/benchmark/goldens/v2.json` (novo) | os 30 casos do estudo de mutação migrados, todos `rascunho` |
+| `tests/retrieval_diagnostic.py` | pergunta `ambiguo` fica fora da C1: não tem documento nem é de fora, e o certo é pedir esclarecimento |
+| `tests/benchmark/test_goldens.py` (novo) | 8 testes, entre eles um que valida o `v2.json` do repositório no CI |
+
+**O validador** confere:
+
+- os campos do §7, sem campo a mais nem a menos, e os valores de cada
+  enumeração;
+- `name` único no arquivo e entre os outros conjuntos (`dataset.json`,
+  `dataset_md.json`), porque os juízes indexam as respostas por nome;
+- nota editorial no `context` ("No Markdown...", "Nota:", "espaços
+  restaurados"), que vai para `observacao`;
+- `source_document` sem extensão, e de uma versão do índice com `--indice`;
+- a coerência entre documento, classe, `out_stratum`, `content_type` e
+  evidência;
+- as perguntas do mesmo documento no mesmo split.
+
+Com `--evidencia`, cada fragmento tem de casar com o documento inteiro, como a
+versão o extrai. Abaixo de τ é erro, porque nem com o documento todo na mão
+contaria como evidência. Abaixo de 95% é aviso, porque alguma palavra não é a
+da fonte. O primeiro fragmento também tem de estar na `evidence_page`.
+
+**O split** é sorteado por documento e estratificado pelo `content_type` mais
+comum do documento. Pergunta de fora é sorteada sozinha, estratificada pelo
+`out_stratum`. Sem `--refazer`, só sorteia quem não tem split. Com goldens
+`revisado` no arquivo, o `--refazer` é recusado, porque o split deles já pode
+ter sido usado.
+
+**A migração.** A pergunta e a resposta esperada saem do estudo palavra por
+palavra. O resto é desta migração:
+
+- a pergunta em inglês;
+- os fragmentos, reencontrados no PDF original pelas âncoras das assertivas do
+  estudo (`assertions.yaml`), e não copiados do corpus re-renderizado, cujas
+  páginas são outras (a dica "pág. 12" do c14 é a pág. 23 do original);
+- a página original;
+- os rótulos (`content_type`, `has_acronym`, `names_article`, `out_stratum`).
+
+Nos 4 casos de rastreabilidade, a citação da resposta esperada passou a
+apontar o arquivo e a página originais. O `observacao` de cada golden diz de
+qual caso ele veio e o que mudou.
+
+**O que entrou.** 19 perguntas de dentro, de 6 documentos (8 delas do mesmo
+artigo), 8 de fora (5 `perto`, 2 `escopo`, 1 `longe`) e 3 ambíguas.
+`validar --indice pdf-v1 --evidencia`: nenhum erro e nenhum aviso. Todo
+fragmento está pelo menos 95% na fonte, e todo primeiro fragmento está na
+página declarada.
+
+**Split.** Com 6 documentos o sorteio saía desequilibrado. Foi sorteado de
+novo no fim da A7, com o núcleo completo (ver lá).
+
+**Cotas do §7.** Ficaram longe com os casos migrados (6 documentos, 19 de
+dentro, 3 de tabela, 3 sem sigla, 8 de fora). A A7 completou.
+
+**Primeira C1 do `pdf-v1`.** O diagnóstico antigo não rodava nos índices de
+PDF, porque os goldens dos PDFs não têm `source_document`. Com estes 19 de
+dentro e 8 de fora:
+
+| Pergunta em | Hit@4 | MRR@10 | Precisão@4 | Evidência@4 | Cobertura@10 | AUC (primeiro trecho) |
+|---|---|---|---|---|---|---|
+| português | 0,53 [0,22; 0,68] | 0,45 | 0,32 | 0,32 [0,00; 0,52] | 0,34 | 0,81 [0,61; 0,96] |
+| inglês | 0,89 [0,82; 1,00] | 0,80 | 0,67 | 0,42 [0,00; 0,69] | 0,71 | 0,95 [0,85; 1,00] |
+
+- **O idioma pesa também no `pdf-v1`.** O Hit@4 cai de 17/19 em inglês para
+  10/19 em português.
+- **O limiar de 0,428 do estudo de mutação não barra nada aqui.** Nenhuma das
+  8 perguntas de fora fica abaixo dele. No `pdf-v1`, até a receita de bolo tem
+  similaridade 0,594 em português. As de fora vão de 0,59 a 0,70 e as de dentro
+  de 0,63 a 0,78, de modo que as faixas se sobrepõem. É o que o E6 vai
+  recalibrar, com a regra de seleção e confirmação do plano.
+- Com 6 documentos, os ICs ainda são largos.
+
+### A6 — C2/C4 no `generate_answers.py` (18/10)
+
+**O que cada resposta grava agora**, além do que já gravava:
+
+| Campo | De onde vem | Para quê |
+|---|---|---|
+| `retrieval_ms`, `generation_ms` | `retrieve()` e `generate_answer()` (antes descartados) | C4: latência |
+| `prompt_tokens`, `completion_tokens` | `generate_answer()` | C4: custo; tokens de raciocínio contam aqui |
+| `truncated` | `prompt_tokens >= prompt_token_limit() - 2`, a regra do `sut.py` | o Ollama corta o início do prompt sem avisar |
+| `source_documents`, `chunk_ids`, `similarity_scores` | os trechos que chegaram | E5 (concentração), sem tirar o "(pág. N)" de `sources` |
+| `abstained` | `tests/benchmark/abstention.py` | C2: abstenção correta e indevida |
+| `position` | a ordem em que a pergunta foi feita | com `--shuffle-seed`, a ordem embaralhada |
+
+**No topo do arquivo:**
+
+- `arm`: a configuração efetiva do braço, gerada por
+  `tests/benchmark/arm.py`. Traz o índice, a coleção, o modelo de embedding e
+  o manifesto que respondeu (data, chunks, parâmetros, versão do C0), a
+  recuperação (top_k, MMR, limiar), a geração (provider, modelo, temperatura,
+  semente, `num_ctx` resolvido, `num_predict`, `think`), o prompt e as
+  sobrescritas aplicadas;
+- `shuffle_seed`;
+- `goldens_sha256`, o hash de cada arquivo de goldens.
+
+O diagnóstico de recuperação grava o mesmo `arm` em `c1.arms`.
+
+**Opções novas:**
+
+- `--set CHAVE=VALOR`: sobrescritas de `Settings`, aplicadas com
+  `set_settings_overrides`, sem mexer no `.env` nem no ambiente;
+- `--shuffle-seed N`: embaralha a ordem das perguntas. O cache de prefixo do
+  Ollama faz a resposta depender da pergunta anterior;
+- `--local`: força o provider local, porque o remoto ignora temperatura,
+  semente, `num_ctx` e `think`.
+
+O `--index` agora também vai pelas sobrescritas. A CLI de sempre não mudou, e
+o `compare_indices.py` e o `run_all.py` chamam do mesmo jeito.
+
+**A recusa.** A frase de abstenção é comparada ignorando acento, caixa,
+pontuação e espaço. "Nao encontrei essa informacao..." passa a contar como
+recusa. A lista de variantes (`VARIANTS`) fica vazia até o E0, porque o plano
+manda revisá-la à mão nas respostas de verdade. O relatório ainda usa a busca
+antiga (`report_data.Case.abstained`) e passa a usar esta depois do E0. Até
+lá, as duas podem divergir numa recusa sem acento.
+
+**Testes novos** em `tests/benchmark/test_generate_answers.py` (5), com
+recuperação e geração falsas, e mais 1 no diagnóstico. Cobrem a recusa sem
+acento, caixa ou pontuação e a frase que não é recusa; os campos de custo e de
+documentos; a truncagem no limite (4.096 − 512); a falha que vira registro
+depois de duas tentativas; a ordem embaralhada reproduzível; o braço com as
+sobrescritas convertidas; e a pergunta ambígua fora da C1.
+
+**Fumaça com o modelo de verdade.** Três perguntas dos goldens v2 no `pdf-v1`,
+com a geração fixada pelo §8.2: `gemma3:4b`, temperatura 0, semente 42,
+`num_ctx=auto`, `num_predict=1024`, `think=false` e provider local.
+
+- O `gemma3:4b` aceita `think=false`, sem erro, mesmo sem ter modo de
+  raciocínio. O `num_ctx=auto` resolve para 6.144.
+- Nenhuma truncagem. Os prompts tiveram de 2.226 a 3.716 tokens.
+- A pergunta c01, em português sem acento, recuperou só os artigos em
+  português do acervo, e o modelo se absteve, com `abstained = true`. É o ímã
+  de idioma do E1, ao vivo.
+- Na c03, o CV veio certo (3,79%), mas a "precisão média" veio errada: 0,935 ±
+  0,0305 é o F1 da mesma linha da tabela, e a precisão é 0,9410 ± 0,0357. É o
+  tipo de erro de leitura de tabela que o E2 testa.
+
+### A7 — Goldens v2: núcleo completo e perguntas de fora (18/10)
+
+**O que entrou.** São 51 perguntas de dentro novas, escritas a partir dos PDFs
+originais: 3 em cada um de 15 artigos novos, e mais 2 em cada um dos três
+artigos que tinham ficado com uma só (MeTMaP, RAGChecker, QAQuest). Entraram
+também 22 perguntas de fora novas. Todas são `rascunho`.
+
+Em cada artigo, uma pergunta sai de uma tabela, uma não depende de sigla nem
+de nome próprio, e uma sai do texto ou de uma seção. As classes variam entre
+fato direto, fato distribuído, filtro condicional e rastreabilidade. A
+rastreabilidade tem a citação esperada no formato da `CITATION_RULE`.
+
+**As perguntas de fora** só usam termos ausentes dos 122 arquivos das duas
+pastas, conferido termo a termo, porque os goldens v2 valem também para o
+`pdf-v2` e o `md-v2`. Na conferência, três casos migrados mudaram:
+
+- **c20:** o FALAAI, que o estudo de mutação tratava como referência
+  inventada, existe. É o sistema descrito no `Testing LLM-Based Systems...`,
+  um dos 22 Markdown ("FALAAI/Cagece, 53 casos, 96,22% aprovação"). Nas
+  versões com os Markdown, a pergunta deixaria de ser de fora. O estudo virou
+  QualiBot, ausente dos 122 arquivos, e o motivo está no `observacao`.
+- **c18 e c19:** o Appium e o JaCoCo aparecem em artigos do `pdf-v1`, sem o
+  fato perguntado. Continuam de fora (tema presente, resposta ausente), com
+  nota.
+- Termos descartados porque aparecem no acervo: Cypress, Stryker, SonarQube,
+  TruLens, LangSmith, HumanEval, Robot Framework, Mockito.
+
+**Composição final** (103 goldens; `validar --indice pdf-v1 --evidencia`, sem
+erro e sem aviso):
+
+| Cota do §7 | Pedido | Agora |
+|---|---|---|
+| Documentos do núcleo, com 3 perguntas cada | ≥ 20 | 21, todos com 3 ou mais |
+| Perguntas de dentro | ≥ 60 | 70 |
+| `content_type = tabela` | ≥ 15 | 31 |
+| `has_acronym = false` | ≥ 15 | 34 |
+| `names_article = false` | ≥ 15 | 63 |
+| Perguntas de fora | ≥ 30 | 30 (16 `perto`, 6 `longe`, 8 `escopo`) |
+
+Há ainda 3 perguntas ambíguas, que ficam fora da C1.
+
+**O split** foi sorteado de novo, com `--refazer`, permitido porque tudo
+ainda é rascunho (semente 20261018):
+
+| | `selecao` | `confirmacao` |
+|---|---|---|
+| Documentos | 10 | 11 |
+| Perguntas de dentro | 31 | 39 |
+| De tabela | 15 | 16 |
+| De fora | 15 | 15 |
+
+A regra do sorteio ganhou um ajuste: a alternância continua de um estrato para
+o outro. Antes, estrato com número ímpar de documentos dava a sobra sempre a
+`selecao`, e o primeiro sorteio completo saiu 12 contra 9 documentos.
+
+**Convenção de rótulo.** `has_acronym` marca a pergunta que traz uma sigla ou
+um nome próprio distintivo (RAGAS, Qwen, tullibee, MeTMaP), daqueles em que a
+busca por palavra-chave do E7 se agarra. Siglas genéricas no acervo inteiro
+(RAG, LLM) não contam.
+
+**Primeira C1 do `pdf-v1` com os goldens completos** (só embeddings, 1 min 46
+s; 70 de dentro, de 21 documentos, e 30 de fora):
+
+| Pergunta em | Hit@4 | Hit@10 | MRR@10 | Precisão@4 | Evidência@4 | Cobertura@10 | AUC |
+|---|---|---|---|---|---|---|---|
+| português | 0,23 [0,09; 0,38] | 0,29 | 0,23 | 0,16 | 0,13 [0,03; 0,24] | 0,18 | 0,79 [0,69; 0,89] |
+| inglês | 0,80 [0,69; 0,89] | 0,90 | 0,79 | 0,61 | 0,53 [0,40; 0,66] | 0,69 | 0,97 [0,94; 0,99] |
+
+- **O buraco do idioma é o maior efeito medido até aqui.** Em português, o
+  documento certo vem entre os 4 trechos em 16 de 70 perguntas; em inglês, em
+  56 de 70. Os ICs não se encostam. É a régua do E1: "teto" em inglês e
+  baseline em português, nos mesmos 70.
+- **Em inglês, a similaridade do primeiro trecho separa bem as perguntas de
+  dentro das de fora** (AUC 0,97). Um limiar pode funcionar em inglês; em
+  português (0,79), muito menos. O E6 decide.
+- São números exploratórios: os goldens ainda são rascunho.
+
+**O que falta, e é humano:**
+
+- revisar as 103 perguntas e passar para `revisado` as aprovadas, porque só
+  elas entram nos vereditos;
+- a rotulagem dupla do `content_type` em 20 perguntas, com o kappa no
+  relatório;
+- calibrar o τ à mão com 20 pares;
+- validar o `glued_word_rate` com 200 linhas rotuladas.
+
+Os candidatos foram escritos por um LLM (eu), como o plano prevê, e conferidos
+contra a fonte pelo validador. A pergunta, a resposta esperada e os rótulos
+são julgamento meu e pedem a revisão.
+
+### B4 — E5: a análise de concentração e a primeira leitura (18/10)
+
+O E5 não é um braço: é uma análise sobre o diagnóstico de qualquer braço. Ela
+não depende do runner e roda já.
+
+**O que mudou.**
+
+| Arquivo | Mudança |
+|---|---|
+| `tests/benchmark/e5.py` (novo) | as métricas da tabela do E5: participação observada e esperada, massa fora da fonte, TVD, N80, o teste do enunciado (observado e esperado), Gini e Gini@1, ímã, morto, chunk ímã com a marca de bibliografia, e a curva de Lorenz. CLI: `python -m tests.benchmark.e5 diag.json --indice pdf-v1 --lingua pt --bibliografia` |
+| `tests/benchmark/c1.py` | cada pergunta grava também `documents_at_10`, que o "morto" usa |
+| `tests/benchmark/test_e5.py` (novo) | 4 testes, num caso feito à mão |
+
+**Duas definições que o plano deixa em aberto**, e como ficaram:
+
+- **Morto:** documento que é fonte de alguma pergunta e não aparece nos 10
+  primeiros trechos de nenhuma das perguntas dele.
+- **Chunk de bibliografia:** metade ou mais dos 25-gramas dele estão no bloco
+  de referências do documento (`references_block` do C0). No `pdf-v1`, são
+  183 dos 894 chunks (20,5%), o que bate com os 20,9% de tokens do C0.
+
+**Primeira leitura**, no baseline (`pdf-v1`, 70 perguntas de dentro, k = 4):
+
+| | Massa fora da fonte | TVD | N80 (esperado) | Todas as fontes no top 20% (esperado) | Gini (esperado) |
+|---|---|---|---|---|---|
+| português | 84% | 0,82 | 4 de 39 (17) | 94% (44%) | 0,90 (0,51) |
+| inglês | 39% | 0,22 | 15 de 39 (17) | 47% (44%) | 0,59 (0,51) |
+
+- **Em português, o 80/20 é viés do sistema, não da demanda.** 94% das
+  perguntas recebem só trechos dos 20% de documentos mais recuperados. O
+  desenho das perguntas daria 44%.
+- **Os ímãs são os quatro artigos em português do acervo:**
+  - *Teste de Mutação em System Prompts*: 52 perguntas alheias, contra 10,7 ao
+    acaso;
+  - *Utilizando a IA Generativa*: 38, contra 2,8;
+  - *EEVEE*: 26, contra 4,7;
+  - *RAG Corporativo com HyDE*: 17, contra 2,5.
+
+  É o H5a, confirmado no baseline. Dez documentos em inglês ficam mortos: as
+  perguntas sobre eles, em português, nunca os trazem nos 10 primeiros.
+- **Em inglês, a concentração é quase a do desenho**, e não há documento ímã.
+  O único morto é o artigo em português: as perguntas dele, em inglês, nunca o
+  trazem. É o mesmo efeito, na direção contrária.
+- **Contra o H5b: bibliografia não é ímã nas perguntas de dentro.** Dos trechos
+  recuperados para elas, só 0,7% (português) e 2,5% (inglês) são de
+  bibliografia, contra 20,5% do índice. Nenhum chunk ímã é de bibliografia.
+- **A favor de outra hipótese:** nas perguntas de fora, em inglês, 16,7% dos
+  trechos recuperados são de bibliografia. A lista de referências, com o
+  título de outros artigos, parece servir de resposta quando o acervo não tem
+  uma. Pode ser o caminho da "fonte errada" da §3. Fica para o E3 e para o
+  `pdf-v1-noref`, que agora tem uma previsão: cortar a bibliografia mexe pouco
+  na evidência das perguntas de dentro e mais na abstenção das de fora.
+
+**O que falta no E5:**
+
+- o cruzamento concentração × qualidade, que precisa da C2;
+- o `pdf-v1-noref` do H5b;
+- a demanda real das aulas. Para começar a coletar, basta um `LOGS_DIR` por
+  aula no backend local (§8, E5).
