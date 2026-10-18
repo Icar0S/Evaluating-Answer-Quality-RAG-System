@@ -18,6 +18,8 @@ data/source_pdfs/*
 # artigos, fora do Git pelo mesmo motivo de licença dos PDFs.
 data/new_papers_marks/*
 !data/new_papers_marks/.gitkeep
+# Manifesto do data/sync_corpora.py: descreve os arquivos convertidos de um acervo que não é versionado.
+data/conversions.json
 data/vector_store/*
 !data/vector_store/.gitkeep
 logs/*.jsonl
