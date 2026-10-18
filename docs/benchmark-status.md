@@ -1,8 +1,8 @@
 # Benchmark de estratégias de RAG — estado da implementação
 
 **Plano:** [plano-benchmark.md](../plano-benchmark.md) · **Branch:** `feat/indices-v2`
-(um commit por etapa) · **Última atualização:** 18/10/2026 (E0 concluído; E1, E6 e E2 construídos; E6 e E2
-rodando a seleção)
+(um commit por etapa) · **Última atualização:** 18/10/2026 (E0 concluído; seleção do E6 e do E2 em português
+e a do E6 em inglês; E1 rodando)
 
 Este documento registra o que já foi construído do plano, etapa por etapa: o que
 mudou, onde, como usar, os testes que rodaram no fim de cada etapa e as decisões
@@ -30,9 +30,9 @@ tomadas no caminho.
 | **B0** | Runner de experimentos e cartões em YAML | **concluída** (formato provisório até a §9) |
 | **B1** | E0 — rodada A/A | **concluída** (margem de ruído em `tests/benchmark/out/E0_20261018T082340/margem.json`) |
 | **B2** | E1 — idioma (`pdf-v1-bgem3`, tradução da pergunta) | **construído** (versão, tradução gravada, cartão); a rodada vem depois do E0, que dá a margem |
-| **B3** | E6 — parâmetros de recuperação (C1) | **construído** (versões, limiar recalibrado, curva, cartão); a varredura roda depois do E0 |
+| **B3** | E6 — parâmetros de recuperação (C1) | **seleção feita** (em português, no chão; em inglês, o limiar recalibrado é o único que sobrevive ao Holm); a confirmação vem depois do E1 |
 | **B4** | E5 — concentração das fontes: análise e primeira leitura no baseline | **análise pronta** (faltam o cruzamento com a C2 e o `pdf-v1-noref` do H5b) |
-| **B5** | E2 — formato: PDF × Markdown | **construído até o degrau 2** (Docling, `md-p4llm`, `md-dl`, chunker por seção, cartão da seleção); o degrau 3 sai da seleção |
+| **B5** | E2 — formato: PDF × Markdown | **construído até o degrau 2**; a seleção em português ficou no chão, e a em inglês roda depois do E1 |
 | B6–B9 | E3, E4, E7, E8, E9 | aguardam |
 | C | Placar (regra de veredito, Holm, interação) e as seções novas do relatório | aguarda a §11 |
 
@@ -839,6 +839,67 @@ O par `base` × `cont` mede o efeito de deixar a janela atravessar a página.
   deixando um documento de fora (no `limiar_lim-recal.json`) e o da
   confirmação.
 
+**A varredura em português** (`tests/benchmark/out/E6_20261018T135338/`, 9
+min com a ingestão das quatro versões novas). Está toda no chão. O baseline
+acha a evidência em 2 das 31 perguntas da seleção, e nenhum braço passa de 3:
+
+| Braço | evidência@k | Veredito (exploratório) |
+|---|---|---|
+| `base`, `k2`, `lim-0428`, `lim-recal`, `cont`, `cont-1200` | 2 de 31 | sem diferença relevante |
+| `k8`, `mmr-05`, `mmr-07`, `cont-400` | 3 de 31 | sem diferença relevante |
+| `cont-o0` | 1 de 31 | sem diferença relevante |
+
+- **O limiar não separa em português.** A AUC da similaridade do primeiro
+  trecho é 0,66 [0,47; 0,83]: o IC contém o acaso. O limiar recalibrado
+  (0,558, maior F1 com margem) barra só 1 das 15 de fora. O 0,428 do estudo de
+  mutação não barra nenhuma: as de fora chegam com similaridade de 0,59 a 0,70.
+- **O ímã de idioma manda na varredura toda.** Nenhum parâmetro de recuperação
+  conserta uma pergunta que puxa o documento errado. Por isso a mesma
+  varredura roda também com as perguntas em inglês (`cartoes/E6-en.yaml`), como
+  o plano faz no E4 ("ou as perguntas em EN"). Depois do E1, o E6 em português
+  se refaz com o vencedor.
+
+**A varredura em inglês** (`tests/benchmark/out/E6-en_20261018T140825/`, 9
+min). Sem o ímã, o baseline acha a evidência em 16 das 31 perguntas da seleção.
+
+| Braço | evidência@k | Métrica primária: Δ [IC 95%] | Veredito (exploratório) | Holm |
+|---|---|---|---|---|
+| `k2` | 12 de 31 | evidência −0,13 [−0,27; −0,03] | pior | 0,88 |
+| `k8` | 19 de 31 | evidência +0,10 [+0,03; +0,19] | melhor | 1,00 |
+| `mmr-05` | 12 de 31 | cobertura −0,15 [−0,34; +0,03] | inconclusivo | — |
+| `mmr-07` | 13 de 31 | cobertura −0,11 [−0,21; −0,03] | pior | — |
+| `lim-0428` | 16 de 31 | abstenção correta +0,07 (1 de 15) | inconclusivo | 1,00 |
+| `lim-recal` (0,593) | 16 de 31 | abstenção correta +0,67 [+0,47; +0,87] (10 de 15) | **melhor** | **0,016** |
+| `cont` (contra `base`) | 16 de 31 | evidência 0,00 [−0,30; +0,30] | sem diferença relevante | 1,00 |
+| `cont-400` (contra `cont`) | 15 de 31 | evidência −0,03 | sem diferença relevante | 1,00 |
+| `cont-1200` (contra `cont`) | 13 de 31 | evidência −0,10 | inconclusivo | 1,00 |
+| `cont-o0` (contra `cont`) | 14 de 31 | evidência −0,06 | inconclusivo | 1,00 |
+
+- **O limiar recalibrado é o único que sobrevive ao Holm.** Em inglês, a AUC
+  do primeiro trecho é 0,96 [0,91; 1,00], contra 0,66 em português. O limiar
+  de 0,593 barra 10 das 15 de fora sem barrar nenhuma de dentro, nem deixando
+  um documento de fora por vez (a guarda passa). Ele foi calibrado em perguntas
+  em inglês e não serve para as em português: o limiar depende da língua e do
+  embedding.
+- **O MMR piora, ao contrário da hipótese.** Nas 4 perguntas `fato_distribuido`,
+  a cobertura cai 0,375 nos dois λ. Com n = 4, é um indício, não uma conclusão,
+  e a confirmação tem 5.
+- **`k8` ganha por construção.** Sem MMR, a lista de 8 contém a de 4, e a
+  evidência só pode subir. O plano manda a decisão do `top_k` para a C2 e para
+  o custo: o prompt cresce de ~2.600 para ~5.400 tokens.
+- **Atravessar a página não muda o total, mas muda quem acerta.** `cont` empata
+  com `base` em 16, com um IC de ±0,30: ganha nas perguntas de
+  `rastreabilidade` (+2 de 3) e perde nas `fato_distribuido` (−2 de 4).
+- **Por token, o chunk por página é o mais eficiente.** Na curva, `base` chega
+  a 0,52 com ~2.600 tokens de contexto. `cont-400` precisa de ~4.000 para o
+  mesmo, e `cont-1200`, de ~5.900. O chunk curto do fim da página, que o C0
+  aponta como defeito (p10 de 263 tokens), não atrapalha a recuperação aqui.
+
+**O que vai para a confirmação** (rodada uma vez, depois do E1): o `top_k` 8
+contra o 4, com a C2 e o custo; e o limiar recalibrado, na língua e no
+embedding do vencedor do E1, porque o de 0,593 só vale para o inglês com o
+`nomic-embed-text`. O MMR e os chunks não passam da seleção.
+
 ### B5 — E2: a escada até o degrau 2 (18/10)
 
 O plano (§8, E2) pede uma escada em que cada degrau muda uma coisa do
@@ -869,6 +930,30 @@ coluna da precisão.
 **Uma limitação, antes de rodar:** o `content_type` dos goldens quase não tem
 `secao` (0 pergunta na seleção, 2 na confirmação) e tem pouco `texto` (4 e 8).
 A interação que dá para medir é `tabela` × `numero` × `texto`.
+
+**A C0 por degrau** (a C0 explica, não decide):
+
+| Versão | Chunks | Tokens | Chunk médio · p10 | Bibliografia | Linhas de tabela | Títulos |
+|---|---|---|---|---|---|---|
+| `pdf-v1` | 894 | 524.705 | 647 · 263 | 20,9% | — | 0 |
+| `pdf-v1-cont` | 785 | 524.705 | 782 · 799 | 20,9% | — | 0 |
+| `md-p4llm` | 775 | 519.274 | 784 · 800 | 21,5% | 1.531 | 929 |
+| `md-dl` | 716 | 476.454 | 779 · 800 | 22,8% | 1.244 | 956 |
+
+- **O corte por página faz chunk pequeno.** No `pdf-v1`, o p10 é de 263
+  tokens: o fim de cada página vira um chunk curto. Atravessando a página, o
+  p10 vai a 799.
+- **O Docling tem 9% menos tokens, mas não perde texto.** Dos 25-gramas
+  normalizados do PDF, 96,9% reaparecem no Docling (o pior artigo, 89,6%) e
+  96,0% no pymupdf4llm (o pior, 84,1%). A diferença é marcação e cabeçalho
+  repetido, que o Docling tira.
+- **Nenhuma das duas cola palavras:** 0,17% das letras, contra 39% nos
+  originais do `md-v1`.
+
+**A seleção em português** (`tests/benchmark/out/E2_20261018T140452/`): os
+quatro degraus acham a evidência nas mesmas 2 das 31 perguntas. Como no E6, o
+ímã de idioma esconde o formato. A escada roda também com as perguntas em
+inglês (`cartoes/E2-en.yaml`), depois do E1.
 
 ### B4 — E5: a análise de concentração e a primeira leitura (18/10)
 
