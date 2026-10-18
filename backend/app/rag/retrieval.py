@@ -108,6 +108,8 @@ def retrieve(question: str, top_k: int | None = None) -> tuple[list[dict], float
                 "chunk_id": chunk_id,
                 "document": meta.get("document", "unknown"),
                 "page": meta.get("page"),
+                # Só o chunker por seção grava a seção (E2); nos outros índices, None.
+                "section": meta.get("section"),
                 "text": text,
                 "similarity_score": round(similarity, 4),
             }

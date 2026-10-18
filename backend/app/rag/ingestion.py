@@ -1,7 +1,8 @@
 """Ingestão de documentos (PDF e Markdown): extração de texto, chunking e indexação vetorial.
 
-PDF: chunking dentro de cada página (facilita citar a página como fonte).
-Markdown: o documento inteiro, sem página. Os dois usam o mesmo chunker por
+PDF: chunking dentro de cada página (facilita citar a página como fonte); com
+CHUNK_ACROSS_PAGES, a janela atravessa a página e o chunk leva a página onde
+começa. Markdown: o documento inteiro, sem página. Os dois usam o mesmo chunker por
 tokens (tiktoken cl100k_base como aproximação genérica, independente do
 tokenizer real do modelo local) e os mesmos parâmetros: comparar índices de
 formatos diferentes (config.RAG_INDICES) só faz sentido com o mesmo corte.
@@ -11,6 +12,7 @@ parâmetros, modelo de embedding) em <vector_store>/manifests/<coleção>.json.
 """
 from __future__ import annotations
 
+import bisect
 import hashlib
 import json
 import re
@@ -52,6 +54,14 @@ class ChunkRecord:
     document: str
     page: int | None
     text: str
+    # Título da seção do Markdown, com o chunker por seção (CHUNKER=section); None nos outros.
+    section: str | None = None
+
+    @property
+    def metadata(self) -> dict:
+        # O Chroma não aceita metadado None: página e seção só entram quando existem.
+        extra = {key: value for key, value in (("page", self.page), ("section", self.section)) if value is not None}
+        return {"document": self.document, **extra}
 
 
 @dataclass
@@ -87,12 +97,29 @@ def normalize_markdown(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
+_MD_HEADING = re.compile(r"#{1,6}(\s|$)")
+
+
+def markdown_sections(text: str) -> list[tuple[str | None, str]]:
+    """O Markdown normalizado em seções (título, texto), cortado nas linhas `#`, que o normalize_markdown mantém.
+
+    O texto antes do primeiro título é uma seção sem título. Cada seção traz a própria linha de título.
+    """
+    sections: list[tuple[str | None, list[str]]] = [(None, [])]
+    for line in text.splitlines():
+        if _MD_HEADING.match(line):
+            sections.append((line.lstrip("#").strip() or None, [line]))
+        else:
+            sections[-1][1].append(line)
+    return [(title, "\n".join(lines).strip()) for title, lines in sections if "\n".join(lines).strip()]
+
+
 def markdown_structure(raw: str) -> dict:
     """Linhas de tabela (sem as separadoras) e títulos do Markdown cru, com o critério do normalize_markdown."""
     lines = raw.splitlines()
     return {
         "table_rows": sum(1 for line in lines if line.lstrip().startswith("|") and not _MD_TABLE_SEPARATOR.match(line)),
-        "headings": sum(1 for line in lines if re.match(r"#{1,6}(\s|$)", line)),
+        "headings": sum(1 for line in lines if _MD_HEADING.match(line)),
     }
 
 
@@ -141,24 +168,57 @@ def chunk_text(
     acontece quando um corte cai no meio de uma regra.
     """
     tokens = _encoding.encode(text)
-    if not tokens:
+    return [
+        _encoding.decode(tokens[start:end])
+        for start, end in _windows(len(tokens), chunk_size_tokens, overlap_tokens, boundary_offset_tokens)
+    ]
+
+
+def _windows(
+    n_tokens: int, chunk_size_tokens: int, overlap_tokens: int, boundary_offset_tokens: int = 0
+) -> list[tuple[int, int]]:
+    """As janelas [início, fim) do chunker sobre n tokens (ver chunk_text)."""
+    if not n_tokens:
         return []
     overlap_tokens = effective_overlap(chunk_size_tokens, overlap_tokens)
 
     offset = boundary_offset_tokens % chunk_size_tokens if chunk_size_tokens > 0 else 0
 
-    chunks: list[str] = []
+    windows: list[tuple[int, int]] = []
     start = 0
     first_size = chunk_size_tokens - offset if offset else chunk_size_tokens
     size = max(first_size, 1)
-    while start < len(tokens):
+    while start < n_tokens:
         end = start + size
-        chunks.append(_encoding.decode(tokens[start:end]))
-        if end >= len(tokens):
+        windows.append((start, min(end, n_tokens)))
+        if end >= n_tokens:
             break
         start = end - overlap_tokens
         size = chunk_size_tokens
-    return chunks
+    return windows
+
+
+def _chunk_across_pages(
+    doc: DocumentText, chunk_size_tokens: int, overlap_tokens: int, boundary_offset_tokens: int = 0
+) -> list[ChunkRecord]:
+    """PDF com a janela atravessando a página: as páginas viram uma sequência de tokens só, separadas por uma
+    quebra de linha, e cada chunk leva a página onde começa (E6 do plano-benchmark.md, pdf-v1-cont)."""
+    tokens: list[int] = []
+    page_starts: list[int] = []
+    pages: list[int | None] = []
+    newline = _encoding.encode("\n")
+    for i, (page_num, page_text) in enumerate(doc.segments):
+        if i:
+            tokens += newline
+        page_starts.append(len(tokens))
+        pages.append(page_num)
+        tokens += _encoding.encode(page_text)
+    records = []
+    for idx, (start, end) in enumerate(_windows(len(tokens), chunk_size_tokens, overlap_tokens, boundary_offset_tokens)):
+        page = pages[max(bisect.bisect_right(page_starts, start) - 1, 0)]
+        records.append(ChunkRecord(chunk_id=f"{doc.path.stem}::p{page}::c{idx}", document=doc.path.name, page=page,
+                                   text=_encoding.decode(tokens[start:end])))
+    return records
 
 
 def chunk_document(
@@ -166,14 +226,27 @@ def chunk_document(
     chunk_size_tokens: int,
     overlap_tokens: int,
     boundary_offset_tokens: int = 0,
+    across_pages: bool = False,
+    chunker: str = "token",
 ) -> list[ChunkRecord]:
+    """Os chunks do documento. `chunker="section"` (só Markdown): a janela corre dentro de cada seção, e o
+    chunk_id vira `{stem}::s{i}::c{j}`; as ferramentas do estudo de mutação leem `::p(\\d+)::` e não o veem."""
     records: list[ChunkRecord] = []
     doc_name, stem = doc.path.name, doc.path.stem
     if doc.format == "md":
         [(_, text)] = doc.segments
+        if chunker == "section":
+            for i, (title, section_text) in enumerate(markdown_sections(text)):
+                for j, chunk in enumerate(chunk_text(section_text, chunk_size_tokens, overlap_tokens,
+                                                     boundary_offset_tokens)):
+                    records.append(ChunkRecord(chunk_id=f"{stem}::s{i}::c{j}", document=doc_name, page=None,
+                                               text=chunk, section=title))
+            return records
         for idx, chunk in enumerate(chunk_text(text, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)):
             records.append(ChunkRecord(chunk_id=f"{stem}::c{idx}", document=doc_name, page=None, text=chunk))
         return records
+    if across_pages:
+        return _chunk_across_pages(doc, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)
     for page_num, page_text in doc.segments:
         page_chunks = chunk_text(page_text, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)
         for idx, chunk in enumerate(page_chunks):
@@ -265,7 +338,7 @@ def registered_documents(index: str) -> dict[str, str] | None:
     return documents
 
 
-def register_documents(index: str, source_dir: Path, like: str | None = None) -> Path:
+def register_documents(index: str, source_dir: Path, like: str | None = None, by_stem: bool = False) -> Path:
     """Grava a lista de documentos da versão com o que está na pasta agora ou, com `like`, a lista de outra versão.
 
     `like` é para a versão derivada: os mesmos documentos da versão-base e uma mudança só (modelo de embedding,
@@ -273,13 +346,37 @@ def register_documents(index: str, source_dir: Path, like: str | None = None) ->
     (data/source_pdfs tem os 61 do pdf-v2), e comparar a derivada com a base mediria também a troca de acervo.
     Os arquivos da base precisam estar na pasta com o mesmo conteúdo.
 
+    `by_stem` (com `like`): os mesmos artigos da base em outro formato (E2: os 39 PDFs do pdf-v1 convertidos em
+    Markdown). Cada documento da base vira o arquivo da pasta com o mesmo nome sem extensão, e o hash é o dele.
+
     Uma vez só: versão registrada não muda, e mudar o acervo é registrar uma versão nova.
     """
     path = INDEX_VERSIONS_DIR / f"{index}.sha256"
     if path.exists():
         raise FileExistsError(f"{path} já existe: versão registrada não muda (registre uma versão nova)")
     today = datetime.now(timezone.utc).date().isoformat()
-    if like is not None:
+    if like is not None and by_stem:
+        base = registered_documents(like)
+        if base is None:
+            raise FileNotFoundError(f"{like} não tem lista de documentos em {INDEX_VERSIONS_DIR}")
+        by_name: dict[str, list[Path]] = {}
+        for p in source_dir.iterdir():
+            if p.suffix.lower() in SUPPORTED_SUFFIXES:
+                by_name.setdefault(p.stem, []).append(p)
+        problems, entries = [], []
+        for name in base:
+            found = by_name.get(Path(name).stem, [])
+            if len(found) != 1:
+                problems.append(f"{Path(name).stem}: {len(found)} arquivo(s) com esse nome em {source_dir}")
+            else:
+                entries.append((found[0].name, _sha256(found[0])))
+        if problems:
+            raise ValueError(f"a pasta não tem os artigos de {like}, um arquivo por artigo: " + "; ".join(problems))
+        header = (
+            f"# {index}: os {len(entries)} artigo(s) de {like} (pelo nome sem a extensão), em {source_dir.name}, "
+            f"registrados em {today} (scripts/ingest_documents.py --register --like {like} --by-stem)"
+        )
+    elif like is not None:
         base = registered_documents(like)
         if base is None:
             raise FileNotFoundError(f"{like} não tem lista de documentos em {INDEX_VERSIONS_DIR}")
@@ -356,6 +453,8 @@ def write_manifest(
         # O pedido acima e o que o chunker usou (sobreposição >= chunk vira chunk // 4, sem aviso).
         "chunk_overlap_tokens_effective": effective_overlap(settings.chunk_size_tokens, settings.chunk_overlap_tokens),
         "chunk_boundary_offset_tokens": settings.chunk_boundary_offset_tokens,
+        "chunk_across_pages": settings.chunk_across_pages,
+        "chunker": settings.chunker,
         "md_normalization": MD_NORMALIZATION if any(d["format"] == "md" for d in documents) else None,
         "n_documents": len(documents),
         "n_chunks": chunks,
@@ -392,6 +491,8 @@ def measure_corpus_quality() -> dict:
         manifest["chunk_size_tokens"],
         manifest["chunk_overlap_tokens"],
         manifest.get("chunk_boundary_offset_tokens", 0),
+        manifest.get("chunk_across_pages", False),
+        manifest.get("chunker", "token"),
     )
     counts: list[int] = []
     not_measured: list[str] = []
@@ -448,6 +549,8 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
                 settings.chunk_size_tokens,
                 settings.chunk_overlap_tokens,
                 settings.chunk_boundary_offset_tokens,
+                across_pages=settings.chunk_across_pages,
+                chunker=settings.chunker,
             )
             all_records.extend(records)
             manifest_docs.append(
@@ -474,12 +577,10 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
             ids=[r.chunk_id for r in batch],
             embeddings=embeddings,
             documents=[r.text for r in batch],
-            # Markdown não tem página: a chave fica de fora (o Chroma não aceita
-            # metadado None) e a recuperação devolve page=None.
-            metadatas=[
-                {"document": r.document, "page": r.page} if r.page is not None else {"document": r.document}
-                for r in batch
-            ],
+            # Markdown não tem página, e só o chunker por seção tem seção: a chave
+            # fica de fora (o Chroma não aceita metadado None) e a recuperação
+            # devolve None.
+            metadatas=[r.metadata for r in batch],
             reset=reset and first_batch,
         )
         first_batch = False

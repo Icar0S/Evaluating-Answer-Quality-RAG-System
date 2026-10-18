@@ -113,3 +113,27 @@ def test_auc_da_similaridade_e_resumo_com_limiar():
     assert s["precision_at_k"]["n"] == 1
     assert (s["false_block_rate"], s["threshold_abstention_rate"]) == (0.5, 1.0)
     assert s["top1_similarity_auc"]["auc"] == 1.0
+
+
+def test_curva_de_evidencia_e_a_evidencia_de_cada_prefixo():
+    half = len(SOURCE) // 2
+    texts = ["nada a ver com o fragmento " * 3, SOURCE[:half], SOURCE[half:], "outro trecho qualquer"]
+    fragments = [SOURCE, "RAGAS"]
+
+    curve = c1.evidence_curve(fragments, texts)
+
+    assert curve == [c1.evidence(fragments, texts[:k])["evidence"] for k in range(1, len(texts) + 1)]
+    assert curve == [False, False, True, True]
+    assert c1.evidence_curve([], texts) is None
+
+
+def test_tokens_de_contexto_e_curva_de_tokens_quando_os_trechos_trazem_a_contagem():
+    chunks = [{**chunk("a.pdf", SOURCE, 0.8), "tokens": 30}, {**chunk("b.pdf", "outro", 0.7), "tokens": 5}]
+
+    metrics = c1.question_metrics(arm_chunks=chunks[:1], chunks_at_10=chunks, source_document="a.pdf",
+                                  fragments=[SOURCE], top1_similarity=0.8)
+    without_count = c1.question_metrics(arm_chunks=[chunk("a.pdf", SOURCE, 0.8)], chunks_at_10=[],
+                                        source_document=None, fragments=[], top1_similarity=0.8)
+
+    assert (metrics["context_tokens"], metrics["tokens_curve"], metrics["evidence_curve"]) == (30, [30, 35], [True, True])
+    assert without_count["context_tokens"] is None

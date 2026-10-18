@@ -154,7 +154,8 @@ def test_guardas_buraco_fechado_e_tempo_da_traducao(tmp_path: Path, monkeypatch)
                                    ("en", "en", {"qA": 1.0, "qB": 1.0})):
         (tmp_path / f"c1_{arm_id}.json").write_text(json.dumps(_c1_lang(lang, evidence)), encoding="utf-8")
 
-    result = rx.scoreboard(card, tmp_path, limit=None, questions={"qA": "pergunta A", "qB": "pergunta B"})
+    goldens = [{"name": "qA", "input": "pergunta A"}, {"name": "qB", "input": "pergunta B"}]
+    result = rx.scoreboard(card, tmp_path, limit=None, goldens=goldens)
 
     # A busca com a tradução gravada não pagou a tradução: o placar soma os 500 ms gravados à pergunta A.
     assert result["means"]["trad"]["c1.retrieval_ms"] == 260.0
@@ -164,3 +165,119 @@ def test_guardas_buraco_fechado_e_tempo_da_traducao(tmp_path: Path, monkeypatch)
     assert (latency["passed"], latency["delta"]["delta"]) == (False, 250.0)
     summary = rx.write_summary(card, tmp_path, result, "id: EY\n").read_text(encoding="utf-8")
     assert "NÃO PASSA" in summary and "50%" in summary
+
+
+SWEEP = {
+    "id": "EZ", "titulo": "t", "pergunta": "?", "hipotese": "h", "goldens": "x.json", "didatica": "d",
+    "exploratorio": True, "split": "selecao",
+    "metrica_primaria": {"camada": "c1", "metrica": "evidence_at_k"},
+    "bracos": {
+        "base": {"indice": "pdf-v1", "camadas": ["c1"], "papel": "baseline"},
+        "k8": {"indice": "pdf-v1", "camadas": ["c1"], "set": {"top_k": 8}},
+        "lim": {"indice": "pdf-v1", "camadas": ["c1"], "set": {"min_similarity_score": "recalibrado"},
+                "metrica_primaria": {"camada": "c1", "metrica": "correct_abstention"}},
+    },
+    "pares": [["base", "k8"], ["base", "lim"]],
+    "curva": ["base", "k8"],
+}
+
+
+def _c1_sweep(rows: dict[str, tuple], out_rows: dict[str, tuple]) -> dict:
+    """rows: nome → (evidência, similaridade do 1º trecho, barrada, curva); out_rows: nome → (similaridade, barrada)."""
+    inside = [{"name": n, "source_document": f"doc{n[1]}", "c1": {"pdf-v1": {"pt": {
+        "in_index": True, "evidence_at_k": e, "top1_similarity": s, "blocked_by_threshold": b,
+        "evidence_curve": curve, "tokens_curve": [100 * (i + 1) for i in range(len(curve))]}}}}
+        for n, (e, s, b, curve) in rows.items()]
+    outside = [{"name": n, "c1": {"pdf-v1": {"pt": {"top1_similarity": s, "blocked_by_threshold": b}}}}
+               for n, (s, b) in out_rows.items()]
+    return {"c1": {"summary": {"pdf-v1": {"pt": {"n_inside": len(inside), "top1_similarity_auc": {
+        "auc": 0.9, "ci_low": 0.8, "ci_high": 1.0}}}}}, "rows": inside, "out_rows": outside}
+
+
+def test_split_recorta_os_goldens(tmp_path: Path):
+    goldens = tmp_path / "g.json"
+    goldens.write_text(json.dumps([{"name": "a", "split": "selecao", "source_document": "d.pdf"},
+                                   {"name": "b", "split": "confirmacao", "source_document": "d.pdf"},
+                                   {"name": "c", "split": "selecao", "source_document": None}]), encoding="utf-8")
+    experiment = rx.Experiment({**SWEEP, "goldens": str(goldens)}, Path("EZ.yaml"), tmp_path, limit=None)
+
+    experiment.prepare_goldens()
+
+    assert [g["name"] for g in json.loads(experiment.goldens_path.read_text(encoding="utf-8"))] == ["a", "c"]
+
+
+def test_limiar_recalibrado_sai_da_c1_do_baseline(tmp_path: Path):
+    (tmp_path / "c1_base.json").write_text(json.dumps(_c1_sweep(
+        {"q1": (1, 0.70, False, [1]), "q2": (0, 0.66, False, [0]), "q3": (1, 0.75, False, [1])},
+        {"f1": (0.50, False), "f2": (0.58, False)})), encoding="utf-8")
+    experiment = rx.Experiment(SWEEP, Path("EZ.yaml"), tmp_path, limit=None)
+
+    resolved = experiment.resolved_set(experiment.arms["lim"])
+
+    # Separação perfeita (0,66 > 0,58): o ponto médio da folga.
+    assert resolved == {"min_similarity_score": 0.62}
+    saved = json.loads((tmp_path / "limiar_lim.json").read_text(encoding="utf-8"))
+    assert (saved["calibrated_on"], saved["n_inside"], saved["n_outside"]) == ("base", 3, 2)
+    assert "leave_one_document_out" in saved
+
+
+def test_varredura_abstencao_pelo_limiar_mcnemar_holm_classe_e_curva(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(rx, "index_documents", lambda index: {"doc1", "doc2", "doc3"})
+    monkeypatch.setattr(rx, "latest_margins", lambda exclude=None: (None, None))
+    files = {
+        "base": _c1_sweep({"q1": (0, 0.7, False, [0, 0]), "q2": (0, 0.6, False, [0, 1]), "q3": (1, 0.8, False, [1, 1])},
+                          {"f1": (0.5, False), "f2": (0.55, False)}),
+        "k8": _c1_sweep({"q1": (1, 0.7, False, [0, 1]), "q2": (1, 0.6, False, [1, 1]), "q3": (1, 0.8, False, [1, 1])},
+                        {"f1": (0.5, False), "f2": (0.55, False)}),
+        "lim": _c1_sweep({"q1": (0, 0.7, False, [0]), "q2": (0, 0.6, True, [0]), "q3": (1, 0.8, False, [1])},
+                         {"f1": (0.5, True), "f2": (0.55, True)}),
+    }
+    for arm_id, data in files.items():
+        (tmp_path / f"c1_{arm_id}.json").write_text(json.dumps(data), encoding="utf-8")
+    goldens = [{"name": "q1", "question_class": "fato_direto"}, {"name": "q2", "question_class": "fato_distribuido"},
+               {"name": "q3", "question_class": "fato_direto"}]
+
+    result = rx.scoreboard(SWEEP, tmp_path, limit=None, goldens=goldens)
+
+    assert result["means"]["lim"]["c1.correct_abstention"] == 1.0
+    assert result["means"]["lim"]["c1.false_block"] == pytest.approx(1 / 3, abs=1e-4)
+    # Cada par usa a métrica primária do braço de chegada; o Holm junta os dois.
+    assert result["verdicts"]["base→lim"]["metric"] == "c1.correct_abstention"
+    assert result["tests"]["base→k8"]["metric"] == "c1.evidence_at_k"
+    assert (result["tests"]["base→k8"]["b"], result["tests"]["base→k8"]["c"]) == (0, 2)
+    assert result["tests"]["base→k8"]["p_holm"] >= result["tests"]["base→k8"]["p_value"]
+    assert result["by_class"]["base→k8"]["fato_distribuido"]["delta"] == 1.0
+    assert result["curves"]["base"] == [{"k": 1, "n": 3, "tokens": 100.0, "evidence": pytest.approx(1 / 3, abs=1e-4)},
+                                        {"k": 2, "n": 3, "tokens": 200.0, "evidence": pytest.approx(2 / 3, abs=1e-4)}]
+    summary = rx.write_summary(SWEEP, tmp_path, result, "id: EZ\n").read_text(encoding="utf-8")
+    assert "exploratório" in summary and "Curva evidência" in summary and "Holm" in summary
+
+
+def test_validador_do_split_da_curva_e_do_limiar_recalibrado():
+    broken = copy.deepcopy(SWEEP)
+    broken["split"] = "treino"
+    broken["curva"] = ["zzz"]
+    del broken["bracos"]["base"]
+    broken["pares"] = [["k8", "lim"]]
+
+    errors = rx.validate_card(broken)
+
+    assert any(e.startswith("split") for e in errors)
+    assert any(e.startswith("curva") for e in errors)
+    assert any("recalibrado" in e for e in errors)
+    assert rx.validate_card(SWEEP) == []
+
+
+def test_delta_por_grupo_usa_o_campo_do_cartao(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(rx, "index_documents", lambda index: {"doc1", "doc2"})
+    monkeypatch.setattr(rx, "latest_margins", lambda exclude=None: (None, None))
+    card = {**SWEEP, "classe_por": "content_type", "pares": [["base", "k8"]]}
+    for arm_id, hits in (("base", (0, 1)), ("k8", (1, 1))):
+        rows = {"q1": (hits[0], 0.7, False, [hits[0]]), "q2": (hits[1], 0.7, False, [hits[1]])}
+        (tmp_path / f"c1_{arm_id}.json").write_text(json.dumps(_c1_sweep(rows, {})), encoding="utf-8")
+    goldens = [{"name": "q1", "content_type": "tabela"}, {"name": "q2", "content_type": "texto"}]
+
+    result = rx.scoreboard(card, tmp_path, limit=None, goldens=goldens)
+
+    assert result["class_field"] == "content_type"
+    assert {cls: d["delta"] for cls, d in result["by_class"]["base→k8"].items()} == {"tabela": 1.0, "texto": 0.0}

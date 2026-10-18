@@ -30,9 +30,10 @@ tomadas no caminho.
 | **B0** | Runner de experimentos e cartões em YAML | **concluída** (formato provisório até a §9) |
 | B1 | E0 — rodada A/A | fumaça ok; rodada completa em andamento (~3 h) |
 | **B2** | E1 — idioma (`pdf-v1-bgem3`, tradução da pergunta) | **construído** (versão, tradução gravada, cartão); a rodada vem depois do E0, que dá a margem |
-| B3 | E6 — parâmetros de recuperação (C1) | em construção (a recalibração do limiar está pronta) |
+| **B3** | E6 — parâmetros de recuperação (C1) | **construído** (versões, limiar recalibrado, curva, cartão); a varredura roda depois do E0 |
 | **B4** | E5 — concentração das fontes: análise e primeira leitura no baseline | **análise pronta** (faltam o cruzamento com a C2 e o `pdf-v1-noref` do H5b) |
-| B5–B9 | E2, E3, E4, E7, E8, E9 | aguardam B0 |
+| **B5** | E2 — formato: PDF × Markdown | **construído até o degrau 2** (Docling, `md-p4llm`, `md-dl`, chunker por seção, cartão da seleção); o degrau 3 sai da seleção |
+| B6–B9 | E3, E4, E7, E8, E9 | aguardam |
 | C | Placar (regra de veredito, Holm, interação) e as seções novas do relatório | aguarda a §11 |
 
 ### Portões, estado atual
@@ -99,6 +100,41 @@ o braço de tradução do E1 pagaria uma conexão a mais. As rodadas do benchmar
 `OLLAMA_BASE_URL=http://127.0.0.1:11434` no ambiente, sem mexer no `.env`. A
 correção (trocar o `.env`, o padrão do `config.py` e do `.env.example`, ou
 reaproveitar a conexão) muda o assistente e ficou para você decidir.
+
+**Achado que pede decisão: a busca vetorial muda de um processo para outro.**
+O Chroma (1.5.9) só grava em disco o grafo HNSW de uma coleção depois de 1.000
+inserções (`sync_threshold`). As coleções de 894 chunks (`pdf-v1`, `pdf-v1-aa`,
+`pdf-v1-bgem3`) e a de 857 (`md-v1`) nunca chegam lá. As de 1.632 e 1.977
+gravam só os primeiros ~1.000. Cada processo reconstrói o resto do grafo a
+partir do log, com inserção em paralelo, e o grafo sai diferente a cada vez. A
+busca é aproximada, e o que ela perde muda junto. Medido com 60 consultas
+fixas, sem Ollama, em dois processos:
+
+| Coleção | Listas top-4 que mudam entre os 2 processos | recall@4 contra a busca exata (processo 1 · 2) |
+|---|---|---|
+| `pdf-v1` | 1 de 60 | 0,996 · 1,000 |
+| `pdf-v1-aa` | 2 de 60 | 0,988 · 0,996 |
+
+Na C1 do E0, isso apareceu numa pergunta. A c28 teve evidência no A5 e não no
+A1, porque a busca do A1 perdeu um trecho de similaridade 0,6666, maior que a
+do primeiro trecho que ela devolveu (0,6575). Um diagnóstico anterior no mesmo
+`pdf-v1` tinha achado esse trecho.
+
+- **O ruído da C1 não é ~0**, como o plano supunha: é ~1 pergunta em 70 na
+  evidência@4. A margem do E0 absorve isso.
+- **O A5 não mede só a reingestão:** qualquer processo novo varia.
+
+As opções mudam a recuperação do assistente; ficam para você decidir:
+
+1. **Busca exata nas coleções pequenas:** o cosseno contra todos os vetores,
+   que até alguns milhares de chunks custa pouco. É determinística e não
+   perde trecho. Um campo opcional, ligado só nos cartões do benchmark,
+   deixaria o assistente como está.
+2. **Gravar o grafo:** criar as coleções com `sync_threshold` baixo. Fica
+   igual entre processos, mas a perda de recall continua (sempre a mesma). Pede
+   reingerir todas as versões.
+3. **Deixar como está** e usar a margem do E0. É o que as rodadas atuais
+   fazem.
 
 ---
 
@@ -679,6 +715,73 @@ chamada por pergunta. Ela não é corrigida à mão: corrigida, viraria o
 - **A guarda de latência fica justa.** A busca custa ~250 ms; com os ~700 ms
   da tradução, o Δ esperado fica perto de +0,7 s, contra a tolerância de 1 s.
 
+### B3 — E6: o que a varredura precisava (18/10)
+
+O plano (§8, E6) varre um fator por vez a partir do baseline, em `selecao`, e
+tira o veredito do escolhido em `confirmacao`.
+
+| Arquivo | Mudança |
+|---|---|
+| `backend/app/rag/ingestion.py` | `CHUNK_ACROSS_PAGES`: no PDF, a janela de tokens atravessa a página (as páginas viram uma sequência só, separadas por uma quebra de linha) e o chunk leva a página onde começa. As janelas saem de `_windows()`, que o `chunk_text` também usa; um teste prova que o corte de sempre não mudou. O manifesto grava a opção |
+| `backend/app/config.py` | `chunk_across_pages` (falso por padrão) entra nas chaves que a versão pode fixar. As versões `pdf-v1-cont` (800/120), `pdf-cont-400`, `pdf-cont-1200` e `pdf-cont-o0` (800/0), todas com a lista do `pdf-v1` |
+| `tests/benchmark/c1.py` | por pergunta: `context_tokens` (os tokens que o gerador recebe) e a curva `evidence_curve` × `tokens_curve` dos k primeiros trechos da lista de 10, numa passada só |
+| `tests/retrieval_diagnostic.py` | conta os tokens de cada trecho (cl100k, o do chunker) |
+| `tests/benchmark/run_experiment.py` | `split` no cartão (ou `--split`); `min_similarity_score: recalibrado`, calibrado na C1 do baseline da própria rodada (`limiar_<braço>.json`, com a validação deixando um documento de fora); a abstenção pelo limiar por pergunta (`c1.correct_abstention`, `c1.false_block`); métrica primária por braço; McNemar exato com Holm na família dos pares; Δ por classe de pergunta; a curva por braço |
+| `tests/benchmark/cartoes/E6.yaml` (novo) | os 11 braços da tabela do plano |
+| `tests/benchmark/limiar.py` | a regra do estudo de mutação, avaliada fora da amostra (commit anterior) |
+
+**Os braços** (todos só C1, em `selecao`: 31 perguntas de dentro e 15 de fora):
+
+| Tipo | Braços | Métrica primária | Contra |
+|---|---|---|---|
+| `top_k` | `k2`, `k8` | evidência@k | `base` (`pdf-v1`, k = 4) |
+| MMR | `mmr-05`, `mmr-07` | cobertura@k | `base` |
+| Limiar | `lim-0428` (referência: calibrado em outro índice), `lim-recal` | abstenção correta pelo limiar; guarda: falso bloqueio ≤ 1 pergunta | `base` |
+| Chunk | `cont-400` (k = 8), `cont-1200` (k = 3), `cont-o0` | evidência@k, com orçamento de ~3.200 tokens | `cont` (`pdf-v1-cont`, 800/120, k = 4) |
+
+O par `base` × `cont` mede o efeito de deixar a janela atravessar a página.
+
+**Duas limitações, antes de rodar:**
+
+- **O MMR tem pouca pergunta onde a hipótese mora.** São 4 perguntas
+  `fato_distribuido` em `selecao` e 5 em `confirmacao`. O placar dá o Δ por
+  classe, mas com n = 4 ele é só ilustrativo.
+- **O limiar recalibrado é avaliado na mesma amostra em `selecao`.** O falso
+  bloqueio ali dá zero por construção. O número honesto é o da validação
+  deixando um documento de fora (no `limiar_lim-recal.json`) e o da
+  confirmação.
+
+### B5 — E2: a escada até o degrau 2 (18/10)
+
+O plano (§8, E2) pede uma escada em que cada degrau muda uma coisa do
+anterior. O degrau 1b é o `pdf-v1-cont` do E6.
+
+| Degrau | Versão | O que muda |
+|---|---|---|
+| 1 | `pdf-v1` | baseline: PyMuPDF, janela de 800/120 dentro da página |
+| 1b | `pdf-v1-cont` | só o corte: a janela atravessa a página |
+| 2 | `md-p4llm`, `md-dl` | o formato e a extração (o Markdown já corta o documento inteiro) |
+| 3 | `md-<melhor>-sec` | só o chunker: corte nos títulos; sai da seleção |
+
+| Arquivo | Mudança |
+|---|---|
+| `data/convert_docling.py`, `data/requirements-docling.txt` (novos) | converte os 39 PDFs do `pdf-v1` com o Docling 2.133.0 (o mais novo com duas semanas), sem OCR, sem imagens e com o TableFormer, para `data/md_dl/`. Venv próprio (`data/.venv-docling`, 1,4 GB, torch só CPU). O manifesto `data/conversions_docling.json` grava o SHA-256 da fonte e do convertido, as páginas, o tempo e as versões |
+| `backend/app/rag/ingestion.py` | `register_documents(..., by_stem=True)`: os mesmos artigos da versão-base pelo nome sem a extensão, em outro formato (`--register --like pdf-v1 --by-stem`). O chunker por seção (`chunker="section"`): o Markdown normalizado é cortado nas linhas `#` (`markdown_sections()`) e a janela corre dentro de cada seção, com `chunk_id` `{stem}::s{i}::c{j}`. As ferramentas do estudo de mutação leem `::p(\d+)::` e não o veem. `ChunkRecord.section` e os metadados do Chroma (só quando há seção, como a página) |
+| `backend/app/config.py` | `CHUNKER` (`token` ou `section`, padrão `token`) entra nas chaves que a versão pode fixar. As versões `md-p4llm` (a conversão pymupdf4llm que o `md-v2` já trouxe) e `md-dl` |
+| `backend/app/rag/retrieval.py`, `backend/app/schemas.py` | a seção no dicionário do `retrieve()` e no `SourceChunk`; sem isso, o pydantic descartaria o campo na resposta do `/chat` |
+| `tests/benchmark/run_experiment.py` | `classe_por` no cartão: o Δ por grupo sai por outro campo do golden (no E2, `content_type`) |
+| `tests/benchmark/cartoes/E2.yaml` (novo) | a seleção: os degraus 1, 1b e 2, só C1, com as confusões do plano declaradas |
+| `.gitignore` | `data/md_dl/`, o manifesto e o venv do Docling |
+
+**A conversão.** 18 min para os 38 PDFs em CPU (de 5 a 135 s por arquivo; o
+RAGChecker, com 29 páginas, levou 135 s). As tabelas saem com as colunas
+inteiras: a linha da configuração ID 19 do MetaRAG traz "0.9410 ± 0.0357" na
+coluna da precisão.
+
+**Uma limitação, antes de rodar:** o `content_type` dos goldens quase não tem
+`secao` (0 pergunta na seleção, 2 na confirmação) e tem pouco `texto` (4 e 8).
+A interação que dá para medir é `tabela` × `numero` × `texto`.
+
 ### B4 — E5: a análise de concentração e a primeira leitura (18/10)
 
 O E5 não é um braço: é uma análise sobre o diagnóstico de qualquer braço. Ela
@@ -732,9 +835,18 @@ não depende do runner e roda já.
   `pdf-v1-noref`, que agora tem uma previsão: cortar a bibliografia mexe pouco
   na evidência das perguntas de dentro e mais na abstenção das de fora.
 
+**O cruzamento concentração × qualidade** está pronto em código
+(`e5.py --respostas ... --ragas ...`, com 2 testes novos). Por documento, ele
+põe a participação e o excesso de ímã ao lado da taxa de reprovação das
+respostas que o usam. Reprovada é a resposta que o RAGAS não aprova em todas
+as dimensões (limiar 0,7), a regra do relatório. Ele também compara as
+respostas apoiadas só no top 20% com as demais, com IC por bootstrap dos
+documentos-fonte. Os trechos são os que o gerador recebeu na rodada julgada. A
+atribuição errada precisa de citação e fica para o E3.
+
 **O que falta no E5:**
 
-- o cruzamento concentração × qualidade, que precisa da C2;
+- rodar o cruzamento na C2 do E0;
 - o `pdf-v1-noref` do H5b;
 - a demanda real das aulas. Para começar a coletar, basta um `LOGS_DIR` por
   aula no backend local (§8, E5).

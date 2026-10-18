@@ -1,0 +1,40 @@
+# md-p4llm: os 39 artigo(s) de pdf-v1 (pelo nome sem a extensão), em new_papers_marks, registrados em 2026-10-18 (scripts/ingest_documents.py --register --like pdf-v1 --by-stem)
+2c25a95a3f0cf86604008bf87d9bb91afa809128f55f33a4fd8ca3c074a55ffa  2025_01_RETORCH_ICTSS24_ResearchGate.md
+101ac04416774180fe06a424945d91e7936c0fd78fba2b4eef6d7236a9611031  AI LitReview A Web-Based Tool for LLM-Assisted Systematic Literature Reviews.md
+7f6b76d38d8826b8a7cd05e166287f39df22170283225f877694493926075c9b  AIWare_2025___Testing_with_LLMs.md
+9972d505d7d1595e6e9f603bb14ee2bf02e55bdff2b0f3cdb302eb473eedd224  AnnotAISE Web-Based Data Annotation Platform For Software Engineering Research.md
+007f21a593550a07ea75386b8e12c4eeefb36f3e8c7dd573b900616762878039  ARES An Automated Evaluation Framework for Retrieval-Augmented Generation Systems.md
+5a05709276d8a7f7108465b90b2e486ca75e0a55bf6cb8ff4d723ebde84e68e4  Cassiopeia A Retrieval-Augmented Generation Tool for Automated Test-Case Creation.md
+01591022eba4aa9f4c7c0964a007326c959ed30adfd38e6fa69975e899db9918  Combining TSL and LLM to Automate REST API Testing A Comparative Study.md
+b4faaf72f4fcffcfee28333df485d37fff3ad724782233abe7f006be2feb2817  Comparative Analysis of Large Language Model Tools for Automated Test Data Generation from BDD.md
+5ebca4a2d7577c63e83a6d563fa6363fce60c11822975d6bcea43f3d85927d13  Cronos Automating Bug Report Validation with LLMs using RAG Approach.md
+02e6f63b51f30ed150a83dfabfffc34d8cd80c2cc819c2382ff462a8f74b48e3  DesignandEvaluationofaModularMultilingualRAGArchitecture.md
+8ebd8df7160145daf5b0209f5e26f686b2a8d7cfa9c804ccddeccd40990592bf  Does Prompt Engineering Really Impact LLM-Generated Unit Tests An Empirical Study Based on Mutation Testing.md
+ab81cd7c5242b506a5e96809972d1491b028d4a38c490a211906b40085407d59  Does Retrieval-Augmented Vulnerability Repair Generalize Beyond Snippets A Study on TypeScript Web Applications.md
+dc2a13195b49693269236d59531a0efb98938e3e8c6f4637ebbb35a0128ed351  EEVEE Uma Arquitetura Extensível Baseada em Workers para Avaliação Automatizada de Programação.md
+b7018a1e4307a682ec78b572c8ba51638835d6ef779a30ccdc4bef51dcf24dd5  Evaluating LLM-Generated Unit Tests with Mutation Testing ChatGPT vs DeepSeek.md
+606a4bf84d4a5d8fdfab08c4bcce40c68eec8678eb3da09484cb6a99ae4e8d84  Evaluating RAG-based QA Systems A Comparative Analysis of LLM as a Judge, Traditional Metrics, and Human Alignment.md
+22802875c3384395fde4811cdafecd6c09683b236bdd2dc54a831262c70afab4  Evaluating the Effectiveness and Cost-Efficiency of Large Language Models in Automated Unit Test Generation.md
+142af12c475f1422919d99ffef65cd61969325da7488a88f4b68cd86f5035cb4  Evaluator Bias in LLM-Based Program Repair A Disagreement Analysis on Android Resource Leaks.md
+c53115991921a7198d0fa7b44263b5b2734937f6b95d9ce9558351640ac79599  Generation of Test Datasets using LLM — Quality Assurance Perspective.md
+022d399c5a0836702df7f830c8f8049ef035ace09e2d62f0cf3febb03d3b49e4  GenIA-E2ETest An AI-Based Platform for End-to-End Test Automation.md
+0c30f76902d3a81af201d0e65a61a2c9e7e56bb4c4123aec977588997d573a0c  Integrating_Large_Language_Models_into_Automated_S.md
+1f4676a33ee9fd928cc911a672c5a7d91cc1e055e0e217533be6e241e6ccc296  Large Language Models in Software Testing A Scoping Review.md
+c24b0b854a594c35a5be8643ea9adb9151d8d2a2814516c73e6abc7551f486b6  Large_Language_Models_for_Software_Testing_A_Resea.md
+3c6fcc91838afc793c8b79e13db765a43ad828d7e75dc0b03279ae684ab7ee62  LLMContextBench A Benchmark Tool for Evaluating Context Provisioning Strategies in LLM-Based Systems.md
+11593c534624070efe0f0f2a73a6b943cce410bed1674b7c7e0cc4b2a1fef878  LLMs as Test Generators A Comparative Benchmarking Study.md
+fa633929821886f03b50df12360711625013d7ad832529f7fc9d8c3dcddb5038  MetaRAG Metamorphic Testing for Hallucination Detection in RAG Systems.md
+6c3d199318bb983441d2167a21fef149308dd18dd81c3f1f09d3389edc89543f  MeTMaP Metamorphic Testing for Detecting False Vector Matching Problems in LLM-Augmented Generation.md
+adf9c552cf49e320dd20771e3f971be0eeb68fcc729249d11274a66783cb29e8  NeurIPS-2024-ragchecker-a-fine-grained-framework-for-diagnosing-retrieval-augmented-generation-Paper-Datasets_and_Benchmarks_Track.md
+f64695dd541debd37ffc0c631bb53a53f03ba81830ab27b6833b8ef3e6080a6a  On the Limits of Text-Only LLM-Based Test Case Prioritization in Industrial Black-Box Regression Testing.md
+78bde179701f04e39f9b6fe11ae397f48131c4d97e3cc80300574a3e4d0d6218  QAQuest A Gamified Plugin for Manual Testing.md
+505ccde859733811d296bdcb88733ce6b7d0d1a0010606cf9aaae17bb26839ce  RAG Corporativo com HyDE Uma Experiência Prática de Chatbot B2B com Conhecimento Proprietário.md
+8f5e46aef2ea690bc0cdce2e4bbb288eefc0a37c60984a399d785be927075af6  RAG-Driven Multiple Assertions Generation with Large Language Models.md
+9f42d46129b582b7c02f63d33e44c22774b99792fc3b08ab254dfbdfc1002064  RAGAS.md
+6f27e5252db4c1c265cf3f1a992556710b8dd6de89e93576e7a95789b8ba7c1a  Software_Testing_of_Generative_AI_Systems_Challeng.md
+8f33c1a7a245de95c9b7ca42cd46d1f4932aa19cc423fba0e8ecaa91d0d955c8  Subreddit Temporal Network An Interactive Web Interface.md
+c9a2d1dcd8be11614950204e398acbdf487c626a0bb5e193b0abbfcb7ecf97c8  Sustainability Concerns in Open Source Software A Multi-Domain Mining Study of GitHub Issues.md
+e8e26a72c211b9c9fdeecf28d8868a32e48346144ccdeaac03163797ff116c73  Teste de Mutação em System Prompts para Avaliação de Conjuntos de Testes de Chatbots Baseados em LLMs.md
+6c07459ba8166ede4b823852da8a455767f10f2bbfb0eb79d076803b424aa098  Testing with AI Agents An Empirical Study of Test Generation Frequency, Quality, and Coverage.md
+c1959c0cd164bd87771d7804be7f454c4c7829d06af12ecd6996146afa62ed4e  Utilizando a IA Generativa para Apoiar a Especificação de Casos de Teste Funcionais em um Sistema de Software do Setor Público.md
+277be86caf0e2e022449b12a5eec772987f92417e1c3a4bca908755ee9f2b26b  When the Trigger Fails Metamorphic Testing of Tool-Calling AI Agents.md

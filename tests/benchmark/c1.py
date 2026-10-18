@@ -34,6 +34,7 @@ import random
 import re
 import unicodedata
 from collections import defaultdict
+from itertools import accumulate
 from typing import Iterable
 
 # Muda quando a definição de alguma métrica muda: diagnósticos de versões diferentes não se comparam.
@@ -113,6 +114,37 @@ def evidence(fragments: list[str], chunk_texts: list[str], tau: float = TAU) -> 
     }
 
 
+def evidence_curve(fragments: list[str], chunk_texts: list[str], tau: float = TAU) -> list[bool] | None:
+    """Evidência dos k primeiros trechos, para k = 1..len(chunk_texts), numa passada só.
+
+    O item k − 1 é `evidence(fragments, chunk_texts[:k])["evidence"]`; os gramas de cada trecho saem uma vez.
+    Com os tokens acumulados dos mesmos trechos, dá a curva evidência × tokens de contexto do E6.
+    """
+    if not fragments:
+        return None
+    norms = [normalize(fragment) for fragment in fragments]
+    fragment_grams = [grams(norm) if len(norm) >= NGRAM else None for norm in norms]
+    matched: list[set[str]] = [set() for _ in fragments]
+    short_found = [False] * len(fragments)
+    curve = []
+    for text in chunk_texts:
+        chunk_norm = normalize(text)
+        chunk_grams = grams(chunk_norm)
+        for i, fg in enumerate(fragment_grams):
+            if fg is None:
+                short_found[i] = short_found[i] or norms[i] in chunk_norm
+            else:
+                matched[i] |= fg & chunk_grams
+        curve.append(all(short_found[i] if fg is None else len(matched[i]) / len(fg) >= tau
+                         for i, fg in enumerate(fragment_grams)))
+    return curve
+
+
+def _tokens(chunks: list[dict]) -> list[int] | None:
+    """Os tokens de cada trecho, se quem recuperou contou (tests/retrieval_diagnostic.py conta com o cl100k)."""
+    return [c["tokens"] for c in chunks] if chunks and all("tokens" in c for c in chunks) else None
+
+
 def _ranked(chunks: list[dict], relevant: list[bool] | None = None, with_text: bool = False) -> list[dict]:
     items = []
     for i, chunk in enumerate(chunks):
@@ -142,7 +174,10 @@ def question_metrics(
 ) -> dict:
     """C1 de uma pergunta num braço: `arm_chunks` é o que o gerador recebe (top_k e MMR do braço)."""
     blocked = threshold > 0 and (top1_similarity is None or top1_similarity < threshold)
-    base = {"n_chunks": len(arm_chunks), "top1_similarity": top1_similarity, "blocked_by_threshold": blocked}
+    arm_tokens = _tokens(arm_chunks)
+    base = {"n_chunks": len(arm_chunks), "top1_similarity": top1_similarity, "blocked_by_threshold": blocked,
+            # Os tokens de contexto que o gerador recebe: o custo do E6 (chunk × top_k com orçamento igual).
+            "context_tokens": sum(arm_tokens) if arm_tokens is not None else (0 if not arm_chunks else None)}
     if source_document is None:
         return {**base, "chunks": _ranked(arm_chunks, with_text=with_text)}
 
@@ -155,6 +190,7 @@ def question_metrics(
     found = evidence(fragments, [c["text"] for c in arm_chunks])
     found_at_10 = evidence(fragments, [c["text"] for c in chunks_at_10])
     relevant = [doc == stem or hit for doc, hit in zip(docs, found["chunk_has_evidence"])]
+    tokens_at_10 = _tokens(chunks_at_10)
     return {
         **base,
         "rank": rank,
@@ -172,6 +208,9 @@ def question_metrics(
         "chunks": _ranked(arm_chunks, relevant, with_text=with_text),
         # Para o E5 ("documento morto": tem pergunta e nunca vem nos 10 primeiros trechos dela).
         "documents_at_10": [c.get("document") for c in chunks_at_10],
+        # Para o E6: evidência e tokens acumulados dos k primeiros trechos da lista de 10, k = 1..10.
+        "evidence_curve": evidence_curve(fragments, [c["text"] for c in chunks_at_10]),
+        "tokens_curve": list(accumulate(tokens_at_10)) if tokens_at_10 else None,
     }
 
 

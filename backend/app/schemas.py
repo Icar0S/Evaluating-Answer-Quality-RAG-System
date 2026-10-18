@@ -15,6 +15,8 @@ class SourceChunk(BaseModel):
     chunk_id: str
     document: str
     page: int | None = None
+    # Título da seção do Markdown, nos índices com o chunker por seção (CHUNKER=section).
+    section: str | None = None
     text: str
     similarity_score: float
 

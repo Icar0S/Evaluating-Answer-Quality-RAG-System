@@ -6,9 +6,12 @@ plano dá como modelo; o formato do cartão está em docs/benchmark-status.md.
 
 O funil (§5), nesta ordem:
 
- 1. o cartão, como foi escrito, no terminal e em <saída>/cartao.yaml;
+ 1. o cartão, como foi escrito, no terminal e em <saída>/cartao.yaml; os
+    goldens do `split` do cartão (ou de --split) e, com --limite, um recorte;
  2. índices: cada versão dos braços é ingerida se estiver vazia;
- 3. C1 (só embeddings) nos braços com a camada c1: tests/retrieval_diagnostic.py;
+ 3. C1 (só embeddings) nos braços com a camada c1: tests/retrieval_diagnostic.py,
+    o baseline primeiro. `min_similarity_score: recalibrado` no `set` de um
+    braço vira o limiar calibrado na C1 do baseline (E6, limiar_<braço>.json);
  4. C2 nos braços com a camada c2: tests/generate_answers.py com os fixos do
     §8.2 e as sobrescritas do braço, e o RAGAS julgando só as perguntas de
     dentro do índice, com o juiz e a janela do cartão. O processo do juiz não
@@ -50,7 +53,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 import run_all as ra  # noqa: E402
 
 from app.config import RAG_INDICES  # noqa: E402
-from tests.benchmark import c1, placar  # noqa: E402
+from tests.benchmark import c1, limiar, placar  # noqa: E402
 
 OUT_ROOT = ROOT / "tests" / "benchmark" / "out"
 RAGAS_RESULTS = ROOT / "tests" / "ragas" / "results"
@@ -59,12 +62,19 @@ INDEX_VERSIONS = ROOT / "backend" / "app" / "rag" / "index_versions"
 DEFAULT_OLLAMA = "http://127.0.0.1:11434"
 REQUIRED = ("id", "titulo", "pergunta", "hipotese", "goldens", "bracos", "metrica_primaria", "didatica")
 C1_METRICS = ("hit_at_1", "hit_at_k", "hit_at_10", "mrr_at_10", "precision_at_k", "coverage_at_k", "evidence_at_k",
-              "coverage_at_10", "retrieval_ms")
+              "coverage_at_10", "retrieval_ms", "context_tokens")
 RAGAS_METRICS = ("faithfulness", "answer_relevancy", "context_precision", "context_recall", "context_relevance")
 # Métricas em que menos é melhor (o resto: mais é melhor).
-LOWER_IS_BETTER = {"undue_abstention", "generation_ms", "retrieval_ms", "prompt_tokens", "completion_tokens"}
+LOWER_IS_BETTER = {"undue_abstention", "generation_ms", "retrieval_ms", "prompt_tokens", "completion_tokens",
+                   "context_tokens", "false_block"}
 # Os grupos do placar: uma métrica do cartão (guarda) se escreve grupo.metrica, como c1.evidence_at_k.
 METRIC_GROUPS = ("c1", "c2", "abstention", "cost")
+# Métricas de 0 ou 1 por pergunta: nelas o placar aplica o McNemar exato (provisório até a §11).
+BINARY_METRICS = {"c1.hit_at_1", "c1.hit_at_k", "c1.hit_at_10", "c1.evidence_at_k", "c1.correct_abstention",
+                  "c1.false_block", "abstention.correct_abstention", "abstention.undue_abstention"}
+SPLITS = ("selecao", "confirmacao")
+# Valor de `set` que o runner calcula: o limiar recalibrado na C1 do baseline da própria rodada (E6).
+RECALIBRATED = "recalibrado"
 
 
 # ------------------------------------------------------------------ o cartão
@@ -91,8 +101,16 @@ def arms_of(card: dict) -> dict[str, dict]:
             "id": arm_id, "kind": "rodada", "index": spec["indice"], "lang": spec.get("lingua", "pt"),
             "layers": list(spec.get("camadas", ["c1", "c2"])), "order": spec.get("ordem"),
             "set": {str(k): v for k, v in (spec.get("set") or {}).items()}, "papel": spec.get("papel", "candidato"),
+            # A métrica do veredito deste braço, quando não é a do cartão (E6: cada tipo de braço tem a sua).
+            "primary": spec.get("metrica_primaria"),
         }
     return arms
+
+
+def primary_metric(card: dict, arm: dict) -> str:
+    """A métrica do veredito do par que termina no braço: a dele, se tiver, ou a do cartão (grupo.metrica)."""
+    primary = arm.get("primary") or card["metrica_primaria"]
+    return f"{primary['camada']}.{primary['metrica']}"
 
 
 def validate_card(card: dict) -> list[str]:
@@ -115,9 +133,20 @@ def validate_card(card: dict) -> list[str]:
     for pair in card.get("pares", []) + [p for group in (card.get("margem") or {}).values() for p in group]:
         if len(pair) != 2 or not set(pair) <= set(arms):
             errors.append(f"par {pair}: tem de ser dois braços do cartão")
-    primary = card["metrica_primaria"]
-    if primary.get("camada") not in ("c1", "c2") or not primary.get("metrica"):
-        errors.append("metrica_primaria precisa de camada (c1 ou c2) e metrica")
+    for owner, primary in [("o cartão", card["metrica_primaria"])] + [
+            (arm["id"], arm["primary"]) for arm in arms.values() if arm.get("primary")]:
+        if primary.get("camada") not in ("c1", "c2") or not primary.get("metrica"):
+            errors.append(f"metrica_primaria de {owner} precisa de camada (c1 ou c2) e metrica")
+    if card.get("split") and card["split"] not in SPLITS:
+        errors.append(f"split {card['split']!r}: {' ou '.join(SPLITS)}")
+    for arm_id in card.get("curva") or []:
+        if arm_id not in arms:
+            errors.append(f"curva: {arm_id!r} não é um braço do cartão")
+    baseline = next((a for a in arms.values() if a["papel"] == "baseline"), None)
+    for arm in arms.values():
+        if arm["kind"] == "rodada" and arm["set"].get("min_similarity_score") == RECALIBRATED and not (
+                baseline and "c1" in baseline["layers"] and baseline["index"] == arm["index"]):
+            errors.append(f"{arm['id']}: limiar {RECALIBRATED} precisa de um baseline com c1 no mesmo índice")
     if card.get("teto") and card["teto"] not in arms:
         errors.append(f"teto {card['teto']!r}: não é um braço do cartão")
     for guard in card.get("guardas") or []:
@@ -203,8 +232,9 @@ def complete_judgement(path: Path) -> bool:
 
 
 class Experiment:
-    def __init__(self, card: dict, card_path: Path, out: Path, limit: int | None) -> None:
+    def __init__(self, card: dict, card_path: Path, out: Path, limit: int | None, split: str | None = None) -> None:
         self.card, self.card_path, self.out, self.limit = card, card_path, out, limit
+        self.split = split or card.get("split")
         self.arms = arms_of(card)
         self.steps: list[ra.Step] = []
         self.goldens_path = ROOT / card["goldens"]
@@ -216,15 +246,62 @@ class Experiment:
         took = f" ({seconds:.0f}s)" if seconds is not None else ""
         print(f"    {ra.STATUS_TAG.get(status, status)} {name}: {detail}{took}", flush=True)
 
-    # 0. goldens (com --limite, um recorte pequeno dos de dentro e dos de fora)
+    # 0. goldens: só o split do cartão (E6: a varredura em selecao, o veredito em confirmacao) e, com --limite,
+    #    um recorte pequeno dos de dentro e dos de fora
     def prepare_goldens(self) -> None:
-        if not self.limit:
+        if not self.limit and not self.split:
             return
         goldens = json.loads(self.goldens_path.read_text(encoding="utf-8"))
-        inside = [g for g in goldens if g.get("source_document")][: self.limit]
-        outside = [g for g in goldens if g.get("question_class") in ("fora_do_corpus", "fora_de_escopo")][: self.limit]
-        self.goldens_path = self.out / "goldens_limite.json"
-        self.goldens_path.write_text(json.dumps(inside + outside, ensure_ascii=False, indent=2), encoding="utf-8")
+        if self.split:
+            goldens = [g for g in goldens if g.get("split") == self.split]
+        if self.limit:
+            inside = [g for g in goldens if g.get("source_document")][: self.limit]
+            outside = [g for g in goldens if g.get("question_class") in ("fora_do_corpus", "fora_de_escopo")]
+            goldens = inside + outside[: self.limit]
+        self.goldens_path = self.out / "goldens_recorte.json"
+        self.goldens_path.write_text(json.dumps(goldens, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def resolved_set(self, arm: dict) -> dict:
+        """O `set` do braço com os valores calculados: `min_similarity_score: recalibrado` vira o limiar."""
+        values = dict(arm["set"])
+        if values.get("min_similarity_score") == RECALIBRATED:
+            values["min_similarity_score"] = self.recalibrated_threshold(arm)["threshold"]
+        return values
+
+    def recalibrated_threshold(self, arm: dict) -> dict:
+        """O limiar do E6: a regra do estudo de mutação (tests/benchmark/limiar.py) na C1 do baseline da rodada.
+
+        Positivas: a similaridade do primeiro trecho das perguntas de dentro; negativas, a das de fora. Calibrado
+        e avaliado nos mesmos dados, o falso bloqueio dá zero por construção: o arquivo grava também a validação
+        deixando um documento de fora, e o veredito do limiar sai da confirmacao.
+        """
+        target = self.out / f"limiar_{arm['id']}.json"
+        if target.is_file():
+            return json.loads(target.read_text(encoding="utf-8"))
+        baseline = next(a for a in self.arms.values() if a["papel"] == "baseline")
+        diag = json.loads((self.out / f"c1_{baseline['id']}.json").read_text(encoding="utf-8"))
+        inside, outside = [], []
+        for row in diag["rows"]:
+            metrics = row["c1"].get(baseline["index"], {}).get(baseline["lang"])
+            if metrics and metrics.get("top1_similarity") is not None:
+                if metrics.get("in_index"):
+                    inside.append((c1.doc_stem(row["source_document"]), metrics["top1_similarity"]))
+                else:
+                    outside.append(metrics["top1_similarity"])
+        for row in diag.get("out_rows", []):
+            metrics = row["c1"].get(baseline["index"], {}).get(baseline["lang"])
+            if metrics and metrics.get("top1_similarity") is not None:
+                outside.append(metrics["top1_similarity"])
+        positives = [value for _, value in inside]
+        choice = limiar.choose_threshold(positives, outside)
+        result = {
+            **choice, "calibrated_on": baseline["id"], "split": self.split, "n_inside": len(inside),
+            "n_outside": len(outside), "in_sample": limiar.evaluate(choice["threshold"], positives, outside),
+            "leave_one_document_out": limiar.leave_one_document_out(inside, outside),
+        }
+        target.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"    limiar recalibrado para {arm['id']}: {choice['threshold']} ({choice['rule']})", flush=True)
+        return result
 
     # 1. índices
     def ensure_indices(self) -> None:
@@ -248,7 +325,7 @@ class Experiment:
         # Os fixos do cartão também vão para a C1: os de recuperação valem aqui, e todos ficam na proveniência.
         cmd = [ra.PY["backend"], ROOT / "tests" / "retrieval_diagnostic.py", "--out", target, "--indices", arm["index"],
                "--goldens", self.goldens_path, "--langs", arm["lang"],
-               *set_args({**(self.card.get("fixos") or {}), **arm["set"]})]
+               *set_args({**(self.card.get("fixos") or {}), **self.resolved_set(arm)})]
         warm_up(self.card, RAG_INDICES[arm["index"]]["embedding_model"], embedding=True)
         code, secs = ra.run_logged(cmd, log, env=child_env(self.card), timeout=3 * 3600)
         if code != 0 or not target.is_file():
@@ -266,7 +343,7 @@ class Experiment:
             self.record(f"respostas_{arm['id']}", f"Respostas {arm['id']}", "concluída", "já estavam prontas (retomada)")
             return target
         log = self.out / "logs" / f"respostas_{arm['id']}.log"
-        settings = {**(self.card.get("fixos") or {}), **arm["set"]}
+        settings = {**(self.card.get("fixos") or {}), **self.resolved_set(arm)}
         cmd = [ra.PY["backend"], ROOT / "tests" / "generate_answers.py", "--out", target, "--index", arm["index"],
                "--lang", arm["lang"], "--goldens", f"v2={self.goldens_path}", "--local", *set_args(settings)]
         if arm["order"] is not None:
@@ -323,7 +400,8 @@ class Experiment:
     def run(self) -> None:
         self.prepare_goldens()
         self.ensure_indices()
-        for arm in self.arms.values():
+        # O baseline primeiro: o limiar recalibrado de outro braço sai da C1 dele.
+        for arm in sorted(self.arms.values(), key=lambda a: a["papel"] != "baseline"):
             if arm["kind"] == "rodada" and "c1" in arm["layers"]:
                 self.c1(arm)
         for arm in self.arms.values():
@@ -354,29 +432,50 @@ def translation_milliseconds(arm: dict, questions: dict[str, str]) -> dict[str, 
     return {name: timings[text] for name, text in questions.items() if text in timings}
 
 
-def arm_measures(out: Path, arm: dict, arms: dict[str, dict], questions: dict[str, str] | None = None) -> dict:
+def arm_measures(out: Path, arm: dict, arms: dict[str, dict], questions: dict[str, str] | None = None,
+                 classes: dict[str, str | None] | None = None) -> dict:
     """Por pergunta, tudo o que o placar compara: C1 (na língua do braço), RAGAS, recusa e custo.
 
     `questions`: nome → pergunta em português, para somar o tempo da tradução gravada à latência da busca.
+    `classes`: nome → question_class. Pergunta ambígua não entra na abstenção correta: o certo é pedir
+    esclarecimento, não se abster.
     """
+    classes = classes or {}
     source = arms[arm["of"]] if arm["kind"] == "rejulgar" else arm
-    measures: dict = {"clusters": {}, "c1": {}, "c2": {}, "abstention": {}, "cost": {}, "summary": {}}
+    measures: dict = {"clusters": {}, "c1": {}, "c2": {}, "abstention": {}, "cost": {}, "summary": {}, "curves": {}}
     translation_ms = translation_milliseconds(arm, questions or {}) if arm.get("lang") == "pt" else {}
     diag_path = out / f"c1_{arm['id']}.json"
     if arm["kind"] == "rodada" and diag_path.is_file():
         diag = json.loads(diag_path.read_text(encoding="utf-8"))
         summary = diag["c1"]["summary"][arm["index"]][arm["lang"]]
         measures["summary"]["c1"] = summary
+        # Abstenção pelo limiar, por pergunta: a de fora barrada acerta; a de dentro barrada é falso bloqueio.
+        blocked_outside: dict[str, bool] = {}
         for row in diag["rows"]:
             metrics = row["c1"].get(arm["index"], {}).get(arm["lang"])
-            if metrics and metrics.get("in_index"):
-                measures["clusters"][row["name"]] = c1.doc_stem(row["source_document"])
-                for metric in C1_METRICS:
-                    if metrics.get(metric) is not None:
-                        value = float(metrics[metric])
-                        if metric == "retrieval_ms":
-                            value += translation_ms.get(row["name"], 0.0)
-                        measures["c1"].setdefault(metric, {})[row["name"]] = value
+            if not metrics:
+                continue
+            if not metrics.get("in_index"):
+                # O documento não está nesta versão: a pergunta conta como de fora nela.
+                blocked_outside[row["name"]] = bool(metrics.get("blocked_by_threshold"))
+                continue
+            measures["clusters"][row["name"]] = c1.doc_stem(row["source_document"])
+            for metric in C1_METRICS:
+                if metrics.get(metric) is not None:
+                    value = float(metrics[metric])
+                    if metric == "retrieval_ms":
+                        value += translation_ms.get(row["name"], 0.0)
+                    measures["c1"].setdefault(metric, {})[row["name"]] = value
+            measures["c1"].setdefault("false_block", {})[row["name"]] = float(bool(metrics.get("blocked_by_threshold")))
+            if metrics.get("evidence_curve") and metrics.get("tokens_curve"):
+                measures["curves"].setdefault("evidence", {})[row["name"]] = [float(v) for v in metrics["evidence_curve"]]
+                measures["curves"].setdefault("tokens", {})[row["name"]] = metrics["tokens_curve"]
+        for row in diag.get("out_rows", []):
+            metrics = row["c1"].get(arm["index"], {}).get(arm["lang"])
+            if metrics:
+                blocked_outside[row["name"]] = bool(metrics.get("blocked_by_threshold"))
+        if blocked_outside:
+            measures["c1"]["correct_abstention"] = {n: float(b) for n, b in blocked_outside.items()}
     answers_path = out / f"respostas_{source['id']}.json"
     if answers_path.is_file() and arm["kind"] == "rodada" and "c2" in arm["layers"]:
         documents = index_documents(source["index"])
@@ -387,7 +486,8 @@ def arm_measures(out: Path, arm: dict, arms: dict[str, dict], questions: dict[st
         for name, a in inside.items():
             measures["clusters"][name] = c1.doc_stem(a["source_document"])
         measures["abstention"] = {
-            "correct_abstention": {n: float(a["abstained"]) for n, a in outside.items() if "abstained" in a},
+            "correct_abstention": {n: float(a["abstained"]) for n, a in outside.items()
+                                   if "abstained" in a and classes.get(n) != "ambiguo"},
             "undue_abstention": {n: float(a["abstained"]) for n, a in inside.items() if "abstained" in a},
         }
         for metric in ("retrieval_ms", "generation_ms", "prompt_tokens", "completion_tokens"):
@@ -481,17 +581,77 @@ def gap_closed(card: dict, arms: dict[str, dict], means: dict[str, dict]) -> dic
     return result
 
 
-def scoreboard(card: dict, out: Path, limit: int | None, questions: dict[str, str] | None = None) -> dict:
+def curve_means(measures: dict) -> list[dict]:
+    """A curva evidência × tokens de contexto do braço: em cada k, as médias nas perguntas com k trechos."""
+    evidence, tokens = measures["curves"].get("evidence", {}), measures["curves"].get("tokens", {})
+    points = []
+    for k in range(1, max((len(v) for v in evidence.values()), default=0) + 1):
+        names = [n for n in evidence if len(evidence[n]) >= k and len(tokens.get(n, [])) >= k]
+        if names:
+            points.append({"k": k, "n": len(names), "tokens": round(statistics.fmean(tokens[n][k - 1] for n in names), 1),
+                           "evidence": round(statistics.fmean(evidence[n][k - 1] for n in names), 4)})
+    return points
+
+
+def significance(card: dict, arms: dict[str, dict], measures: dict[str, dict], pairs: list) -> dict[str, dict]:
+    """McNemar exato na métrica primária de cada par, se ela é de 0 ou 1, com Holm na família dos pares.
+
+    Provisório até a §11. A família são os pares do cartão: no E6, a varredura inteira (§8).
+    """
+    tests = {}
+    for x, y in pairs:
+        metric = primary_metric(card, arms[y])
+        a, b = _all_metrics(measures[x]).get(metric), _all_metrics(measures[y]).get(metric)
+        if metric in BINARY_METRICS and a and b:
+            test = placar.mcnemar_exact({n: v >= 0.5 for n, v in a.items()}, {n: v >= 0.5 for n, v in b.items()})
+            tests[f"{x}→{y}"] = {"metric": metric, **test}
+    for test, adjusted in zip(tests.values(), placar.holm([t["p_value"] for t in tests.values()])):
+        test["p_value"], test["p_holm"] = round(test["p_value"], 4), round(adjusted, 4)
+    return tests
+
+
+def by_class(card: dict, arms: dict[str, dict], measures: dict[str, dict], pairs: list,
+             classes: dict[str, str | None]) -> dict[str, dict]:
+    """Δ da métrica primária de cada par em cada classe de pergunta (E6: o MMR em fato_distribuido)."""
+    result = {}
+    for x, y in pairs if classes else []:
+        metric = primary_metric(card, arms[y])
+        a, b = _all_metrics(measures[x]).get(metric) or {}, _all_metrics(measures[y]).get(metric) or {}
+        clusters = {**measures[x]["clusters"], **measures[y]["clusters"]}
+        groups: dict[str, list[str]] = {}
+        for name in sorted(set(a) & set(b)):
+            groups.setdefault(classes.get(name) or "sem classe", []).append(name)
+        result[f"{x}→{y}"] = {
+            cls: placar.paired_delta({n: a[n] for n in names}, {n: b[n] for n in names}, clusters)
+            for cls, names in sorted(groups.items())
+        }
+    return result
+
+
+def scoreboard(card: dict, out: Path, limit: int | None, goldens: list[dict] | None = None,
+               split: str | None = None) -> dict:
+    """`goldens`: os do cartão, para a tradução gravada (pela pergunta) e as classes de pergunta."""
     arms = arms_of(card)
-    measures = {arm_id: arm_measures(out, arm, arms, questions) for arm_id, arm in arms.items()}
+    questions = {g["name"]: g["input"] for g in goldens or [] if g.get("input")}
+    classes = {g["name"]: g.get("question_class") for g in goldens or []}
+    # O Δ por grupo sai pela classe da pergunta ou por outro campo do golden (E2: `classe_por: content_type`).
+    groups = {g["name"]: g.get(card.get("classe_por") or "question_class") for g in goldens or []}
+    measures = {arm_id: arm_measures(out, arm, arms, questions, classes) for arm_id, arm in arms.items()}
     baseline = next((a for a, spec in arms.items() if spec["papel"] == "baseline"), None)
     pairs = card.get("pares") or ([[baseline, a] for a in arms if a != baseline] if baseline else [])
     comparisons = {f"{x}→{y}": compare(measures[x], measures[y]) for x, y in pairs}
     means = {a: {k: round(statistics.fmean(v.values()), 4) for k, v in _all_metrics(m).items() if v}
              for a, m in measures.items()}
-    result: dict = {"limite": limit, "pairs": comparisons, "summary": {a: m["summary"] for a, m in measures.items()},
+    thresholds = {a: json.loads(p.read_text(encoding="utf-8")) for a in arms if (p := out / f"limiar_{a}.json").is_file()}
+    result: dict = {"limite": limit, "split": split or card.get("split"), "exploratory": bool(card.get("exploratorio")),
+                    "pairs": comparisons, "summary": {a: m["summary"] for a, m in measures.items()},
                     "means": means, "guards": guard_results(card, measures),
-                    "gap_closed": gap_closed(card, arms, means)}
+                    "gap_closed": gap_closed(card, arms, means),
+                    "tests": significance(card, arms, measures, pairs),
+                    "by_class": by_class(card, arms, measures, pairs, groups),
+                    "class_field": card.get("classe_por") or "question_class",
+                    "curves": {a: curve_means(m) for a, m in measures.items() if m["curves"]},
+                    "thresholds": thresholds}
     if card.get("margem"):
         margins = {group: placar.noise_margins([compare(measures[x], measures[y]) for x, y in group_pairs])
                    for group, group_pairs in card["margem"].items()}
@@ -501,18 +661,18 @@ def scoreboard(card: dict, out: Path, limit: int | None, questions: dict[str, st
                                                      ensure_ascii=False, indent=2), encoding="utf-8")
     else:
         margin_data, margin_source = latest_margins(exclude=out)
-        primary = card["metrica_primaria"]
-        metric = f"{primary['camada']}.{primary['metrica']}"
-        group = "c1" if primary["camada"] == "c1" else "gerador_juiz"
-        margin = ((margin_data or {}).get("margins", {}).get(group) or {}).get(metric)
         result["margin_source"] = margin_source
-        result["verdicts"] = {
-            pair: {"metric": metric, "margin": margin,
-                   "verdict": placar.verdict(deltas.get(metric), margin,
-                                             higher_is_better=primary["metrica"] not in LOWER_IS_BETTER),
-                   "delta": deltas.get(metric)}
-            for pair, deltas in comparisons.items()
-        }
+        result["verdicts"] = {}
+        for x, y in pairs:
+            metric = primary_metric(card, arms[y])
+            # A C1 tem a margem dela (A1 × A5); o resto, a do gerador e do juiz (A1 × A2 × A3).
+            group = "c1" if metric.startswith("c1.") else "gerador_juiz"
+            margin = ((margin_data or {}).get("margins", {}).get(group) or {}).get(metric)
+            delta = comparisons[f"{x}→{y}"].get(metric)
+            result["verdicts"][f"{x}→{y}"] = {
+                "metric": metric, "margin": margin, "delta": delta,
+                "verdict": placar.verdict(delta, margin, higher_is_better=metric.split(".", 1)[1] not in LOWER_IS_BETTER),
+            }
     (out / "placar.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
 
@@ -523,9 +683,51 @@ def _fmt(delta: dict | None) -> str:
     return f"{delta['delta']:+.3f} [{delta['ci_low']:+.3f}; {delta['ci_high']:+.3f}] (n={delta['n']}, p95|Δ| {delta['abs_p95']:.3f})"
 
 
+def _summary_extras(card: dict, result: dict, arms: list[str]) -> list[str]:
+    """As seções do E6: limiar recalibrado, AUC do primeiro trecho, curva evidência × tokens, Δ por classe."""
+    lines = []
+    if result.get("thresholds"):
+        lines += ["## Limiar recalibrado", ""]
+        for arm, t in result["thresholds"].items():
+            cv = t.get("leave_one_document_out") or {}
+            lines.append(f"- **{arm}:** {t['threshold']} ({t['rule']}), na C1 de {t['calibrated_on']} "
+                         f"({t['n_inside']} de dentro, {t['n_outside']} de fora). Falso bloqueio deixando um documento "
+                         f"de fora: {cv.get('false_block_count')} pergunta(s); abstenção correta na amostra: "
+                         f"{t['in_sample']['correct_abstention']}")
+        lines.append("")
+    aucs = {a: ((result["summary"].get(a) or {}).get("c1") or {}).get("top1_similarity_auc") for a in arms}
+    if any(aucs.values()):
+        lines += ["## Separação entre perguntas de dentro e de fora (AUC da similaridade do primeiro trecho)", ""]
+        lines += [f"- **{a}:** {v['auc']} [{v.get('ci_low')}; {v.get('ci_high')}]" for a, v in aucs.items() if v]
+        lines.append("")
+    shown = [a for a in card.get("curva") or [] if result.get("curves", {}).get(a)]
+    if shown:
+        lines += ["## Curva evidência × tokens de contexto (lista de 10, k primeiros trechos)", "",
+                  "| k | " + " | ".join(shown) + " |", "|---|" + "---|" * len(shown)]
+        for k in range(1, max(len(result["curves"][a]) for a in shown) + 1):
+            cells = []
+            for a in shown:
+                point = next((p for p in result["curves"][a] if p["k"] == k), None)
+                cells.append(f"{point['evidence']:.3f} · {point['tokens']:.0f} tok" if point else "—")
+            lines.append(f"| {k} | " + " | ".join(cells) + " |")
+        lines.append("")
+    if any(result.get("by_class", {}).values()):
+        lines += [f"## Δ da métrica primária por `{result.get('class_field', 'question_class')}`", ""]
+        for pair, classes in result["by_class"].items():
+            parts = [f"{cls} {d['delta']:+.3f} (n={d['n']})" for cls, d in classes.items() if d]
+            lines.append(f"- **{pair}:** " + ", ".join(parts))
+        lines.append("")
+    return lines
+
+
 def write_summary(card: dict, out: Path, result: dict, card_text: str) -> Path:
-    lines = [f"# {card['id']} — {card['titulo']}", "", "## O cartão, como foi escrito", "", "```yaml",
-             card_text.rstrip(), "```", "", "## Médias por braço", ""]
+    lines = [f"# {card['id']} — {card['titulo']}", ""]
+    if result.get("split"):
+        lines += [f"Goldens do split `{result['split']}`.", ""]
+    if result.get("exploratory"):
+        lines += ["> Experimento exploratório: a varredura escolhe; o Δ e o veredito do escolhido saem da "
+                  "confirmação, rodada uma vez.", ""]
+    lines += ["## O cartão, como foi escrito", "", "```yaml", card_text.rstrip(), "```", "", "## Médias por braço", ""]
     arms = list(arms_of(card))
     metrics = sorted({m for a in arms for m in result["means"].get(a, {})})
     lines += ["| Métrica | " + " | ".join(arms) + " |", "|---|" + "---|" * len(arms)]
@@ -537,6 +739,7 @@ def write_summary(card: dict, out: Path, result: dict, card_text: str) -> Path:
         lines += [f"### {pair}", "", "| Métrica | Δ |", "|---|---|"]
         lines += [f"| {metric} | {_fmt(delta)} |" for metric, delta in deltas.items()]
         lines.append("")
+    lines += _summary_extras(card, result, arms)
     if result.get("gap_closed"):
         lines += [f"## Fração do buraco fechado até o teto ({card['teto']})", "",
                   "(braço − baseline) / (teto − baseline), nas médias da métrica primária.", ""]
@@ -554,10 +757,13 @@ def write_summary(card: dict, out: Path, result: dict, card_text: str) -> Path:
         for group, margins in result["margins"].items():
             lines += [f"**{group}:** " + ", ".join(f"{m} {v:.3f}" for m, v in sorted(margins.items())), ""]
     if result.get("verdicts"):
-        lines += ["## Veredito da métrica primária (regra provisória, até a §11)", "",
+        title = "Veredito da métrica primária (regra provisória, até a §11)"
+        lines += [f"## {title}" + (" — exploratório" if result.get("exploratory") else ""), "",
                   f"Margem tirada de: {result.get('margin_source') or 'nenhum E0 completo'}", ""]
-        lines += [f"- **{pair}:** {v['verdict']} — {v['metric']} {_fmt(v['delta'])}, margem {v['margin']}"
-                  for pair, v in result["verdicts"].items()]
+        for pair, v in result["verdicts"].items():
+            test = (result.get("tests") or {}).get(pair)
+            extra = f"; McNemar p {test['p_value']}, Holm {test['p_holm']}" if test else ""
+            lines.append(f"- **{pair}:** {v['verdict']} — {v['metric']} {_fmt(v['delta'])}, margem {v['margin']}{extra}")
     if result.get("limite"):
         lines += ["", f"> Rodada de fumaça (--limite {result['limite']}): números sem valor de veredito."]
     path = out / "resumo.md"
@@ -572,32 +778,34 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limite", type=int, default=None, help="fumaça: só N perguntas de dentro e N de fora")
     parser.add_argument("--retomar", type=Path, default=None, help="pasta de uma rodada interrompida")
     parser.add_argument("--so-placar", action="store_true", help="refaz só o placar, com o que a pasta já tem")
+    parser.add_argument("--split", choices=SPLITS, default=None, help="só os goldens deste split (padrão: o do cartão)")
     args = parser.parse_args(argv)
 
     card_text = args.cartao.read_text(encoding="utf-8")
     card = load_card(args.cartao)
     print_card(card)
+    split = args.split or card.get("split")
     started = datetime.now(timezone.utc).astimezone()
     out = args.retomar or OUT_ROOT / f"{card['id']}_{started.strftime('%Y%m%dT%H%M%S')}"
     out.mkdir(parents=True, exist_ok=True)
     # Retomar com outro recorte ou outro cartão misturaria saídas de rodadas diferentes, sem aviso.
-    params = {"limite": args.limite, "cartao": card_text}
+    params = {"limite": args.limite, "cartao": card_text, **({"split": split} if split else {})}
     params_path = out / "parametros.json"
     if params_path.is_file() and json.loads(params_path.read_text(encoding="utf-8")) != params:
-        print(f"[ERRO] {out} é de uma rodada com outro --limite ou outro cartão.", file=sys.stderr)
+        print(f"[ERRO] {out} é de uma rodada com outro --limite, outro split ou outro cartão.", file=sys.stderr)
         return 1
     params_path.write_text(json.dumps(params, ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "cartao.yaml").write_text(card_text, encoding="utf-8")
     print(f"Saída: {out}\n")
     t0 = time.monotonic()
-    experiment = Experiment(card, args.cartao, out, args.limite)
+    experiment = Experiment(card, args.cartao, out, args.limite, split)
     if not args.so_placar:
         if ra.http_get(f"{card.get('ollama_base_url', DEFAULT_OLLAMA)}/api/tags") is None:
             print("[ERRO] Ollama fora do ar.", file=sys.stderr)
             return 1
         experiment.run()
     goldens = json.loads((ROOT / card["goldens"]).read_text(encoding="utf-8"))
-    result = scoreboard(card, out, args.limite, questions={g["name"]: g["input"] for g in goldens})
+    result = scoreboard(card, out, args.limite, goldens, split)
     summary = write_summary(card, out, result, card_text)
     # Uma entrada por chamada: a rodada original, cada retomada e cada --so-placar ficam no histórico.
     execution_path = out / "execucao.json"

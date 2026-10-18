@@ -1,0 +1,52 @@
+# Cartão do E2 (plano-benchmark.md, §8). Formato provisório: a §9 do plano não chegou (docs/benchmark-status.md).
+id: E2
+titulo: Formato — PDF × Markdown, com os mesmos artigos
+pergunta: Com os mesmos 39 artigos, Markdown é melhor que PDF? Em que tipo de pergunta?
+hipotese: >
+  O ganho do MD sobre o PDF é maior nas perguntas com evidência em tabela do que em texto (interação); a
+  ferramenta de conversão pesa tanto quanto o formato; o maior ganho vem do chunker por seção, que só o MD
+  permite.
+exploratorio: false
+goldens: tests/benchmark/goldens/v2.json
+# A ferramenta se escolhe na seleção. O degrau 3 (chunker por seção, na ferramenta escolhida) e o veredito
+# saem na confirmação, num cartão próprio.
+split: selecao
+# O Δ por grupo é por content_type: a hipótese é uma interação com o tipo de evidência.
+classe_por: content_type
+
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+
+# A escada (um degrau muda uma coisa do anterior), só C1 na seleção.
+bracos:
+  pdf: {indice: pdf-v1, camadas: [c1], papel: baseline}                # 1: PyMuPDF, janela dentro da página
+  pdf-cont: {indice: pdf-v1-cont, camadas: [c1]}                       # 1b: só o corte atravessa a página
+  md-p4llm: {indice: md-p4llm, camadas: [c1]}                          # 2: formato e extração (pymupdf4llm)
+  md-dl: {indice: md-dl, camadas: [c1]}                                # 2: formato e extração (Docling)
+
+pares: [[pdf, pdf-cont], [pdf-cont, md-p4llm], [pdf-cont, md-dl], [md-p4llm, md-dl]]
+metrica_primaria: {camada: c1, metrica: evidence_at_k}
+curva: [pdf, pdf-cont, md-p4llm, md-dl]
+confusoes:
+  - "Cabeçalho e rodapé de página e carimbos do arXiv saem nas conversões e ficam no texto do PyMuPDF."
+  - 'Tabela vira células separadas por espaço (MD_NORMALIZATION v1): "MD ganha em tabela" testa a ordem de
+    leitura, não a estrutura.'
+  - "O chunker por seção (degrau 3) muda a distribuição de tamanhos; comparar também com orçamento de tokens igual."
+  - "content_type secao tem 0 pergunta na seleção e 2 na confirmação; texto tem 4 e 8."
+saida: >
+  A tabela da C0 por versão, a escada (evidência@4 por degrau, uma linha por content_type) e o veredito por
+  degrau, na confirmação.
+precisa_construir:
+  - a conversão Docling dos 39 PDFs (data/convert_docling.py) e as versões md-p4llm e md-dl (--like pdf-v1 --by-stem)
+  - o chunker por seção (CHUNKER=section), com a seção no chunk_id, nos metadados, no retrieve() e no SourceChunk
+didatica: >
+  A escada mostra de onde vem o ganho: do corte por página, do formato ou do chunker. "MD é melhor" vira
+  "isto aqui no MD é melhor".

@@ -20,6 +20,12 @@ data/new_papers_marks/*
 !data/new_papers_marks/.gitkeep
 # Manifesto do data/sync_corpora.py: descreve os arquivos convertidos de um acervo que não é versionado.
 data/conversions.json
+# A conversão Docling dos PDFs do pdf-v1 (E2 do plano-benchmark.md, data/convert_docling.py), o manifesto
+# dela e o venv do Docling, que tem nome próprio para não colidir com o data/.venv.
+data/md_dl/*
+!data/md_dl/.gitkeep
+data/conversions_docling.json
+data/.venv-docling/
 data/vector_store/*
 !data/vector_store/.gitkeep
 logs/*.jsonl

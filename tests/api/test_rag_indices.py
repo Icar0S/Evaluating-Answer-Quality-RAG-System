@@ -163,6 +163,57 @@ def test_versao_pode_fixar_os_parametros_de_chunking(monkeypatch):
     assert Settings(_env_file=None, rag_index="pdf-v1").chunk_size_tokens == 1200
 
 
+def _chunk_text_antes_das_janelas(text: str, size: int, overlap: int, offset_tokens: int = 0) -> list[str]:
+    """O chunk_text de antes do _windows (commit 4d0c395), para provar que o corte não mudou."""
+    encoding = ingestion._encoding
+    tokens = encoding.encode(text)
+    if not tokens:
+        return []
+    overlap = ingestion.effective_overlap(size, overlap)
+    offset = offset_tokens % size if size > 0 else 0
+    chunks, start = [], 0
+    step = max(size - offset if offset else size, 1)
+    while start < len(tokens):
+        end = start + step
+        chunks.append(encoding.decode(tokens[start:end]))
+        if end >= len(tokens):
+            break
+        start = end - overlap
+        step = size
+    return chunks
+
+
+@pytest.mark.parametrize("size, overlap, offset", [(800, 120, 0), (100, 0, 0), (100, 150, 0), (120, 30, 45), (50, 10, 7)])
+def test_chunk_text_corta_igual_ao_de_antes(size, overlap, offset):
+    text = " ".join(f"palavra{i} número {i * 7} — fim." for i in range(400))
+
+    assert ingestion.chunk_text(text, size, overlap, offset) == _chunk_text_antes_das_janelas(text, size, overlap, offset)
+
+
+def test_janela_atravessa_a_pagina_e_o_chunk_leva_a_pagina_onde_comeca(tmp_path: Path):
+    pages = [(1, "um " * 150), (2, "dois " * 30), (4, "quatro " * 150)]
+    doc = ingestion.DocumentText(tmp_path / "artigo.pdf", "pdf", pages, pages_total=4)
+
+    by_page = ingestion.chunk_document(doc, 100, 0)
+    across = ingestion.chunk_document(doc, 100, 0, across_pages=True)
+
+    count = ingestion.corpus_quality.count_tokens
+    # Dentro da página, a página 2 (32 tokens) vira um chunk pequeno. Atravessando, ela fica no meio de um
+    # chunk que começa na página 1, e só o último chunk é curto (o recorte de tokens pode juntar 1 ou 2 na
+    # emenda das páginas).
+    assert any(r.page == 2 and count(r.text) < 40 for r in by_page)
+    assert [r.page for r in across] == [1, 1, 4, 4, 4]
+    assert all(count(r.text) >= 95 for r in across[:-1])
+    assert all(word in across[1].text for word in ("um", "dois", "quatro"))
+    assert len({r.chunk_id for r in across}) == len(across)
+
+
+def test_versao_liga_o_corte_atravessando_a_pagina():
+    assert Settings(_env_file=None, rag_index="pdf-v1-cont").chunk_across_pages is True
+    assert Settings(_env_file=None, rag_index="pdf-cont-400").chunk_size_tokens == 400
+    assert Settings(_env_file=None, rag_index="pdf-v1").chunk_across_pages is False
+
+
 def test_register_like_copia_a_lista_da_base_e_nao_a_pasta(test_version: Path):
     for name in ("b.md", "a.md"):
         (test_version / name).write_text(name, encoding="utf-8")
@@ -251,3 +302,36 @@ def test_ingestao_de_markdown_grava_manifesto_e_nao_poe_page_no_metadado(tmp_pat
     assert len(manifest["documents"][0]["sha256"]) == 64
     assert manifest["md_normalization"] == ingestion.MD_NORMALIZATION
     assert manifest["n_chunks"] == len(metadatas)
+
+
+def test_chunker_por_secao_corta_nos_titulos_e_grava_a_secao(tmp_path: Path):
+    text = "Resumo sem título.\n# 1 Introdução\n" + "intro " * 300 + "\n## 2.1 Método\nMétodo curto."
+    doc = ingestion.DocumentText(tmp_path / "artigo.md", "md", [(None, text)])
+
+    records = ingestion.chunk_document(doc, 200, 0, chunker="section")
+
+    assert [r.section for r in records][0] is None
+    assert {r.section for r in records[1:]} == {"1 Introdução", "2.1 Método"}
+    assert records[-1].chunk_id == "artigo::s2::c0" and records[-1].text.startswith("## 2.1 Método")
+    # Nenhum chunk mistura duas seções: o corte vem antes da janela.
+    assert not any("intro" in r.text and "Método curto" in r.text for r in records)
+    assert records[-1].metadata == {"document": "artigo.md", "section": "2.1 Método"}
+    assert ingestion.chunk_document(doc, 200, 0)[0].chunk_id == "artigo::c0"
+
+
+def test_register_by_stem_pega_os_mesmos_artigos_em_outro_formato(test_version: Path):
+    for name in ("a.pdf", "b.pdf"):
+        (test_version / name).write_text(name, encoding="utf-8")
+    ingestion.register_documents("teste-v1", test_version)
+    for name in ("a.pdf", "b.pdf"):
+        (test_version / name).unlink()
+    for name in ("b.md", "a.md", "c.md"):
+        (test_version / name).write_text(f"# {name}", encoding="utf-8")
+
+    path = ingestion.register_documents("teste-v1-x", test_version, like="teste-v1", by_stem=True)
+
+    assert list(ingestion.registered_documents("teste-v1-x")) == ["a.md", "b.md"]
+    assert "--by-stem" in path.read_text(encoding="utf-8").splitlines()[0]
+    (test_version / "b.pdf").write_text("de novo", encoding="utf-8")
+    with pytest.raises(ValueError, match="b: 2 arquivo"):
+        ingestion.register_documents("teste-v1-y", test_version, like="teste-v1", by_stem=True)

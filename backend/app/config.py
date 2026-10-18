@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -37,7 +37,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # e não da pasta, que pode ter documentos de outras versões. As chaves de
 # INDEX_SETTINGS_KEYS são opcionais: presentes, fixam o parâmetro de chunking da
 # versão por cima do .env, como o modelo de embedding.
-INDEX_SETTINGS_KEYS = ("chunk_size_tokens", "chunk_overlap_tokens")
+INDEX_SETTINGS_KEYS = ("chunk_size_tokens", "chunk_overlap_tokens", "chunk_across_pages", "chunker")
 
 RAG_INDICES: dict[str, dict[str, Any]] = {
     "pdf-v1": {
@@ -87,6 +87,69 @@ RAG_INDICES: dict[str, dict[str, Any]] = {
         "origins": ("pdf",),
         "description": "o pdf-v1 (mesma lista, mesmo chunking) com o embedding multilíngue bge-m3, para o E1",
     },
+    # E6: a janela atravessa a página. No pdf-v1, que corta dentro da página, "chunk 1200" ficaria perto de
+    # "um chunk por página"; por isso os braços de chunk têm como baseline o pdf-v1-cont, com 800/120.
+    "pdf-v1-cont": {
+        "collection": "rag_pdf_v1_cont",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf",),
+        "chunk_size_tokens": 800,
+        "chunk_overlap_tokens": 120,
+        "chunk_across_pages": True,
+        "description": "o pdf-v1 com a janela de 800/120 atravessando a página (baseline dos braços de chunk do E6)",
+    },
+    "pdf-cont-400": {
+        "collection": "rag_pdf_cont_400",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf",),
+        "chunk_size_tokens": 400,
+        "chunk_overlap_tokens": 120,
+        "chunk_across_pages": True,
+        "description": "o pdf-v1-cont com chunk de 400 tokens (E6)",
+    },
+    "pdf-cont-1200": {
+        "collection": "rag_pdf_cont_1200",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf",),
+        "chunk_size_tokens": 1200,
+        "chunk_overlap_tokens": 120,
+        "chunk_across_pages": True,
+        "description": "o pdf-v1-cont com chunk de 1200 tokens (E6)",
+    },
+    "pdf-cont-o0": {
+        "collection": "rag_pdf_cont_o0",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf",),
+        "chunk_size_tokens": 800,
+        "chunk_overlap_tokens": 0,
+        "chunk_across_pages": True,
+        "description": "o pdf-v1-cont sem sobreposição (E6)",
+    },
+    # E2: os 39 artigos do pdf-v1 em Markdown (--register --like pdf-v1 --by-stem). A conversão pymupdf4llm é a
+    # que o md-v2 já trouxe para data/new_papers_marks; o Markdown já corta o documento inteiro, como o pdf-v1-cont.
+    "md-p4llm": {
+        "collection": "rag_md_p4llm",
+        "source_dir": "data/new_papers_marks",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf",),
+        "chunk_size_tokens": 800,
+        "chunk_overlap_tokens": 120,
+        "description": "os 39 artigos do pdf-v1 convertidos em Markdown pelo pymupdf4llm (degrau 2 do E2)",
+    },
+    "md-dl": {
+        "collection": "rag_md_dl",
+        "source_dir": "data/md_dl",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf",),
+        "chunk_size_tokens": 800,
+        "chunk_overlap_tokens": 120,
+        "description": "os 39 artigos do pdf-v1 convertidos em Markdown pelo Docling (degrau 2 do E2, "
+        "data/convert_docling.py)",
+    },
 }
 
 
@@ -122,6 +185,15 @@ class Settings(BaseSettings):
     # deslocamento, que e o comportamento historico. Existe para o operador de
     # mutacao K4 (tests/mutation/), que injeta "corte no meio de regra".
     chunk_boundary_offset_tokens: int = 0
+    # PDF: a janela de tokens atravessa a pagina (as paginas viram um texto so,
+    # e cada chunk leva a pagina onde comeca). False = chunks dentro de cada
+    # pagina, o comportamento historico. Os indices pdf-v1-cont e pdf-cont-* do
+    # E6 (plano-benchmark.md) ligam pela versao.
+    chunk_across_pages: bool = False
+    # Markdown: "token" corta o documento inteiro em janelas (historico);
+    # "section" corta nos titulos "#" e corre a janela dentro de cada secao
+    # (degrau 3 do E2). No PDF nao muda nada: o texto do PyMuPDF nao tem titulos.
+    chunker: Literal["token", "section"] = "token"
 
     # Retrieval
     top_k: int = 4

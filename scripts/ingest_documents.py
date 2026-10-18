@@ -6,6 +6,7 @@ Uso:
     python scripts/ingest_documents.py --list               # versões registradas e o estado de cada uma
     python scripts/ingest_documents.py --index md-v3 --register   # fixa a lista de documentos de uma versão nova
     python scripts/ingest_documents.py --index pdf-v1-bgem3 --register --like pdf-v1   # versão derivada
+    python scripts/ingest_documents.py --index md-p4llm --register --like pdf-v1 --by-stem   # mesmos artigos, outro formato
     python scripts/ingest_documents.py --index pdf-v1 --c0  # qualidade do acervo no manifesto, sem reingerir
     python scripts/ingest_documents.py --source data/source_pdfs --no-reset
 
@@ -15,7 +16,9 @@ própria; ingerir uma não toca nas outras. Versões podem ler a mesma pasta
 documentos dela, em backend/app/rag/index_versions/<versão>.sha256. O
 --register grava essa lista com o que está na pasta agora, uma vez só; com
 --like <base>, copia a lista da versão-base (versão derivada: os mesmos
-documentos e uma mudança só). Ao terminar, a ingestão grava o manifesto da
+documentos e uma mudança só); com --like <base> --by-stem, pega da pasta os
+mesmos artigos da base pelo nome sem a extensão (o E2 compara os 39 PDFs do
+pdf-v1 com as conversões deles em Markdown). Ao terminar, a ingestão grava o manifesto da
 versão (arquivos com hash, parâmetros, modelo de embedding, e o que a lista
 pedia e não estava na pasta).
 """
@@ -73,11 +76,11 @@ def _measure_c0() -> None:
         print(f"[AVISO] sem C0 (mudou desde a ingestão ou o corte não bate com o índice): {name}")
 
 
-def _register(settings, like: str | None) -> None:
+def _register(settings, like: str | None, by_stem: bool = False) -> None:
     from app.rag.ingestion import register_documents
 
     try:
-        path = register_documents(settings.rag_index, settings.source_pdfs_path, like=like)
+        path = register_documents(settings.rag_index, settings.source_pdfs_path, like=like, by_stem=by_stem)
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
         sys.exit(f"[ERRO] {exc}")
     print(f"Lista de documentos de {settings.rag_index}: {path}")
@@ -106,6 +109,11 @@ def main() -> None:
         help="com --register: copia a lista da versão BASE em vez de pegar a pasta inteira (versão derivada)",
     )
     parser.add_argument(
+        "--by-stem",
+        action="store_true",
+        help="com --like: os mesmos artigos da BASE pelo nome sem a extensão, em outro formato (E2)",
+    )
+    parser.add_argument(
         "--c0",
         action="store_true",
         help="calcula o C0 (qualidade do acervo) de uma versão já ingerida e grava no manifesto, sem reingerir",
@@ -113,6 +121,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.like and not args.register:
         parser.error("--like só vale com --register")
+    if args.by_stem and not args.like:
+        parser.error("--by-stem só vale com --like")
 
     if args.index:
         # Antes de importar o app: a configuração é lida (e cacheada) no import.
@@ -132,7 +142,7 @@ def main() -> None:
     if args.register:
         if not settings.rag_index:
             parser.error("--register precisa de --index (a versão registrada em backend/app/config.py)")
-        _register(settings, args.like)
+        _register(settings, args.like, args.by_stem)
         return
     print(f"Índice: {settings.index_name} (coleção {settings.vector_store_collection}, pasta {settings.source_pdfs_dir})")
     if args.if_empty:

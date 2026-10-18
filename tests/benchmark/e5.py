@@ -20,18 +20,29 @@ devolver menos que k).
 | chunk ímã | a mesma conta por chunk_id, marcando os de bibliografia |
 
 A curva "esperada" separa o que vem do desenho das perguntas (algumas fontes
-têm mais perguntas) do que é comportamento do sistema. O cruzamento
-concentração × qualidade precisa da C2 e entra depois.
+têm mais perguntas) do que é comportamento do sistema.
+
+Concentração × qualidade (com --respostas e --ragas, a C2 de um braço): por
+documento, a participação e o excesso de ímã ao lado da taxa de reprovação das
+respostas que o usam (reprovada = o RAGAS não aprova todas as dimensões, a
+regra do relatório) e da nota média; e a nota das respostas apoiadas só no top
+20% contra as demais, com IC por bootstrap dos documentos-fonte. Os trechos
+são os que o gerador recebeu nessa rodada, gravados nas respostas. A
+atribuição errada precisa de citação e fica para os braços com citação (E3).
 
 Uso, da raiz (o --bibliografia lê o índice e precisa do venv do backend):
 
     backend\\.venv\\Scripts\\python.exe -m tests.benchmark.e5 diag.json --indice pdf-v1 --lingua pt --bibliografia
+    backend\\.venv\\Scripts\\python.exe -m tests.benchmark.e5 diag.json --indice pdf-v1 \\
+        --respostas tests\\benchmark\\out\\E0_<data>\\respostas_A1.json --ragas tests\\benchmark\\out\\E0_<data>\\ragas_A1.json
 """
 from __future__ import annotations
 
 import argparse
 import json
 import math
+import random
+import statistics
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -199,6 +210,89 @@ def analyze(questions: list[dict], n_documents: int, chunk_counts: dict[str, int
     }
 
 
+def questions_from_answers(answers: list[dict], documents: set[str]) -> list[dict]:
+    """As perguntas de dentro a partir das respostas da C2 (tests/generate_answers.py), com os trechos que o
+    gerador recebeu nessa rodada: os que o juiz julgou."""
+    questions = []
+    for answer in answers:
+        source = c1.doc_stem(answer.get("source_document"))
+        if source and source in documents and not answer.get("error"):
+            questions.append({"name": answer["name"], "source": source,
+                              "documents": [c1.doc_stem(d) for d in answer.get("source_documents") or []],
+                              "chunk_ids": list(answer.get("chunk_ids") or []), "documents_at_10": []})
+    return questions
+
+
+def _bootstrap_difference(top: dict[str, float], rest: dict[str, float], clusters: dict[str, str],
+                          samples: int = 2000, seed: int = 20261018) -> dict | None:
+    """média(top) − média(rest), com IC 95% reamostrando os documentos-fonte das perguntas (grupos independentes)."""
+    if not top or not rest:
+        return None
+    by_cluster: dict[str, tuple[list[float], list[float]]] = defaultdict(lambda: ([], []))
+    for name, value in top.items():
+        by_cluster[clusters[name]][0].append(value)
+    for name, value in rest.items():
+        by_cluster[clusters[name]][1].append(value)
+    keys = sorted(by_cluster)
+    rng = random.Random(seed)
+    deltas = []
+    for _ in range(samples):
+        a: list[float] = []
+        b: list[float] = []
+        for key in (rng.choice(keys) for _ in keys):
+            a += by_cluster[key][0]
+            b += by_cluster[key][1]
+        if a and b:
+            deltas.append(statistics.fmean(a) - statistics.fmean(b))
+    deltas.sort()
+    return {"top_only": round(statistics.fmean(top.values()), 4), "rest": round(statistics.fmean(rest.values()), 4),
+            "delta": round(statistics.fmean(top.values()) - statistics.fmean(rest.values()), 4),
+            "ci_low": round(c1._percentile(deltas, 0.025), 4) if deltas else None,
+            "ci_high": round(c1._percentile(deltas, 0.975), 4) if deltas else None}
+
+
+def quality_cross(questions: list[dict], cases: list[dict], n_documents: int, chunk_counts: dict[str, int],
+                  k: int) -> dict:
+    """Concentração × qualidade (ver o docstring): `questions` de questions_from_answers, `cases` do RAGAS."""
+    judged = {case["name"]: case for case in cases}
+    questions = [q for q in questions if q["name"] in judged and q["documents"]]
+    scores: dict[str, dict[str, float]] = {"approved": {}}
+    for q in questions:
+        case = judged[q["name"]]
+        scores["approved"][q["name"]] = float(bool(case.get("success")))
+        for metric in case.get("metrics", []):
+            if metric.get("score") is not None:
+                scores.setdefault(metric["name"], {})[q["name"]] = float(metric["score"])
+    observed = observed_shares(questions)
+    excess = {m["document"]: m["excess"] for m in magnets(questions, chunk_counts, k)}
+    by_document = []
+    for doc, share in sorted(observed.items(), key=lambda item: -item[1]):
+        users = [q["name"] for q in questions if doc in q["documents"]]
+        row = {"document": doc, "participation": round(share, 4), "magnet_excess": excess.get(doc, 0.0),
+               "answers": len(users),
+               "failure_rate": round(1 - statistics.fmean(scores["approved"][n] for n in users), 4)}
+        for metric, values in scores.items():
+            used = [values[n] for n in users if n in values]
+            if metric != "approved" and used:
+                row[metric] = round(statistics.fmean(used), 4)
+        by_document.append(row)
+    top = top_documents(observed, n_documents)
+    top_only = {q["name"] for q in questions if set(q["documents"]) <= top}
+    clusters = {q["name"]: q["source"] for q in questions}
+    return {
+        "n_judged": len(questions),
+        "top_documents": sorted(top),
+        "by_document": by_document,
+        "top_only_vs_rest": {
+            "n_top_only": len(top_only), "n_rest": len(questions) - len(top_only),
+            "metrics": {metric: _bootstrap_difference({n: v for n, v in values.items() if n in top_only},
+                                                      {n: v for n, v in values.items() if n not in top_only}, clusters)
+                        for metric, values in scores.items()},
+        },
+        "misattribution": None,
+    }
+
+
 def _bibliography_flags(index: str, chunk_ids: set[str]) -> dict[str, bool]:
     """Quais desses chunks são de bibliografia: metade dos gramas no bloco de referências do documento."""
     sys.path.insert(0, str(ROOT / "backend"))
@@ -233,7 +327,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lingua", default="pt")
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--bibliografia", action="store_true", help="marca os chunks ímã de bibliografia (lê o índice)")
+    parser.add_argument("--respostas", type=Path, default=None, help="as respostas da C2 do braço (cruzamento)")
+    parser.add_argument("--ragas", type=Path, default=None, help="o julgamento do RAGAS dessas respostas")
     args = parser.parse_args(argv)
+    if bool(args.respostas) != bool(args.ragas):
+        parser.error("--respostas e --ragas vão juntos")
 
     diagnostic = json.loads(args.diagnostico.read_text(encoding="utf-8"))
     arm = diagnostic["c1"]["arms"][args.indice]
@@ -248,6 +346,11 @@ def main(argv: list[str] | None = None) -> int:
         for magnet in result["chunk_magnets"]:
             magnet["bibliography"] = flags.get(magnet["chunk_id"])
     result.update(index=args.indice, lang=args.lingua)
+    if args.respostas:
+        answers = json.loads(args.respostas.read_text(encoding="utf-8"))["answers"]
+        cases = json.loads(args.ragas.read_text(encoding="utf-8"))["cases"]
+        judged = questions_from_answers(answers, set(chunk_counts))
+        result["quality"] = quality_cross(judged, cases, manifest["n_documents"], chunk_counts, k)
     if args.out:
         args.out.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     pct = lambda v: "—" if v is None else f"{v:.0%}"  # noqa: E731
@@ -266,6 +369,17 @@ def main(argv: list[str] | None = None) -> int:
     for magnet in result["chunk_magnets"][:8]:
         bib = {True: " [bibliografia]", False: "", None: ""}[magnet["bibliography"]]
         print(f"  chunk ímã: {magnet['chunk_id'][:70]} — {magnet['undue']} perguntas alheias{bib}")
+    if "quality" in result:
+        quality = result["quality"]
+        print(f"\nConcentração × qualidade: {quality['n_judged']} respostas julgadas")
+        for row in quality["by_document"][:10]:
+            print(f"  {row['document'][:55]:55s} participação {row['participation']:.0%} · ímã +{row['magnet_excess']} · "
+                  f"{row['answers']} respostas, reprovação {row['failure_rate']:.0%}")
+        split = quality["top_only_vs_rest"]
+        print(f"  só top 20% ({split['n_top_only']}) × as demais ({split['n_rest']}):")
+        for metric, d in split["metrics"].items():
+            if d:
+                print(f"    {metric}: {d['top_only']:.3f} × {d['rest']:.3f}, Δ {d['delta']:+.3f} [{d['ci_low']}; {d['ci_high']}]")
     return 0
 
 

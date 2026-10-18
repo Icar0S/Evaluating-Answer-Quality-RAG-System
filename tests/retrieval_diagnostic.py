@@ -39,7 +39,7 @@ sys.path.insert(0, str(ROOT))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from app.config import get_settings, set_settings_overrides  # noqa: E402
-from app.rag import ingestion, retrieval, vector_store  # noqa: E402
+from app.rag import corpus_quality, ingestion, retrieval, vector_store  # noqa: E402
 from tests.benchmark import arm, c1  # noqa: E402
 
 AT_10 = 10
@@ -72,6 +72,9 @@ def retrieve_lists(question: str, k: int, overrides: dict) -> tuple[list[dict], 
     settings = get_settings()
     arm_chunks, latency_ms = retrieval.retrieve(question, k)
     chunks_at_10 = arm_chunks if k == AT_10 else retrieval.retrieve(question, AT_10)[0]
+    # Tokens de cada trecho (cl100k, o do chunker): os de contexto do braço e a curva evidência × tokens do E6.
+    for chunk in arm_chunks + chunks_at_10:
+        chunk.setdefault("tokens", corpus_quality.count_tokens(chunk["text"]))
     if not settings.retrieval_use_mmr and settings.min_similarity_score <= 0:
         # Sem MMR e sem limiar, o primeiro trecho do braço já é o de maior similaridade.
         return arm_chunks, chunks_at_10, arm_chunks[0]["similarity_score"] if arm_chunks else None, latency_ms

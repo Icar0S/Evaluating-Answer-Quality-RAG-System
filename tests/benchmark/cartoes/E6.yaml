@@ -1,0 +1,88 @@
+# Cartão do E6 (plano-benchmark.md, §8). Formato provisório: a §9 do plano não chegou (docs/benchmark-status.md).
+id: E6
+titulo: Parâmetros de recuperação (varredura exploratória)
+pergunta: Qual combinação de top_k, MMR, limiar e chunk serve a este acervo?
+hipotese: >
+  MMR melhora a cobertura@4 em fato_distribuido; um limiar calibrado melhora a abstenção correta com falso
+  bloqueio pequeno; chunk menor melhora a precisão@k e piora a cobertura.
+exploratorio: true
+goldens: tests/benchmark/goldens/v2.json
+# A varredura usa só a seleção. O Δ e o veredito do escolhido saem da confirmação, rodada uma vez, num cartão
+# próprio, com a C2 e o juiz dimensionado pelo braço de top_k 8.
+split: selecao
+
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+
+# Um fator por vez a partir do baseline. Só a C1: a varredura não vai ao juiz.
+bracos:
+  base: {indice: pdf-v1, camadas: [c1], papel: baseline}
+  # Sem MMR, a ordem não muda com k: a evidência sobe com k por construção, e a decisão vai para a C2 e o custo.
+  k2: {indice: pdf-v1, camadas: [c1], set: {top_k: 2}}
+  k8: {indice: pdf-v1, camadas: [c1], set: {top_k: 8}}
+  mmr-05:
+    indice: pdf-v1
+    camadas: [c1]
+    set: {retrieval_use_mmr: true, retrieval_mmr_lambda: 0.5}
+    metrica_primaria: {camada: c1, metrica: coverage_at_k}
+  mmr-07:
+    indice: pdf-v1
+    camadas: [c1]
+    set: {retrieval_use_mmr: true, retrieval_mmr_lambda: 0.7}
+    metrica_primaria: {camada: c1, metrica: coverage_at_k}
+  # 0,428 foi calibrado em outro índice (o do estudo de mutação): só referência.
+  lim-0428:
+    indice: pdf-v1
+    camadas: [c1]
+    papel: referencia
+    set: {min_similarity_score: 0.428}
+    metrica_primaria: {camada: c1, metrica: correct_abstention}
+  # Recalibrado na C1 do baseline desta rodada (tests/benchmark/limiar.py); o arquivo limiar_lim-recal.json
+  # grava a validação deixando um documento de fora.
+  lim-recal:
+    indice: pdf-v1
+    camadas: [c1]
+    set: {min_similarity_score: recalibrado}
+    metrica_primaria: {camada: c1, metrica: correct_abstention}
+  # Os braços de chunk rodam sobre o pdf-v1-cont (a janela atravessa a página), com orçamento de tokens igual:
+  # k = 3200 / chunk, ou seja, 8, 4 e 3 trechos.
+  cont: {indice: pdf-v1-cont, camadas: [c1]}
+  cont-400: {indice: pdf-cont-400, camadas: [c1], set: {top_k: 8}}
+  cont-1200: {indice: pdf-cont-1200, camadas: [c1], set: {top_k: 3}}
+  cont-o0: {indice: pdf-cont-o0, camadas: [c1]}
+
+pares:
+  - [base, k2]
+  - [base, k8]
+  - [base, mmr-05]
+  - [base, mmr-07]
+  - [base, lim-0428]
+  - [base, lim-recal]
+  - [base, cont]
+  - [cont, cont-400]
+  - [cont, cont-1200]
+  - [cont, cont-o0]
+
+metrica_primaria: {camada: c1, metrica: evidence_at_k}
+guardas:
+  - {nome: falso bloqueio do limiar recalibrado, par: [base, lim-recal], metrica: c1.false_block, tolerancia_perguntas: 1}
+  - {nome: falso bloqueio do limiar de referência, par: [base, lim-0428], metrica: c1.false_block, tolerancia_perguntas: 1}
+curva: [base, cont, cont-400, cont-1200, cont-o0]
+saida: >
+  A tabela da varredura em selecao, a curva evidência × tokens de contexto, a AUC do limiar e o Δ por classe de
+  pergunta. O veredito do escolhido sai da confirmacao. Interações só entre os 2 melhores, depois da varredura.
+precisa_construir:
+  - as versões pdf-v1-cont, pdf-cont-400, pdf-cont-1200 e pdf-cont-o0 (CHUNK_ACROSS_PAGES)
+  - a recalibração do limiar fora da amostra (tests/benchmark/limiar.py)
+  - a curva evidência × tokens e os tokens de contexto na C1
+didatica: >
+  Testar 10 configurações e escolher a melhor nos mesmos dados engana. A turma vê o vencedor "encolher" na
+  confirmação.

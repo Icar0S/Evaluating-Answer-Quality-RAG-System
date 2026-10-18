@@ -66,3 +66,32 @@ def test_perguntas_saem_do_diagnostico_so_as_de_dentro_do_indice():
     [q] = e5.questions_from_diagnostic(diagnostic, "pdf-v1", "pt")
 
     assert (q["source"], q["documents"], q["documents_at_10"]) == ("A", ["A"], ["A", "B"])
+
+
+def test_concentracao_por_qualidade_com_o_julgamento_da_c2():
+    cases = [{"name": n, "success": ok, "metrics": [{"name": "faithfulness", "score": f}]}
+             for n, ok, f in (("q1", True, 0.9), ("q2", False, 0.5), ("q3", False, 0.2), ("q4", True, 1.0))]
+
+    quality = e5.quality_cross(QUESTIONS, cases, n_documents=5, chunk_counts=CHUNKS, k=4)
+
+    magnet = next(row for row in quality["by_document"] if row["document"] == "M")
+    assert (magnet["answers"], magnet["failure_rate"], magnet["faithfulness"]) == (4, 0.5, 0.65)
+    assert magnet["magnet_excess"] > 3
+    # Top 20% de 5 documentos = só o M; só a q3 se apoia apenas nele.
+    split = quality["top_only_vs_rest"]
+    assert (quality["top_documents"], split["n_top_only"], split["n_rest"]) == (["M"], 1, 3)
+    assert split["metrics"]["approved"]["delta"] == pytest.approx(-2 / 3, abs=1e-4)
+    assert quality["misattribution"] is None
+
+
+def test_perguntas_do_cruzamento_saem_das_respostas_julgaveis():
+    answers = [
+        {"name": "q1", "source_document": "A.pdf", "source_documents": ["A.pdf", "M.pdf"], "chunk_ids": ["a", "m"]},
+        {"name": "q2", "source_document": "A.pdf", "source_documents": ["A.pdf"], "error": "timeout"},
+        {"name": "q3", "source_document": "Z.pdf", "source_documents": ["A.pdf"]},
+        {"name": "f1", "source_document": None, "source_documents": ["M.pdf"]},
+    ]
+
+    questions = e5.questions_from_answers(answers, documents={"A", "M"})
+
+    assert [(q["name"], q["source"], q["documents"]) for q in questions] == [("q1", "A", ["A", "M"])]
