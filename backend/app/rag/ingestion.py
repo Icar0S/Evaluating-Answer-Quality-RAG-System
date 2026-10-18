@@ -25,7 +25,7 @@ import tiktoken
 
 from app.config import PROJECT_ROOT, RAG_INDICES, get_settings
 from app.logging_utils import logger
-from app.rag import vector_store
+from app.rag import corpus_quality, vector_store
 
 _encoding = tiktoken.get_encoding("cl100k_base")
 
@@ -54,6 +54,24 @@ class ChunkRecord:
     text: str
 
 
+@dataclass
+class DocumentText:
+    """O texto de um documento como o chunker recebe, e o que a leitura viu (para o C0 do manifesto).
+
+    PDF: uma entrada (página, texto) por página com texto. Markdown: uma só, (None, texto normalizado).
+    """
+
+    path: Path
+    format: str
+    segments: list[tuple[int | None, str]]
+    raw_markdown: str | None = None
+    pages_total: int | None = None
+
+    @property
+    def text(self) -> str:
+        return "\n".join(text for _, text in self.segments)
+
+
 def normalize_markdown(text: str) -> str:
     """Markdown -> texto para embedding (ver MD_NORMALIZATION)."""
     lines = []
@@ -69,15 +87,37 @@ def normalize_markdown(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
-def extract_pdf_pages(pdf_path: Path) -> list[tuple[int, str]]:
-    """Retorna [(numero_da_pagina_1_indexed, texto)] para um PDF."""
+def markdown_structure(raw: str) -> dict:
+    """Linhas de tabela (sem as separadoras) e títulos do Markdown cru, com o critério do normalize_markdown."""
+    lines = raw.splitlines()
+    return {
+        "table_rows": sum(1 for line in lines if line.lstrip().startswith("|") and not _MD_TABLE_SEPARATOR.match(line)),
+        "headings": sum(1 for line in lines if re.match(r"#{1,6}(\s|$)", line)),
+    }
+
+
+def _read_pdf(pdf_path: Path) -> tuple[list[tuple[int, str]], int]:
     pages: list[tuple[int, str]] = []
     with fitz.open(pdf_path) as doc:
         for i, page in enumerate(doc, start=1):
             text = page.get_text().strip()
             if text:
                 pages.append((i, text))
-    return pages
+        return pages, doc.page_count
+
+
+def extract_pdf_pages(pdf_path: Path) -> list[tuple[int, str]]:
+    """Retorna [(numero_da_pagina_1_indexed, texto)] para um PDF."""
+    return _read_pdf(pdf_path)[0]
+
+
+def read_document(path: Path) -> DocumentText:
+    """Lê um PDF ou Markdown do jeito que a ingestão lê (páginas sem texto ficam de fora)."""
+    if path.suffix.lower() == ".md":
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        return DocumentText(path, "md", [(None, normalize_markdown(raw))], raw_markdown=raw)
+    pages, total = _read_pdf(path)
+    return DocumentText(path, "pdf", list(pages), pages_total=total)
 
 
 def effective_overlap(chunk_size_tokens: int, overlap_tokens: int) -> int:
@@ -121,25 +161,48 @@ def chunk_text(
     return chunks
 
 
+def chunk_document(
+    doc: DocumentText,
+    chunk_size_tokens: int,
+    overlap_tokens: int,
+    boundary_offset_tokens: int = 0,
+) -> list[ChunkRecord]:
+    records: list[ChunkRecord] = []
+    doc_name, stem = doc.path.name, doc.path.stem
+    if doc.format == "md":
+        [(_, text)] = doc.segments
+        for idx, chunk in enumerate(chunk_text(text, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)):
+            records.append(ChunkRecord(chunk_id=f"{stem}::c{idx}", document=doc_name, page=None, text=chunk))
+        return records
+    for page_num, page_text in doc.segments:
+        page_chunks = chunk_text(page_text, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)
+        for idx, chunk in enumerate(page_chunks):
+            chunk_id = f"{stem}::p{page_num}::c{idx}"
+            records.append(ChunkRecord(chunk_id=chunk_id, document=doc_name, page=page_num, text=chunk))
+    return records
+
+
 def build_chunk_records(
     pdf_path: Path,
     chunk_size_tokens: int,
     overlap_tokens: int,
     boundary_offset_tokens: int = 0,
 ) -> list[ChunkRecord]:
-    records: list[ChunkRecord] = []
-    doc_name = pdf_path.name
-    if pdf_path.suffix.lower() == ".md":
-        text = normalize_markdown(pdf_path.read_text(encoding="utf-8", errors="replace"))
-        for idx, chunk in enumerate(chunk_text(text, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)):
-            records.append(ChunkRecord(chunk_id=f"{pdf_path.stem}::c{idx}", document=doc_name, page=None, text=chunk))
-        return records
-    for page_num, page_text in extract_pdf_pages(pdf_path):
-        page_chunks = chunk_text(page_text, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)
-        for idx, chunk in enumerate(page_chunks):
-            chunk_id = f"{pdf_path.stem}::p{page_num}::c{idx}"
-            records.append(ChunkRecord(chunk_id=chunk_id, document=doc_name, page=page_num, text=chunk))
-    return records
+    return chunk_document(read_document(pdf_path), chunk_size_tokens, overlap_tokens, boundary_offset_tokens)
+
+
+def document_quality(doc: DocumentText, records: list[ChunkRecord]) -> dict:
+    """C0 do documento (app/rag/corpus_quality.py), sobre o texto que o chunker recebeu."""
+    structure = markdown_structure(doc.raw_markdown) if doc.raw_markdown is not None else {}
+    return corpus_quality.document_quality(
+        fmt=doc.format,
+        text=doc.text,
+        chunk_texts=[r.text for r in records],
+        pages_total=doc.pages_total,
+        pages_with_text=len(doc.segments) if doc.format == "pdf" else None,
+        table_rows=structure.get("table_rows"),
+        headings=structure.get("headings", 0),
+    )
 
 
 def embed_texts(texts: list[str], model: str | None = None) -> list[list[float]]:
@@ -300,10 +363,61 @@ def write_manifest(
         **(extra or {}),
         "documents": documents,
     }
-    path = settings.vector_store_path / "manifests" / f"{settings.vector_store_collection}.json"
+    path = manifest_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
+
+
+def manifest_path() -> Path:
+    settings = get_settings()
+    return settings.vector_store_path / "manifests" / f"{settings.vector_store_collection}.json"
+
+
+def measure_corpus_quality() -> dict:
+    """Calcula o C0 da versão em uso, já ingerida, e grava no manifesto dela, sem reingerir.
+
+    Para as versões ingeridas antes do C0 (o pdf-v1 é de 13/10): lê os arquivos do manifesto e corta com os
+    parâmetros dele. Documento que mudou (SHA-256) ou cujo corte de hoje não dá o mesmo número de chunks fica
+    sem C0, listado em "not_measured": o texto dele não é o que está no índice.
+    """
+    path = manifest_path()
+    if not path.is_file():
+        raise FileNotFoundError(f"{get_settings().index_name} não tem manifesto em {path}: ingira a versão antes")
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    folder = Path(manifest["source_dir"])
+    if not folder.is_dir():
+        folder = get_settings().source_pdfs_path
+    params = (
+        manifest["chunk_size_tokens"],
+        manifest["chunk_overlap_tokens"],
+        manifest.get("chunk_boundary_offset_tokens", 0),
+    )
+    counts: list[int] = []
+    not_measured: list[str] = []
+    for entry in manifest["documents"]:
+        file = folder / entry["file"]
+        if not file.is_file() or _sha256(file) != entry["sha256"]:
+            not_measured.append(entry["file"])
+            continue
+        doc = read_document(file)
+        records = chunk_document(doc, *params)
+        if len(records) != entry["chunks"]:
+            not_measured.append(entry["file"])
+            continue
+        entry.update(document_quality(doc, records))
+        counts += [corpus_quality.count_tokens(r.text) for r in records]
+    measured = [entry for entry in manifest["documents"] if entry["file"] not in not_measured]
+    c0 = {
+        **corpus_quality.summarize(measured, counts),
+        "measured_at": datetime.now(timezone.utc).isoformat(),
+        "not_measured": not_measured,
+    }
+    documents = manifest.pop("documents")
+    manifest.pop("c0", None)
+    path.write_text(json.dumps({**manifest, "c0": c0, "documents": documents}, ensure_ascii=False, indent=2),
+                    encoding="utf-8")
+    return c0
 
 
 def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict:
@@ -328,8 +442,9 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
     manifest_docs: list[dict] = []
     for doc_path in doc_files:
         try:
-            records = build_chunk_records(
-                doc_path,
+            doc = read_document(doc_path)
+            records = chunk_document(
+                doc,
                 settings.chunk_size_tokens,
                 settings.chunk_overlap_tokens,
                 settings.chunk_boundary_offset_tokens,
@@ -342,6 +457,7 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
                     "bytes": doc_path.stat().st_size,
                     "sha256": _sha256(doc_path),
                     "chunks": len(records),
+                    **document_quality(doc, records),
                 }
             )
             logger.info(f"Ingerido {doc_path.name}: {len(records)} chunks")
@@ -382,7 +498,8 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
     }
 
     duration_ms = (time.perf_counter() - start) * 1000
-    manifest = write_manifest(doc_dir, manifest_docs, chunks_created, duration_ms, extra)
+    c0 = corpus_quality.summarize(manifest_docs, [corpus_quality.count_tokens(r.text) for r in all_records])
+    manifest = write_manifest(doc_dir, manifest_docs, chunks_created, duration_ms, {**extra, "c0": c0})
     return {
         "status": "ok",
         "documents_processed": len(manifest_docs),

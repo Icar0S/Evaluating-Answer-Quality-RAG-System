@@ -6,6 +6,7 @@ Uso:
     python scripts/ingest_documents.py --list               # versões registradas e o estado de cada uma
     python scripts/ingest_documents.py --index md-v3 --register   # fixa a lista de documentos de uma versão nova
     python scripts/ingest_documents.py --index pdf-v1-bgem3 --register --like pdf-v1   # versão derivada
+    python scripts/ingest_documents.py --index pdf-v1 --c0  # qualidade do acervo no manifesto, sem reingerir
     python scripts/ingest_documents.py --source data/source_pdfs --no-reset
 
 Cada versão do índice (backend/app/config.py, RAG_INDICES) tem coleção
@@ -50,6 +51,28 @@ def _list_indices() -> None:
               f"({spec['description']})")
 
 
+def _measure_c0() -> None:
+    from app.config import get_settings
+    from app.rag.ingestion import measure_corpus_quality
+
+    try:
+        c0 = measure_corpus_quality()
+    except FileNotFoundError as exc:
+        sys.exit(f"[ERRO] {exc}")
+    pct = lambda value: "—" if value is None else f"{value:.1%}"  # noqa: E731
+    chunks = c0["chunk_tokens"] or {}
+    print(f"C0 de {get_settings().index_name} ({c0['documents']} documentos, {c0['tokens']} tokens):")
+    print(f"  tokens por chunk: média {chunks.get('mean')}, p10 {chunks.get('p10')}, p90 {chunks.get('p90')}")
+    if c0["pages_total"] is not None:
+        print(f"  páginas: {c0['pages_total']}, {c0['pages_without_text']} sem texto (descartadas na ingestão)")
+    print(f"  palavras grudadas: média {pct(c0['glued_word_rate_mean'])} das letras, "
+          f"{c0['documents_glued_over_5pct']} documento(s) acima de 5%")
+    print(f"  bibliografia: {pct(c0['references_share'])} dos tokens, "
+          f"{c0['documents_without_references']} documento(s) sem bloco de referências")
+    for name in c0["not_measured"]:
+        print(f"[AVISO] sem C0 (mudou desde a ingestão ou o corte não bate com o índice): {name}")
+
+
 def _register(settings, like: str | None) -> None:
     from app.rag.ingestion import register_documents
 
@@ -82,6 +105,11 @@ def main() -> None:
         metavar="BASE",
         help="com --register: copia a lista da versão BASE em vez de pegar a pasta inteira (versão derivada)",
     )
+    parser.add_argument(
+        "--c0",
+        action="store_true",
+        help="calcula o C0 (qualidade do acervo) de uma versão já ingerida e grava no manifesto, sem reingerir",
+    )
     args = parser.parse_args()
     if args.like and not args.register:
         parser.error("--like só vale com --register")
@@ -91,6 +119,9 @@ def main() -> None:
         os.environ["RAG_INDEX"] = args.index
     if args.list:
         _list_indices()
+        return
+    if args.c0:
+        _measure_c0()
         return
 
     from app.config import get_settings
@@ -111,8 +142,10 @@ def main() -> None:
             return
 
     source_dir = Path(args.source) if args.source else None
-    result = ingest_documents(source_dir=source_dir, reset=not args.no_reset)
+    _print_result(ingest_documents(source_dir=source_dir, reset=not args.no_reset))
 
+
+def _print_result(result: dict) -> None:
     print(f"Status: {result['status']}")
     print(f"Documentos processados: {result['documents_processed']}")
     if result.get("registered_documents") is not None:
