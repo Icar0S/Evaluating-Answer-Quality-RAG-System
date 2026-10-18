@@ -201,6 +201,24 @@ RAG_INDICES: dict[str, dict[str, Any]] = {
         "chunk_header": "text",
         "description": "o pdf-v1 com o cabeçalho do artigo no texto do trecho (E3)",
     },
+    # O E3 com o embedding vencedor do E1: com o nomic, 56% das perguntas de dentro em português recebem
+    # "não encontrei", e sobra pouca citação para medir a atribuição errada.
+    "bgem3-hdr-emb": {
+        "collection": "rag_bgem3_hdr_emb",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "bge-m3",
+        "origins": ("pdf",),
+        "chunk_header": "embedding",
+        "description": "o pdf-v1-bgem3 com o cabeçalho do artigo só no texto embedado (E3)",
+    },
+    "bgem3-hdr": {
+        "collection": "rag_bgem3_hdr",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "bge-m3",
+        "origins": ("pdf",),
+        "chunk_header": "text",
+        "description": "o pdf-v1-bgem3 com o cabeçalho do artigo no texto do trecho (E3)",
+    },
 }
 
 

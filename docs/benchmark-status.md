@@ -1,8 +1,8 @@
 # Benchmark de estratégias de RAG — estado da implementação
 
 **Plano:** [plano-benchmark.md](../plano-benchmark.md) · **Branch:** `feat/indices-v2`
-(um commit por etapa) · **Última atualização:** 18/10/2026 (E0 concluído; seleção do E6 e do E2 em português
-e a do E6 em inglês; E1 rodando)
+(um commit por etapa) · **Última atualização:** 18/10/2026 (E0, E1, E5 e E7 concluídos; seleção do E2 e
+do E6 feita; confirmações e E3 rodando)
 
 Este documento registra o que já foi construído do plano, etapa por etapa: o que
 mudou, onde, como usar, os testes que rodaram no fim de cada etapa e as decisões
@@ -29,12 +29,12 @@ tomadas no caminho.
 | **A7** | Goldens v2: núcleo de ≥ 60 perguntas em ≥ 20 PDFs e ≥ 30 de fora, como `rascunho` para a revisão humana | **concluída** (falta a revisão humana) |
 | **B0** | Runner de experimentos e cartões em YAML | **concluída** (formato provisório até a §9) |
 | **B1** | E0 — rodada A/A | **concluída** (margem de ruído em `tests/benchmark/out/E0_20261018T082340/margem.json`) |
-| **B2** | E1 — idioma (`pdf-v1-bgem3`, tradução da pergunta) | **construído** (versão, tradução gravada, cartão); a rodada vem depois do E0, que dá a margem |
-| **B3** | E6 — parâmetros de recuperação (C1) | **seleção feita** (em português, no chão; em inglês, o limiar recalibrado é o único que sobrevive ao Holm); a confirmação vem depois do E1 |
-| **B4** | E5 — concentração das fontes: análise e primeira leitura no baseline | **análise e cruzamento com a C2 prontos**; o H5b (`pdf-v1-noref`) está construído e conferido, e roda depois do E1 |
-| **B5** | E2 — formato: PDF × Markdown | **construído até o degrau 2**; a seleção em português ficou no chão, e a em inglês roda depois do E1 |
+| **B2** | E1 — idioma (`pdf-v1-bgem3`, tradução da pergunta) | **concluída**: o bge-m3 vence (evidência@4 de 0,13 para 0,66 em português; fidelidade +0,15), ao preço da abstenção correta (0,83 → 0,63) |
+| **B3** | E6 — parâmetros de recuperação (C1) | **seleção feita** em português (nomic e bge-m3) e em inglês: o limiar recalibrado separa quando a recuperação funciona; o MMR nunca ajudou; a confirmação (`top_k` 8 e o limiar, no bge-m3) vem a seguir |
+| **B4** | E5 — concentração das fontes | **concluída**: o cruzamento com a C2 (as respostas apoiadas nos ímãs são piores), o H5a (os ímãs somem com o bge-m3) e o H5b (a bibliografia não é ímã); falta a demanda real das aulas |
+| **B5** | E2 — formato: PDF × Markdown | **seleção feita** em inglês: o Markdown não ganha do PDF; o Docling empata com o pymupdf4llm e vai ao degrau 3 (`md-dl-sec`) na confirmação |
 | **B6** | E3 — cabeçalho contextual e atribuição errada | **construído** (cabeçalho no embedding ou no trecho, títulos em rascunho, regra de citação v2, atribuição errada, cartão); roda depois do E1 |
-| **B7** | E7 — busca híbrida (BM25 + RRF) | **construído** (BM25 em Python puro, fusão RRF, guarda de subgrupo, cartão); roda depois do E1 |
+| **B7** | E7 — busca híbrida (BM25 + RRF) | **concluída**: +0,20 de evidência@4 em inglês (Holm 0,001), quase nada em português com o nomic; sem a interação com a sigla |
 | **B8** | E8 — reranker | **construído** com o LLM como reranker (a alternativa sem dependência nova do plano); roda depois do E1 |
 | B9 | E4, E9 | aguardam (o E4 precisa dos distratores e de perguntas revisadas por degrau; o E9 é opcional) |
 | C | Placar (regra de veredito, Holm, interação) e as seções novas do relatório | aguarda a §11 |
@@ -44,14 +44,14 @@ tomadas no caminho.
 Rodados no fim de cada etapa. Nenhum precisa de Ollama, GPU ou rede.
 
 ```
-tests/api       (pytest, backend/.venv)                     VERDE — 64 testes (35 antes do benchmark)
-tests/benchmark (pytest, backend/.venv; entra no CI)        VERDE — 57 testes
+tests/api       (pytest, backend/.venv)                     VERDE — 78 testes (35 antes do benchmark)
+tests/benchmark (pytest, backend/.venv; entra no CI)        VERDE — 67 testes
 tests/reports   (pytest, tests/reports/.venv)               VERDE — 44 testes
 tests/jeveval   (pytest -m "not live", tests/jeveval/.venv) VERDE — 63 testes
 goldens v2      (validar --indice pdf-v1 --evidencia)       VERDE — 103 goldens, 0 erro, 0 aviso
 ```
 
-O `pytest` da raiz (o do CI) roda `tests/api` e `tests/benchmark` juntos: 121
+O `pytest` da raiz (o do CI) roda `tests/api` e `tests/benchmark` juntos: 145
 testes.
 
 ---
@@ -806,6 +806,56 @@ chamada por pergunta. Ela não é corrigida à mão: corrigida, viraria o
 - **A guarda de latência fica justa.** A busca custa ~250 ms; com os ~700 ms
   da tradução, o Δ esperado fica perto de +0,7 s, contra a tolerância de 1 s.
 
+**A rodada** (`tests/benchmark/out/E1_20261018T141628/`, 2 h 38 min, com os
+103 goldens v2).
+
+| Braço | evidência@4 | Hit@4 | MRR@10 | precisão@4 | latência da busca |
+|---|---|---|---|---|---|
+| `nomic-pt` (baseline) | 0,13 | 0,23 | 0,23 | 0,16 | 351 ms |
+| `bgem3-pt` | **0,66** | 0,90 | 0,87 | 0,71 | 465 ms |
+| `traducao` | 0,56 | 0,83 | 0,78 | 0,62 | 1.110 ms (com a tradução gravada) |
+| `nomic-en` (teto) | 0,53 | 0,80 | 0,79 | 0,61 | 347 ms |
+| `bgem3-en` | 0,63 | 0,93 | 0,88 | 0,73 | 459 ms |
+
+- **Os dois candidatos passam do teto.** O buraco fechado é de 132% com o
+  bge-m3 e de 107% com a tradução. O "teto" (o inglês escrito à mão, com o
+  `nomic-embed-text`) não era o limite: o bge-m3 é melhor também em inglês,
+  +0,10 [+0,02; +0,18]. A guarda de não-inferioridade em inglês passa com
+  folga.
+- **Veredito na C1** (margem de 0,042 do E0): `bgem3-pt` melhor, +0,53
+  [+0,41; +0,66]; `traducao` melhor, +0,43 [+0,28; +0,59]. Os dois com Holm
+  abaixo de 0,001.
+- **Latência:** o bge-m3 custa +113 ms por busca; a tradução, +759 ms (os
+  ~700 ms da tradução). As duas guardas passam.
+
+**A C2** (as 70 perguntas de dentro julgadas, e as 103 respondidas):
+
+| | `nomic-pt` | `bgem3-pt` | `traducao` |
+|---|---|---|---|
+| fidelidade | 0,70 | **0,85** | 0,83 |
+| relevância da resposta | 0,35 | 0,76 | 0,74 |
+| precisão · recall · relevância de contexto | 0,29 · 0,41 · 0,55 | 0,84 · 0,95 · 0,97 | 0,75 · 0,85 · 0,97 |
+| aprovadas em todas as dimensões (0,7) | 7 de 70 | **35 de 70** | 23 de 70 |
+| abstenção indevida | 0,56 | **0,03** | 0,04 |
+| **abstenção correta** | **0,83** | 0,63 | 0,73 |
+| tokens no prompt · latência da geração | 2.687 · 2,39 s | 3.291 · 2,97 s | 2.868 · 2,50 s |
+
+- **Nos finalistas, a fidelidade** (margem de 0,068 do E0): `bgem3-pt` ×
+  `nomic-pt`, +0,15 [+0,01; +0,30], melhor; `traducao` × `nomic-pt`, +0,13
+  [−0,00; +0,27], inconclusivo (passa da margem, mas o IC encosta no zero);
+  `bgem3-pt` × `traducao`, +0,02 [−0,07; +0,11], sem diferença relevante. O
+  recall de contexto do bge-m3 é maior: +0,10 [+0,03; +0,19].
+- **O preço: a abstenção correta cai.** Com o trecho certo chegando, o gerador
+  também acha o que dizer nas perguntas de fora: com o bge-m3, 6 das 30 que
+  antes eram recusadas passam a ter resposta (0,83 → 0,63; IC [−0,40; 0,00]).
+  O cartão não tinha guarda para isso. É o trabalho do limiar, e o
+  `cartoes/E6-bgem3.yaml` o testa.
+
+**O vencedor é o bge-m3.** É a melhor C1, a fidelidade empata com a tradução, o
+recall de contexto é maior, e a busca não chama o LLM. Os experimentos que
+dependem do idioma passam a usar o `pdf-v1-bgem3`: o E4, como o plano manda, e
+o E6 em português (`E6-bgem3`).
+
 ### B3 — E6: o que a varredura precisava (18/10)
 
 O plano (§8, E6) varre um fator por vez a partir do baseline, em `selecao`, e
@@ -903,6 +953,29 @@ contra o 4, com a C2 e o custo; e o limiar recalibrado, na língua e no
 embedding do vencedor do E1, porque o de 0,593 só vale para o inglês com o
 `nomic-embed-text`. O MMR e os chunks não passam da seleção.
 
+**A varredura em português com o bge-m3** (`cartoes/E6-bgem3.yaml`,
+`tests/benchmark/out/E6-bgem3_20261018T170702/`, 4 min), depois do E1. O
+baseline acha a evidência em 21 das 31 perguntas da seleção.
+
+| Braço | evidência@k | Métrica primária: Δ [IC 95%] | Veredito (exploratório) | Holm |
+|---|---|---|---|---|
+| `k2` | 18 de 31 | evidência −0,10 [−0,23; 0,00] | inconclusivo | 0,25 |
+| `k8` | 25 de 31 | evidência +0,13 [+0,03; +0,23] | melhor (por construção) | 0,25 |
+| `mmr-05` | 16 de 31 | cobertura −0,18 [−0,35; 0,00] | inconclusivo | — |
+| `mmr-07` | 16 de 31 | cobertura −0,16 [−0,34; +0,03] | inconclusivo | — |
+| `lim-recal` (0,436) | 21 de 31 | abstenção correta +0,33 [+0,13; +0,60] (5 de 15) | melhor | 0,19 |
+
+- **Com o bge-m3, o limiar volta a separar em português:** a AUC do primeiro
+  trecho é 0,91 [0,81; 0,97], contra 0,66 com o `nomic-embed-text`. O limiar
+  recalibrado barra 4 das 5 perguntas fora de escopo e 1 das 10 fora do
+  acervo, sem falso bloqueio (nem deixando um documento de fora). É a peça
+  que falta ao E1, que perdeu abstenção correta (0,83 → 0,63).
+- **O MMR piora de novo,** agora em português: nas `fato_distribuido`, a
+  cobertura cai 0,50 (n = 4). Nas três varreduras (português com nomic, inglês,
+  português com bge-m3), o MMR nunca ajudou.
+- **A confirmação:** `top_k` 4 × 8 e o limiar de 0,436, no `pdf-v1-bgem3`, em
+  `confirmacao`, com a C2.
+
 ### B5 — E2: a escada até o degrau 2 (18/10)
 
 O plano (§8, E2) pede uma escada em que cada degrau muda uma coisa do
@@ -975,6 +1048,28 @@ seção que só abre subseções). O corte segue o plano ao pé da letra. Por is
 confirmação do degrau 3 compara também com orçamento de tokens igual: k = 8
 com ~420 tokens por chunk dá os ~3.200 do k = 4 com 800.
 
+**A seleção em inglês** (`tests/benchmark/out/E2-en_20261018T165730/`, 2 min).
+O Markdown não ganha do PDF:
+
+| Degrau | evidência@4 | Δ contra o degrau anterior [IC 95%] | Veredito |
+|---|---|---|---|
+| 1 · `pdf` | 16 de 31 | — | — |
+| 1b · `pdf-cont` | 16 de 31 | 0,00 [−0,30; +0,30] | sem diferença relevante |
+| 2 · `md-p4llm` | 11 de 31 | −0,16 [−0,36; +0,03] | inconclusivo |
+| 2 · `md-dl` | 12 de 31 | −0,13 [−0,32; +0,07] | inconclusivo |
+
+- **Atravessar a página empata no total e troca quem acerta:** ganha em
+  `texto` (+1 de 4) e `numero` (+1 de 12), perde em `tabela` (−2 de 15).
+- **As duas conversões perdem do PDF** em todos os tipos de evidência, mais em
+  `numero` (−2 de 12) e `texto` (−1 de 4) do que em `tabela` (−1 de 15 no
+  Docling). A hipótese ("o MD ganha mais em tabela") não aparece: o MD perde
+  menos em tabela.
+- **A ferramenta:** o Docling fica 1 pergunta acima do pymupdf4llm (+0,03
+  [−0,16; +0,23]), com a diferença em `tabela`. Pela regra do plano, a
+  escolha sai da seleção: o degrau 3 da confirmação é o `md-dl-sec`.
+- Na curva, o `md-dl` alcança o PDF com 9 trechos (~7.100 tokens): a
+  evidência está no Markdown, mas chega mais tarde na lista.
+
 ### B6 — E3: o cabeçalho contextual e a atribuição errada (18/10)
 
 | Arquivo | Mudança |
@@ -1006,6 +1101,25 @@ ilustrativa.
 Em português, a sigla e o nome próprio são as palavras que a pergunta e o
 acervo em inglês têm em comum. O BM25 pode achar o documento que o embedding
 não acha, e é isso que o E7 mede no `has_acronym`.
+
+**A rodada** (`tests/benchmark/out/E7_20261018T170323/`, 4 min, as 70
+perguntas de dentro):
+
+| Par | evidência@4 | Δ [IC 95%] | Veredito | Δ sem sigla · com sigla |
+|---|---|---|---|---|
+| `base` → `hibrida` (português) | 8 → 11 de 70 | +0,04 [−0,03; +0,10] | inconclusivo | +0,06 (n = 34) · +0,03 (n = 36) |
+| `base-en` → `hibrida-en` | 37 → **51** de 70 | **+0,20 [+0,09; +0,31]** | **melhor** (Holm 0,001) | +0,21 · +0,19 |
+
+- **A hipótese da interação cai:** a híbrida não ganha mais nas perguntas com
+  sigla. Em inglês, ela ganha 0,2 nas duas metades.
+- **O efeito principal, em inglês, é grande.** 51 de 70 é mais que o bge-m3
+  sozinho (44 em inglês, 46 em português). A combinação bge-m3 + híbrida fica
+  para testar.
+- **Em português com o nomic, quase nada:** o BM25 acha a sigla, mas o resto da
+  lista continua puxado pelo ímã de idioma.
+- **As guardas passam:** sem sigla não piora (+0,06), e a latência não muda
+  (o BM25 custa menos de 1 ms; o índice é montado uma vez, fora do tempo
+  medido).
 
 ### B8 — E8: o reranker (18/10)
 
@@ -1087,12 +1201,42 @@ respostas apoiadas só no top 20% com as demais, com IC por bootstrap dos
 documentos-fonte. Os trechos são os que o gerador recebeu na rodada julgada. A
 atribuição errada precisa de citação e fica para o E3.
 
+**O H5a, com o E1: os ímãs somem com o bge-m3.** A mesma análise sobre a C1 dos
+três braços em português do E1:
+
+| Braço | Massa fora da fonte | TVD | N80 (esperado 17) | Todas as fontes no top 20% (esperado 44%) | Ímãs | Mortos |
+|---|---|---|---|---|---|---|
+| `nomic-pt` | 84% | 0,82 | 4 de 39 | 94% | os 4 em português | 10 |
+| `bgem3-pt` | 29% | 0,16 | 15 de 39 | 40% | nenhum | nenhum |
+| `traducao` | 38% | 0,22 | 14 de 39 | 44% | nenhum | 1 (o artigo em português) |
+
+Com o bge-m3, a concentração fica a do desenho das perguntas: o 80/20 do
+português era viés do embedding, e ele some. Com a tradução, o efeito se
+inverte no único artigo em português: as perguntas dele, traduzidas, não o
+trazem mais, como no `nomic-en`.
+
 **O que falta no E5:**
 
 - ~~rodar o cruzamento na C2 do E0~~: feito, na seção do B1;
-- rodar o H5b (`cartoes/E5-noref.yaml`), já construído (abaixo);
+- ~~o H5a~~: confirmado, acima;
+- ~~o H5b~~: refutado (abaixo);
 - a demanda real das aulas. Para começar a coletar, basta um `LOGS_DIR` por
   aula no backend local (§8, E5).
+
+**O H5b, rodado: a bibliografia não é ímã** (`cartoes/E5-noref.yaml`,
+`tests/benchmark/out/E5-noref_20261018T165925/`, 4 min).
+
+| Par | evidência@4 | Hit@4 | AUC do primeiro trecho (de dentro × de fora) |
+|---|---|---|---|
+| `pdf-v1` → `pdf-v1-noref` (português) | 0,13 → 0,13 | 0,23 → 0,24 | 0,79 → 0,80 |
+| `pdf-v1` → `pdf-v1-noref` (inglês) | 0,53 → 0,53 | 0,80 → 0,81 | 0,971 → 0,972 |
+
+Os ímãs são os mesmos com e sem o corte (os quatro artigos em português, nas
+perguntas em português), e nenhum chunk ímã era de bibliografia. Cortar 17% do
+texto dos artigos não mudou a evidência nem a separação das perguntas de fora.
+Os 16,7% de trechos de bibliografia que as perguntas de fora recebiam, em
+inglês, só trocam de lugar com outros trechos de similaridade parecida. O
+ajuste "cortar a bibliografia" não se paga.
 
 **O H5b, construído.**
 

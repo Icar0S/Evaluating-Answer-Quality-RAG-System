@@ -1,0 +1,42 @@
+# A confirmação do E2 (plano-benchmark.md, §8): o degrau 3 e o veredito saem na confirmacao. Formato provisório.
+#
+# A seleção em inglês (E2-en) escolheu o Docling (1 pergunta acima do pymupdf4llm). Aqui, a escada inteira em
+# confirmacao, com o degrau 3 (o chunker por seção) e o mesmo degrau com orçamento de tokens igual (k = 8 com
+# ~420 tokens por chunk dá os ~3.200 do k = 4 com 800). Em inglês, como a seleção, e só a C1: a C2 em inglês
+# julgaria respostas em inglês contra referências em português.
+id: E2c
+titulo: Formato — a confirmação da escada (inglês)
+pergunta: Com os mesmos 39 artigos, o Markdown com o chunker por seção ganha do PDF?
+hipotese: >
+  O maior ganho vem do chunker por seção, que só o MD permite; com orçamento de tokens igual, ele se mantém.
+exploratorio: false
+goldens: tests/benchmark/goldens/v2.json
+split: confirmacao
+classe_por: content_type
+
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+
+bracos:
+  pdf: {indice: pdf-v1, lingua: en, camadas: [c1], papel: baseline}
+  pdf-cont: {indice: pdf-v1-cont, lingua: en, camadas: [c1]}
+  md-dl: {indice: md-dl, lingua: en, camadas: [c1]}
+  md-dl-sec: {indice: md-dl-sec, lingua: en, camadas: [c1]}
+  md-dl-sec-k8: {indice: md-dl-sec, lingua: en, camadas: [c1], set: {top_k: 8}}
+
+pares: [[pdf, pdf-cont], [pdf-cont, md-dl], [md-dl, md-dl-sec], [md-dl, md-dl-sec-k8], [pdf, md-dl-sec-k8]]
+metrica_primaria: {camada: c1, metrica: evidence_at_k}
+curva: [pdf, pdf-cont, md-dl, md-dl-sec]
+saida: >
+  A escada (evidência@4 por degrau, por content_type) e o veredito por degrau, em confirmacao.
+didatica: >
+  A escada mostra de onde vem o ganho: do corte por página, do formato ou do chunker. "MD é melhor" vira
+  "isto aqui no MD é melhor".

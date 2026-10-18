@@ -26,13 +26,17 @@ juiz:
   modelo: qwen3:8b
   num_ctx: 8192
 
+# Os braços usam o embedding vencedor do E1 (bge-m3), e não o pdf-v1 do plano: com o nomic-embed-text, 56% das
+# perguntas de dentro em português recebem "não encontrei", e sobra pouca citação para medir a atribuição
+# errada. É a mesma regra que o plano usa no E4 ("o embedding vencedor do E1"). As versões pdf-hdr-emb e pdf-hdr
+# (com o nomic) ficam registradas.
 bracos:
-  base: {indice: pdf-v1, camadas: [c1, c2], papel: baseline}
+  base: {indice: pdf-v1-bgem3, camadas: [c1, c2], papel: baseline}
   # A rodada A/A curta com citação (o prompt mudou, a margem se refaz): só as respostas, em outra ordem. A
   # atribuição e a recusa não precisam do juiz.
-  base-aa: {indice: pdf-v1, camadas: [respostas], ordem: 2, papel: ruido}
-  hdr-emb: {indice: pdf-hdr-emb, camadas: [c1, c2]}
-  hdr: {indice: pdf-hdr, camadas: [c1, c2]}
+  base-aa: {indice: pdf-v1-bgem3, camadas: [respostas], ordem: 2, papel: ruido}
+  hdr-emb: {indice: bgem3-hdr-emb, camadas: [c1, c2]}
+  hdr: {indice: bgem3-hdr, camadas: [c1, c2]}
 
 pares: [[base, hdr-emb], [base, hdr], [base, base-aa]]
 margem: {gerador_juiz: [[base, base-aa]]}
