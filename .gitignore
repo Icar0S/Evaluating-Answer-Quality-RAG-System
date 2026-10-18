@@ -35,6 +35,9 @@ tests/jeveval/results/*
 !tests/jeveval/results/.gitkeep
 tests/reports/out/*
 !tests/reports/out/.gitkeep
+# Saídas do runner do benchmark (tests/benchmark/run_experiment.py): respostas, julgamentos e placares.
+tests/benchmark/out/*
+!tests/benchmark/out/.gitkeep
 tests/human_review/annotations/*
 !tests/human_review/annotations/.gitkeep
 node_modules/

@@ -71,6 +71,14 @@ RAG_INDICES: dict[str, dict[str, Any]] = {
         "origins": ("pdf", "md"),
         "description": "os 61 artigos em Markdown: os 22 do md-v1 e os 39 do pdf-v1 convertidos pelo pymupdf4llm",
     },
+    # Braços do benchmark (plano-benchmark.md): versões derivadas, com a lista da base (--register --like).
+    "pdf-v1-aa": {
+        "collection": "rag_pdf_v1_aa",
+        "source_dir": "data/source_pdfs",
+        "embedding_model": "nomic-embed-text",
+        "origins": ("pdf",),
+        "description": "réplica do pdf-v1 (mesma lista, mesmo modelo, coleção nova) para o ruído da reingestão no E0",
+    },
 }
 
 

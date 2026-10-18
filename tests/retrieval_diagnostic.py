@@ -63,29 +63,30 @@ def index_documents(index: str) -> set[str]:
     return {c1.doc_stem(name) for name in names if name}
 
 
-def retrieve_lists(question: str, k: int, overrides: dict) -> tuple[list[dict], list[dict], float | None]:
-    """(o que o gerador recebe, a lista de k = 10, a similaridade do primeiro trecho sem limiar).
+def retrieve_lists(question: str, k: int, overrides: dict) -> tuple[list[dict], list[dict], float | None, float]:
+    """(o que o gerador recebe, a lista de k = 10, a similaridade do primeiro trecho sem limiar, a latência em ms).
 
     Cada lista sai da sua própria busca: a do Chroma é aproximada (HNSW), e os 4 primeiros de uma busca de 10
-    podem não ser os de uma busca de 4, que é a que o gerador recebe.
+    podem não ser os de uma busca de 4, que é a que o gerador recebe. A latência é a da busca do braço.
     """
     settings = get_settings()
-    arm_chunks, _ = retrieval.retrieve(question, k)
+    arm_chunks, latency_ms = retrieval.retrieve(question, k)
     chunks_at_10 = arm_chunks if k == AT_10 else retrieval.retrieve(question, AT_10)[0]
     if not settings.retrieval_use_mmr and settings.min_similarity_score <= 0:
         # Sem MMR e sem limiar, o primeiro trecho do braço já é o de maior similaridade.
-        return arm_chunks, chunks_at_10, arm_chunks[0]["similarity_score"] if arm_chunks else None
+        return arm_chunks, chunks_at_10, arm_chunks[0]["similarity_score"] if arm_chunks else None, latency_ms
     set_settings_overrides({**overrides, "min_similarity_score": 0.0, "retrieval_use_mmr": False})
     try:
         raw, _ = retrieval.retrieve(question, 1)
     finally:
         set_settings_overrides(overrides)
-    return arm_chunks, chunks_at_10, raw[0]["similarity_score"] if raw else None
+    return arm_chunks, chunks_at_10, raw[0]["similarity_score"] if raw else None, latency_ms
 
 
 def run(indices: list[str], goldens: list[dict], top_k: int | None = None, overrides: dict | None = None,
-        with_text: bool = False) -> dict:
-    langs = ["pt"] + (["en"] if any(g.get("input_en") for g in goldens) else [])
+        with_text: bool = False, langs: list[str] | None = None) -> dict:
+    available = ["pt"] + (["en"] if any(g.get("input_en") for g in goldens) else [])
+    langs = [lang for lang in langs if lang in available] if langs else available
     inside = [g for g in goldens if g.get("source_document")]
     # Pergunta ambígua não tem documento nem é de fora: o certo é pedir esclarecimento, coisa da C2.
     outside = [g for g in goldens if not g.get("source_document") and g.get("question_class") != "ambiguo"]
@@ -113,7 +114,7 @@ def run(indices: list[str], goldens: list[dict], top_k: int | None = None, overr
                     question = golden["input"] if lang == "pt" else golden.get("input_en")
                     if not question:
                         continue
-                    arm_chunks, chunks_at_10, top1 = retrieve_lists(question, k, arm_overrides)
+                    arm_chunks, chunks_at_10, top1, latency_ms = retrieve_lists(question, k, arm_overrides)
                     source = golden.get("source_document")
                     metrics = c1.question_metrics(
                         arm_chunks=arm_chunks, chunks_at_10=chunks_at_10, source_document=source,
@@ -121,6 +122,7 @@ def run(indices: list[str], goldens: list[dict], top_k: int | None = None, overr
                         threshold=get_settings().min_similarity_score, with_text=with_text,
                     )
                     metrics["in_index"] = bool(source) and c1.doc_stem(source) in documents
+                    metrics["retrieval_ms"] = round(latency_ms, 1)
                     row["c1"].setdefault(index, {})[lang] = metrics
                     if source:
                         row["ranks"].setdefault(index, {})[lang] = metrics["rank"]
@@ -157,13 +159,15 @@ def main() -> int:
     parser.add_argument("--set", action="append", default=[], metavar="CHAVE=VALOR",
                         help="sobrescrita de configuração de consulta para todos os braços (ex.: retrieval_use_mmr=true)")
     parser.add_argument("--with-text", action="store_true", help="grava o texto dos trechos (o arquivo cresce muito)")
+    parser.add_argument("--langs", nargs="+", choices=("pt", "en"), default=None,
+                        help="só estas línguas (padrão: português e, se os goldens tiverem input_en, inglês)")
     args = parser.parse_args()
 
     goldens = load_goldens(args.goldens)
     if not goldens:
         print("[ERRO] Nenhum golden com source_document.", file=sys.stderr)
         return 1
-    result = run(args.indices, goldens, args.top_k, arm.parse_overrides(args.set), args.with_text)
+    result = run(args.indices, goldens, args.top_k, arm.parse_overrides(args.set), args.with_text, args.langs)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0
