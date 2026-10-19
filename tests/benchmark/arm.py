@@ -67,6 +67,7 @@ def provenance(overrides: dict | None = None) -> dict:
             "require_grounding": settings.prompt_require_grounding,
             "require_abstention": settings.prompt_require_abstention,
             "require_citation": settings.prompt_require_citation,
+            "citation_rule": settings.prompt_citation_rule,
         },
         "overrides": dict(overrides or {}),
     }

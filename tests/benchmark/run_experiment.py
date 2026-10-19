@@ -599,7 +599,10 @@ def guard_results(card: dict, measures: dict[str, dict], goldens: list[dict] | N
             continue
         tolerance = guard["tolerancia_perguntas"] / delta["n"] if "tolerancia_perguntas" in guard else guard["tolerancia"]
         lower_is_better = guard["metrica"].split(".", 1)[1] in LOWER_IS_BETTER
-        passed = delta["delta"] <= tolerance if lower_is_better else delta["delta"] >= -tolerance
+        # O Δ vem arredondado em 4 casas (placar.paired_delta): sem a folga, perder exatamente a pergunta que a
+        # guarda permite (1/70 = 0,014286, arredondado para 0,0143) reprovava.
+        slack = 1e-4
+        passed = delta["delta"] <= tolerance + slack if lower_is_better else delta["delta"] >= -tolerance - slack
         results.append({**guard, "delta": delta, "tolerance": round(tolerance, 4), "passed": passed})
     return results
 

@@ -392,3 +392,18 @@ def test_retomar_com_caminho_relativo_vira_absoluto(tmp_path: Path, monkeypatch)
     rx.main([str(card_path), "--retomar", "out/EX_1", "--so-placar"])
 
     assert seen["out"] == out.resolve() and seen["out"].is_absolute()
+
+
+def test_guarda_aceita_perder_exatamente_a_pergunta_permitida(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(rx, "index_documents", lambda index: {f"doc{i}" for i in range(7)})
+    monkeypatch.setattr(rx, "latest_margins", lambda exclude=None: (None, None))
+    card = {**SWEEP, "pares": [["base", "k8"]], "guardas": [
+        {"nome": "evidência", "par": ["base", "k8"], "metrica": "c1.evidence_at_k", "tolerancia_perguntas": 1}]}
+    # 7 perguntas: perder uma dá Δ = −0,142857, arredondado para −0,1429, além do 1/7 sem arredondar.
+    for arm_id, hits in (("base", (1, 1, 1, 0, 0, 0, 0)), ("k8", (1, 1, 0, 0, 0, 0, 0))):
+        rows = {f"q{i}": (hit, 0.7, False, [hit]) for i, hit in enumerate(hits)}
+        (tmp_path / f"c1_{arm_id}.json").write_text(json.dumps(_c1_sweep(rows, {})), encoding="utf-8")
+
+    [guard] = rx.scoreboard(card, tmp_path, limit=None)["guards"]
+
+    assert (guard["delta"]["delta"], guard["passed"]) == (-0.1429, True)

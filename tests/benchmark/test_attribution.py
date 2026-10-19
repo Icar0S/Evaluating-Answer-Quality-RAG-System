@@ -33,3 +33,32 @@ def test_atribuicao_errada_de_dentro_e_de_fora():
     outside = {"source_document": None, "sources": ["RAGAS.pdf (pág. 3)"]}
     assert attribution.misattributed({**outside, "actual_output": "Sete pontos [RAGAS.pdf, pág. 3]."}, False, False)
     assert not attribution.misattributed({**outside, "actual_output": "Não encontrei."}, True, False)
+
+
+def test_os_formatos_que_o_gerador_usa_de_verdade():
+    # Vistos nas respostas do E3: o cabeçalho copiado, o número do trecho e o exemplo da própria regra.
+    text = ("Foram 16 [Trecho 1 - RAGAS.pdf (pág. 3)]. O juiz [ARES.pdf (pág. 7)] e de novo [Trecho 2, pág. 7]; "
+            "o exemplo [relatorio_x.pdf, pág. 4], um trecho que não existe [Trecho 9] e uma referência [12].")
+
+    cited = attribution.citations(text, RECORD["sources"])
+
+    assert cited == [("ragas", 3), ("ares", 7), ("ares", 7), ("relatorio_x", 4), ("trecho 9", None)]
+    assert attribution.classify(answer("Foram 16 [Trecho 1 - RAGAS.pdf (pág. 3)]."), False) == "fonte"
+    assert attribution.classify(answer("O juiz [Trecho 2, pág. 7]."), False) == "outro_documento"
+    # Copiar o exemplo da regra é citar um arquivo que não veio.
+    assert attribution.classify(answer("Isso [relatorio_x.pdf, pág. 4]."), False) == "fabricada"
+
+
+def test_nome_sem_extensao_e_titulo_viram_o_documento_recebido(monkeypatch):
+    monkeypatch.setattr(attribution, "_titles", lambda: {"ragas": "RAGAS: Automated Evaluation", "ares": "ARES: A Framework",
+                                                         "metarag": "MetaRAG: Metamorphic Testing"})
+    record = answer("A fidelidade [RAGAS, pág. 3], o juiz [ARES: A Framework (pág. 7)] e o outro [MetaRAG, pág. 2].")
+
+    cited = attribution.citations(record["actual_output"], record["sources"])
+
+    # O MetaRAG existe no acervo e não veio: é fabricação; um nome que não designa nada não é citação.
+    assert cited == [("ragas", 3), ("ares", 7), ("metarag", 2)]
+    assert attribution.classify(record, False) == "fabricada"
+    assert attribution.citations("Veja [Seção de resultados, pág. 2].", RECORD["sources"]) == []
+    # O cabeçalho copiado sem o parêntese final ainda é citação.
+    assert attribution.citations("Isso [Trecho 1 - RAGAS.pdf (pág. 3].", RECORD["sources"]) == [("ragas", 3)]
