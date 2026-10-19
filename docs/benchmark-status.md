@@ -1,8 +1,8 @@
 # Benchmark de estratégias de RAG — estado da implementação
 
 **Plano:** [plano-benchmark.md](../plano-benchmark.md) · **Branch:** `feat/indices-v2`
-(um commit por etapa) · **Última atualização:** 18/10/2026 (E0, E1, E5 e E7 concluídos; seleção do E2 e
-do E6 feita; confirmações e E3 rodando)
+(um commit por etapa) · **Última atualização:** 19/10/2026 (E0, E1, E2, E3, E5, E6, E7 e E8 concluídos; E4 e
+E9 não construídos)
 
 Este documento registra o que já foi construído do plano, etapa por etapa: o que
 mudou, onde, como usar, os testes que rodaram no fim de cada etapa e as decisões
@@ -30,7 +30,7 @@ antes do IC. Os números de cada linha estão na seção da etapa.
 | E2 — formato | Com os mesmos artigos, a conversão para Markdown (Docling) perde para o texto do PDF; o chunker por seção, com orçamento igual, só empata. | **Manter o PDF.** |
 | E7 — híbrida | Com a pergunta na língua do acervo, a busca híbrida soma (+0,20 em inglês). Com perguntas em português e o bge-m3, ela piora (−0,11): o BM25 traz o ímã de idioma de volta. | **Não ligar** a híbrida para perguntas em português. |
 | E8 — reranker (LLM) | Melhora a ordem da lista em português (+0,08 de precisão@4), mas a busca fica 40× mais lenta (~11 s) e a nota separa as perguntas de fora pior que o cosseno. | **Não ligar.** |
-| E3 — cabeçalho | Rodando. | — |
+| E3 — cabeçalho e citação | O cabeçalho no embedding ajuda a citar a fonte certa (44 → 50 de 70), sem mudar a taxa de atribuição errada; no texto, as fabricações dobram. A citação obrigatória derruba a abstenção correta de 0,63 para 0,37: o gerador responde as perguntas de fora citando algum trecho. | **Não ligar a citação obrigatória** com o `gemma3:4b`. O cabeçalho no embedding é opcional. |
 
 **O problema que sobra:** com a recuperação boa, o assistente responde
 perguntas de fora do acervo que são do tema (JaCoCo, TMMi, Lighthouse). Elas
@@ -61,7 +61,7 @@ construídos.
 | **B3** | E6 — parâmetros de recuperação | **concluída**: na confirmação, o `top_k` 8 não melhora a fidelidade, dobra o prompt e derruba a abstenção correta (0,67 → 0,27); o limiar barra 4 de 15 de fora, mas a abstenção correta da C2 não muda; o MMR nunca ajudou |
 | **B4** | E5 — concentração das fontes | **concluída**: o cruzamento com a C2 (as respostas apoiadas nos ímãs são piores), o H5a (os ímãs somem com o bge-m3) e o H5b (a bibliografia não é ímã); falta a demanda real das aulas |
 | **B5** | E2 — formato: PDF × Markdown | **concluída** (só a C1, em inglês): a conversão do Docling perde 8 de 39 perguntas para o PDF; o chunker por seção, com orçamento igual, só empata com o PDF |
-| **B6** | E3 — cabeçalho contextual e atribuição errada | **construído** (cabeçalho no embedding ou no trecho, títulos em rascunho, regra de citação v2, atribuição errada, cartão); roda depois do E1 |
+| **B6** | E3 — cabeçalho contextual e atribuição errada | **concluída** (no bge-m3): o cabeçalho no embedding cita mais a fonte certa; no texto, piora; a citação obrigatória custa 0,27 de abstenção correta |
 | **B7** | E7 — busca híbrida (BM25 + RRF) | **concluída**: +0,20 de evidência@4 em inglês, sem a interação com a sigla; com o bge-m3 em português, **piora** (−0,11): o BM25 traz o ímã de idioma de volta |
 | **B8** | E8 — reranker (o LLM via Ollama) | **concluída**: a precisão@4 sobe em português (+0,08), a nota separa as perguntas de fora pior que o cosseno, e a busca fica 40× mais lenta (~11 s): não recomendado |
 | B9 | E4, E9 | aguardam (o E4 precisa dos distratores e de perguntas revisadas por degrau; o E9 é opcional) |
@@ -73,13 +73,13 @@ Rodados no fim de cada etapa. Nenhum precisa de Ollama, GPU ou rede.
 
 ```
 tests/api       (pytest, backend/.venv)                     VERDE — 78 testes (35 antes do benchmark)
-tests/benchmark (pytest, backend/.venv; entra no CI)        VERDE — 67 testes
+tests/benchmark (pytest, backend/.venv; entra no CI)        VERDE — 70 testes
 tests/reports   (pytest, tests/reports/.venv)               VERDE — 44 testes
 tests/jeveval   (pytest -m "not live", tests/jeveval/.venv) VERDE — 63 testes
 goldens v2      (validar --indice pdf-v1 --evidencia)       VERDE — 103 goldens, 0 erro, 0 aviso
 ```
 
-O `pytest` da raiz (o do CI) roda `tests/api` e `tests/benchmark` juntos: 145
+O `pytest` da raiz (o do CI) roda `tests/api` e `tests/benchmark` juntos: 148
 testes.
 
 ---
@@ -1173,6 +1173,58 @@ em inglês, as 39 perguntas de dentro de `confirmacao`, 4 min):
 **Uma limitação, antes de rodar:** só 7 perguntas de dentro nomeiam o artigo
 (`names_article`). A interação do cabeçalho com o nome do artigo fica só
 ilustrativa.
+
+**A rodada** (`tests/benchmark/out/E3_20261018T223418/`, 3 h, os 103 goldens).
+Os braços usam o bge-m3, o vencedor do E1, e não o `pdf-v1` do plano: com o
+nomic, 56% das perguntas de dentro recebem "não encontrei", e sobraria pouca
+citação para classificar.
+
+**Um erro meu na medida, achado e corrigido antes de ler os números.** A
+primeira leitura dava 94% de respostas "sem citação". O gerador quase nunca
+cita no formato da regra: copia o cabeçalho do trecho ("[Trecho 2 -
+arquivo.pdf (pág. N)]"), cita pelo número ("[Trecho 2, pág. N]"), pelo nome
+sem a extensão ou pelo título. O `attribution.py` passou a ler os quatro jeitos,
+e o placar foi refeito com as mesmas respostas, sem rodar de novo.
+
+| Categoria (§6), nas 70 de dentro | `base` | `base-aa` (A/A) | `hdr-emb` | `hdr` |
+|---|---|---|---|---|
+| (d) cita a fonte | 44 | 44 | **50** | 36 |
+| (c) cita outro documento recebido | 8 | 8 | 6 | 7 |
+| **(b) citação fabricada** | 5 | 5 | 4 | **11** |
+| (a) sem citação | 11 | 11 | 8 | 15 |
+| recusa | 2 | 2 | 2 | 1 |
+| **taxa de atribuição errada** (das 103) | 0,24 | 0,25 | 0,23 | 0,29 |
+| fidelidade | 0,77 | — | 0,83 | 0,83 |
+
+- **Veredito na atribuição errada** (margem de 0,029, do A/A com citação do
+  próprio cartão): `hdr-emb`, −0,01 [−0,09; +0,07], sem diferença relevante;
+  `hdr`, +0,05 [−0,04; +0,14], inconclusivo, no sentido de piorar.
+- **O cabeçalho no embedding ajuda a citar a fonte certa** (44 → 50 das 70), sem
+  mudar a taxa principal. O Hit@4 das 7 perguntas que nomeiam o artigo fica
+  em 6 de 7 nos dois braços: a primeira hipótese não aparece (n = 7).
+- **O cabeçalho no texto atrapalha a citação.** As fabricações dobram (5 → 11),
+  e a guarda "sem citação não sobe" não passa (+4). Parte das fabricações é o
+  exemplo da regra copiado: `[relatorio_x.pdf, pág. 4]` aparece 7 vezes no
+  `hdr` e 3 no `base`. A segunda hipótese cai.
+- **Quase toda a atribuição errada vem das perguntas de fora:** com a citação
+  obrigatória, só 11 das 30 são recusadas, e as outras 19 respondem citando
+  algum trecho.
+
+**O preço da citação obrigatória**, pareando por pergunta o `bgem3-pt` do E1
+(sem citação) com o `base` do E3 (com citação). É o mesmo índice e os mesmos
+goldens, e o gerador quase não varia (E0):
+
+| | sem citação (E1) | com citação (E3) | Δ [IC 95%] |
+|---|---|---|---|
+| **abstenção correta** | 0,63 | **0,37** | **−0,27 [−0,43; −0,13]** |
+| fidelidade | 0,85 | 0,77 | −0,08 [−0,16; +0,02] |
+| tokens da resposta · latência da geração | 78 · 2,97 s | 194 · 4,38 s | ×2,5 · +1,4 s |
+
+Pedir a fonte faz o gerador responder mais: 8 das 30 perguntas de fora que ele
+recusava passam a ter resposta, com citação. A recomendação é **não ligar a
+citação obrigatória** com o `gemma3:4b`. Se a citação for necessária, ela pede
+outro desenho: tirar o exemplo da regra (ele vira fabricação) e medir de novo a
+abstenção.
 
 ### B7 — E7: a busca híbrida (18/10)
 
