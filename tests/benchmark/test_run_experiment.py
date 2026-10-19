@@ -99,7 +99,7 @@ def test_placar_mede_os_pares_e_a_margem(out: Path):
 
     assert result["pairs"]["A1→A2"]["c2.faithfulness"]["delta"] == pytest.approx(-0.05)
     # Rejulgar compara só o juiz: sem recusa nem custo (as respostas são as mesmas).
-    assert set(result["pairs"]["A1→A4"]) == {"c2.faithfulness"}
+    assert set(result["pairs"]["A1→A4"]) == {"c2.faithfulness", "c2.faithfulness_answered"}
     assert result["pairs"]["A1→A5"]["c1.hit_at_k"]["delta"] == 0.0
     assert result["means"]["A1"]["abstention.correct_abstention"] == 1.0
     assert result["means"]["A1"]["abstention.undue_abstention"] == 0.5
@@ -407,3 +407,35 @@ def test_guarda_aceita_perder_exatamente_a_pergunta_permitida(tmp_path: Path, mo
     [guard] = rx.scoreboard(card, tmp_path, limit=None)["guards"]
 
     assert (guard["delta"]["delta"], guard["passed"]) == (-0.1429, True)
+
+
+def test_recusa_pela_evidencia_recebida_e_notas_so_nas_respostas(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(rx, "index_documents", lambda index: {"docA", "docB"})
+    monkeypatch.setattr(rx, "latest_margins", lambda exclude=None: (None, None))
+    card = {**{k: v for k, v in CARD.items() if k != "margem"}, "pares": [["A1", "A2"]],
+            "bracos": {"A1": {"indice": "pdf-v1", "camadas": ["c2"], "papel": "baseline"},
+                       "A2": {"indice": "pdf-v1", "camadas": ["c2"]}}}
+    evidence = {"qA": "A cobertura de mutação subiu para oitenta e dois por cento no segundo experimento.",
+                "qB": "O gerador escreveu duzentos casos de teste, e só metade deles compilou na primeira vez."}
+    # A busca traz a evidência de qA e não a de qB (o trecho de qB é de outro assunto).
+    chunks = {"qA": [f"Resultados. {evidence['qA']} Discussão."], "qB": ["Trabalhos relacionados e ameaças."]}
+    arms = (("A1", {"qA": "Subiu para 82%.", "qB": "Metade compilou."}, {"qA": 0.8, "qB": 0.6}),
+            ("A2", {"qA": "Subiu para 82%.", "qB": rx.NOT_FOUND_MARKER}, {"qA": 0.9, "qB": 0.0}))
+    for arm_id, outputs, scores in arms:
+        answers = [{"name": n, "source_document": f"doc{n[-1]}.pdf", "context": [evidence[n]],
+                    "retrieval_context": chunks[n], "actual_output": o} for n, o in outputs.items()]
+        (tmp_path / f"respostas_{arm_id}.json").write_text(json.dumps({"n_cases": 2, "answers": answers}),
+                                                           encoding="utf-8")
+        (tmp_path / f"ragas_{arm_id}.json").write_text(json.dumps(_ragas(scores)), encoding="utf-8")
+
+    result = rx.scoreboard(card, tmp_path, limit=None)
+
+    means, pair = result["means"]["A2"], result["pairs"]["A1→A2"]
+    # A2 recusa só a pergunta cuja evidência não veio: não é recusa indevida do gerador.
+    assert (means["abstention.undue_abstention"], means["abstention.with_evidence"],
+            means["abstention.without_evidence"]) == (0.5, 0.0, 1.0)
+    # A recusa (nota 0 do juiz) puxa a fidelidade para baixo; só nas respostas, A2 escreve melhor.
+    assert pair["c2.faithfulness"]["delta"] == pytest.approx(-0.25)
+    answered = pair["c2.faithfulness_answered"]
+    assert (answered["delta"], answered["n"]) == (pytest.approx(0.1), 1)
+    assert "abstention.with_evidence" in rx.BINARY_METRICS and "with_evidence" in rx.LOWER_IS_BETTER

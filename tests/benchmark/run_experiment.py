@@ -66,13 +66,14 @@ C1_METRICS = ("hit_at_1", "hit_at_k", "hit_at_10", "mrr_at_10", "precision_at_k"
               "coverage_at_10", "retrieval_ms", "context_tokens")
 RAGAS_METRICS = ("faithfulness", "answer_relevancy", "context_precision", "context_recall", "context_relevance")
 # Métricas em que menos é melhor (o resto: mais é melhor).
-LOWER_IS_BETTER = {"undue_abstention", "generation_ms", "retrieval_ms", "prompt_tokens", "completion_tokens",
-                   "context_tokens", "false_block", "misattribution", "no_citation"}
+LOWER_IS_BETTER = {"undue_abstention", "with_evidence", "generation_ms", "retrieval_ms", "prompt_tokens",
+                   "completion_tokens", "context_tokens", "false_block", "misattribution", "no_citation"}
 # Os grupos do placar: uma métrica do cartão (guarda) se escreve grupo.metrica, como c1.evidence_at_k.
 METRIC_GROUPS = ("c1", "c2", "abstention", "attribution", "cost")
 # Métricas de 0 ou 1 por pergunta: nelas o placar aplica o McNemar exato (provisório até a §11).
 BINARY_METRICS = {"c1.hit_at_1", "c1.hit_at_k", "c1.hit_at_10", "c1.evidence_at_k", "c1.correct_abstention",
                   "c1.false_block", "abstention.correct_abstention", "abstention.undue_abstention",
+                  "abstention.with_evidence", "abstention.without_evidence",
                   "attribution.misattribution", "attribution.no_citation", "attribution.cites_source"}
 SPLITS = ("selecao", "confirmacao")
 # c1: a recuperação; c2: as respostas e o juiz; respostas: só as respostas (recusa, atribuição e custo).
@@ -506,6 +507,16 @@ def arm_measures(out: Path, arm: dict, arms: dict[str, dict], questions: dict[st
             "correct_abstention": {n: float(refused(a)) for n, a in outside.items() if classes.get(n) != "ambiguo"},
             "undue_abstention": {n: float(refused(a)) for n, a in inside.items()},
         }
+        # A recusa de dentro pelo que o gerador recebeu (E9): com a evidência do golden nos trechos, recusar é
+        # cautela demais do gerador; sem ela, a falha é da busca (já contada na C1) e, pelo prompt, recusar é o
+        # certo. A evidência é a da C1 (c1.evidence), nos trechos gravados na resposta.
+        split: dict[bool, dict[str, float]] = {True: {}, False: {}}
+        for n, a in inside.items():
+            fragments = c1.split_fragments(a.get("context"))
+            if fragments and a.get("retrieval_context") is not None:
+                split[bool(c1.evidence(fragments, a["retrieval_context"])["evidence"])][n] = float(refused(a))
+        if split[True] or split[False]:
+            measures["abstention"].update(with_evidence=split[True], without_evidence=split[False])
         for metric in ("retrieval_ms", "generation_ms", "prompt_tokens", "completion_tokens"):
             values = {n: float(a[metric]) for n, a in {**inside, **outside}.items() if a.get(metric) is not None}
             if metric == "retrieval_ms":
@@ -533,6 +544,15 @@ def arm_measures(out: Path, arm: dict, arms: dict[str, dict], questions: dict[st
             for m in case["metrics"]:
                 if m.get("score") is not None:
                     measures["c2"].setdefault(m["name"], {})[case["name"]] = float(m["score"])
+        if answers_path.is_file():
+            # As notas só nas respostas (E9): numa recusa, a relevância sai 0 e a fidelidade sai 0 ou 1 conforme o
+            # juiz, e o braço que recusa mais perde nota sem escrever pior. O par compara as que os dois responderam.
+            answered = {a["name"] for a in json.loads(answers_path.read_text(encoding="utf-8"))["answers"]
+                        if not refused(a)}
+            for metric in ("faithfulness", "answer_relevancy"):
+                if measures["c2"].get(metric):
+                    measures["c2"][f"{metric}_answered"] = {n: v for n, v in measures["c2"][metric].items()
+                                                            if n in answered}
         measures["summary"]["judge"] = {k: ragas.get(k) for k in ("judge_model", "judge_num_ctx", "wall_seconds",
                                                                    "judge_calls", "judge_failures", "metrics_avg")}
     if arm["kind"] == "rejulgar":

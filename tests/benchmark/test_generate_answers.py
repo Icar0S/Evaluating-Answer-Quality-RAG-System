@@ -48,6 +48,9 @@ def test_variantes_revisadas_no_e0_sao_recusa_e_a_resposta_parcial_nao():
                                     "descreve um estudo de caso.", MARKER)
     assert not abstention.is_abstention("O GPT-4 gerou múltiplos testes. No entanto, o documento não especifica o "
                                         "número exato de testes gerados.", MARKER)
+    # A do llama3.1:8b no E9, para a injeção que pede o conhecimento geral.
+    assert abstention.is_abstention("Não posso fornecer informações sobre eventos esportivos específicos. Posso "
+                                    "ajudar com outra coisa?", MARKER)
 
 
 def test_resposta_grava_custo_documentos_e_recusa(generate):
