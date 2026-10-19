@@ -64,7 +64,8 @@ construídos.
 | **B6** | E3 — cabeçalho contextual e atribuição errada | **concluída** (no bge-m3): o cabeçalho no embedding cita mais a fonte certa; no texto, piora; a citação obrigatória custa 0,27 de abstenção correta |
 | **B7** | E7 — busca híbrida (BM25 + RRF) | **concluída**: +0,20 de evidência@4 em inglês, sem a interação com a sigla; com o bge-m3 em português, **piora** (−0,11): o BM25 traz o ímã de idioma de volta |
 | **B8** | E8 — reranker (o LLM via Ollama) | **concluída**: a precisão@4 sobe em português (+0,08), a nota separa as perguntas de fora pior que o cosseno, e a busca fica 40× mais lenta (~11 s): não recomendado |
-| B9 | E4, E9 | aguardam (o E4 precisa dos distratores e de perguntas revisadas por degrau; o E9 é opcional) |
+| B9 | E9 — gerador (opcional) | rodando: `llama3.1:8b` × `gemma3:4b`, no bge-m3, com a margem refeita para o gerador novo |
+| B10 | E4 — escada de acervo | **não construído**: precisa dos distratores (PDFs do mesmo tema e de outra área) e de perguntas revisadas por degrau, que são decisão sua |
 | C | Placar (regra de veredito, Holm, interação) e as seções novas do relatório | aguarda a §11 |
 
 ### Portões, estado atual
