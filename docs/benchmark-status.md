@@ -16,6 +16,34 @@ tomadas no caminho.
 
 ---
 
+## 0. Resumo dos resultados
+
+Os vereditos usam a regra provisória (§11 não chegou): a margem de ruído do E0
+antes do IC. Os números de cada linha estão na seção da etapa.
+
+| Experimento | O que mostrou | Para o assistente |
+|---|---|---|
+| E0 — ruído | O juiz é quase todo o ruído da C2: as mesmas respostas, julgadas de novo, mudam a fidelidade em 7 a 9 de 70 casos (margem 0,068). O gerador quase não varia (0 de 103 respostas). A C1 varia ~1 pergunta pelo HNSW. | Diferença de fidelidade menor que ~0,07 não é diferença. |
+| E1 — idioma | O bge-m3 leva a evidência@4 das perguntas em português de 0,13 para 0,66, a fidelidade de 0,70 para 0,85 e as respostas aprovadas de 7 para 35 em 70. A tradução da pergunta chega perto (0,56). O preço: a abstenção correta cai de 0,83 para 0,63. | **Trocar o embedding pelo bge-m3** (`RAG_INDEX=pdf-v1-bgem3`): +113 ms por busca, ~600 tokens a mais no prompt. |
+| E5 — 80/20 | Com o nomic, os quatro artigos em português são ímãs e as respostas apoiadas neles são piores. Com o bge-m3, os ímãs somem (H5a). A bibliografia não é ímã (H5b). | O 80/20 era viés do embedding; resolve com o E1. Cortar a bibliografia não se paga. |
+| E6 — parâmetros | O MMR nunca ajudou. Na confirmação, o `top_k` 8 não melhora a fidelidade, dobra o prompt e derruba a abstenção correta; o limiar barra perguntas fora de escopo, mas não muda a abstenção da resposta. | **Manter `top_k` 4, sem MMR.** O limiar é inofensivo, mas não resolve. |
+| E2 — formato | Com os mesmos artigos, a conversão para Markdown (Docling) perde para o texto do PDF; o chunker por seção, com orçamento igual, só empata. | **Manter o PDF.** |
+| E7 — híbrida | Com a pergunta na língua do acervo, a busca híbrida soma (+0,20 em inglês). Com perguntas em português e o bge-m3, ela piora (−0,11): o BM25 traz o ímã de idioma de volta. | **Não ligar** a híbrida para perguntas em português. |
+| E8 — reranker (LLM) | Melhora a ordem da lista em português (+0,08 de precisão@4), mas a busca fica 40× mais lenta (~11 s) e a nota separa as perguntas de fora pior que o cosseno. | **Não ligar.** |
+| E3 — cabeçalho | Rodando. | — |
+
+**O problema que sobra:** com a recuperação boa, o assistente responde
+perguntas de fora do acervo que são do tema (JaCoCo, TMMi, Lighthouse). Elas
+passam de qualquer limiar de similaridade, porque se parecem com o acervo. Pede
+outro tipo de portão, ou trabalho no prompt.
+
+**Pendente com você:** a revisão humana dos 103 goldens e dos títulos; as
+decisões do `localhost` e do HNSW (seção 2); as §9 a §14 do plano; e o E4 (os
+distratores e as perguntas por degrau) e o E9 (opcional), que não foram
+construídos.
+
+---
+
 ## 1. Onde está
 
 | Etapa | Entrega | Estado |
