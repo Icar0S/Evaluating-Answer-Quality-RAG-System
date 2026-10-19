@@ -30,7 +30,7 @@ tomadas no caminho.
 | **B0** | Runner de experimentos e cartões em YAML | **concluída** (formato provisório até a §9) |
 | **B1** | E0 — rodada A/A | **concluída** (margem de ruído em `tests/benchmark/out/E0_20261018T082340/margem.json`) |
 | **B2** | E1 — idioma (`pdf-v1-bgem3`, tradução da pergunta) | **concluída**: o bge-m3 vence (evidência@4 de 0,13 para 0,66 em português; fidelidade +0,15), ao preço da abstenção correta (0,83 → 0,63) |
-| **B3** | E6 — parâmetros de recuperação (C1) | **seleção feita** em português (nomic e bge-m3) e em inglês: o limiar recalibrado separa quando a recuperação funciona; o MMR nunca ajudou; a confirmação (`top_k` 8 e o limiar, no bge-m3) vem a seguir |
+| **B3** | E6 — parâmetros de recuperação | **concluída**: na confirmação, o `top_k` 8 não melhora a fidelidade, dobra o prompt e derruba a abstenção correta (0,67 → 0,27); o limiar barra 4 de 15 de fora, mas a abstenção correta da C2 não muda; o MMR nunca ajudou |
 | **B4** | E5 — concentração das fontes | **concluída**: o cruzamento com a C2 (as respostas apoiadas nos ímãs são piores), o H5a (os ímãs somem com o bge-m3) e o H5b (a bibliografia não é ímã); falta a demanda real das aulas |
 | **B5** | E2 — formato: PDF × Markdown | **concluída** (só a C1, em inglês): a conversão do Docling perde 8 de 39 perguntas para o PDF; o chunker por seção, com orçamento igual, só empata com o PDF |
 | **B6** | E3 — cabeçalho contextual e atribuição errada | **construído** (cabeçalho no embedding ou no trecho, títulos em rascunho, regra de citação v2, atribuição errada, cartão); roda depois do E1 |
@@ -975,6 +975,40 @@ baseline acha a evidência em 21 das 31 perguntas da seleção.
   português com bge-m3), o MMR nunca ajudou.
 - **A confirmação:** `top_k` 4 × 8 e o limiar de 0,436, no `pdf-v1-bgem3`, em
   `confirmacao`, com a C2.
+
+**A confirmação** (`cartoes/E6c.yaml`, `tests/benchmark/out/E6c_20261018T201447/`,
+2 h 20 min, as 39 perguntas de dentro e as 15 de fora de `confirmacao`, com o
+juiz em 12.288 tokens): **os dois vencedores da seleção encolhem.**
+
+| | `base` (k = 4) | `k8` | `lim` (0,436) |
+|---|---|---|---|
+| evidência@k (C1) | 25 de 39 | 28 de 39 | 25 de 39 |
+| fidelidade | 0,82 | 0,78 | 0,82 |
+| relevância da resposta | 0,74 | 0,78 | 0,74 |
+| abstenção correta (C2) | 0,67 | **0,27** | 0,67 |
+| abstenção indevida | 0,05 | 0,05 | 0,05 |
+| barradas pelo limiar (C1), de fora · de dentro | — | — | 4 de 15 · 0 |
+| tokens no prompt · latência da geração | 3.282 · 3,04 s | 6.382 · 4,10 s | 2.934 · 2,72 s |
+
+- **O `top_k` 8 não se paga.** Na fidelidade, sem diferença relevante (−0,05
+  [−0,13; +0,05]); o prompt dobra; e, com mais contexto, o gerador responde 6
+  perguntas de fora a mais (abstenção correta de 0,67 para 0,27). A evidência
+  que a seleção mostrou subir subiu por construção.
+- **O limiar barra 4 das 15 de fora sem barrar nenhuma de dentro, e a
+  abstenção correta da C2 não muda.** Por pergunta: das 4 barradas, 3 já eram
+  recusadas sem o limiar (a capital da Austrália, Dom Casmurro, o poema); só o
+  pedido de tradução para o francês passou a ser recusado. E uma pergunta foi
+  no sentido contrário: o limiar corta trecho a trecho, o contexto da pergunta
+  sobre WCAG mudou, e o gerador passou a responder. Saldo: zero.
+- **Onde a abstenção falha de verdade:** nas perguntas de fora que são do tema
+  (JaCoCo, TMMi, Lighthouse, engenharia do caos). Elas passam do limiar porque
+  se parecem com o acervo, e o gerador responde com o que chega. Com a
+  recuperação boa, o problema não é mais de similaridade: pede outro portão
+  (por exemplo, perguntar ao modelo se o trecho responde a pergunta) ou um
+  trabalho no prompt, que não estão entre as alavancas do E6.
+- **Para a turma**, é a didática do cartão ao vivo: na seleção, o `k8` "ganhava"
+  e o limiar "ganhava"; na confirmação, com a C2, nenhum dos dois melhora a
+  resposta.
 
 ### B5 — E2: a escada até o degrau 2 (18/10)
 
