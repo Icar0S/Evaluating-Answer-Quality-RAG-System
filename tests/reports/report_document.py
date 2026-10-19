@@ -46,6 +46,7 @@ class Para:
 @dataclass
 class Bullets:
     items: list[str]
+    numbered: bool = False
 
 
 @dataclass
@@ -69,6 +70,9 @@ class Figure:
 class Callout:
     title: str
     items: list[str]
+    # "aviso": ⚠ e os itens em lista (o de sempre); "nota": ℹ e os itens em parágrafos, para as caixas didáticas
+    # do relatório do benchmark ("como ler este gráfico").
+    tone: str = "aviso"
 
 
 @dataclass

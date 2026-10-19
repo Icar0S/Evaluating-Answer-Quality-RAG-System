@@ -9,5 +9,6 @@
 matplotlib==3.11.2   # gráficos (PNG) e a fonte DejaVu Sans usada no PDF
 openpyxl==3.1.5      # planilha .xlsx
 reportlab==5.0.1     # PDF
+PyYAML==6.0.3        # o relatório do benchmark lê os cartões e os textos (benchmark_report.py)
 
 pytest==9.1.1        # testes do próprio gerador (test_build_report.py)

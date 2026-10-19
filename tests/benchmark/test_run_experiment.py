@@ -106,6 +106,10 @@ def test_placar_mede_os_pares_e_a_margem(out: Path):
     assert result["margins"]["c1"]["c1.hit_at_k"] == 0.0
     assert result["margins"]["gerador_juiz"]["c2.faithfulness"] > 0
     assert json.loads((out / "margem.json").read_text(encoding="utf-8"))["experiment"] == "EX"
+    # As medidas por pergunta, que o relatório do benchmark lê.
+    per_question = json.loads((out / "medidas.json").read_text(encoding="utf-8"))
+    assert per_question["A1"]["metrics"]["abstention.undue_abstention"] == {"qA": 0.0, "qB": 1.0}
+    assert per_question["A1"]["clusters"]["qA"] == "docA"
 
 
 def test_veredito_usa_a_margem_do_e0(out: Path, monkeypatch):

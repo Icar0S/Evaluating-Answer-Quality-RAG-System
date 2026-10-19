@@ -193,6 +193,19 @@ O resto (gráficos, comparação par a par, os quatro formatos) sai de graça. E
 `report_charts.py`, `FRAMEWORK_SLOT` fixa a cor dele. Sem isso, ele pega o
 próximo slot livre da paleta.
 
+## Relatório do benchmark
+
+O benchmark de estratégias (`tests/benchmark/`, `plano-benchmark.md`) tem um relatório próprio, separado deste:
+um PDF didático com cada experimento, gerado das rodadas em `tests/benchmark/out/` com o mesmo venv e os mesmos
+renderizadores.
+
+```powershell
+tests\reports\.venv\Scripts\python.exe tests\reports\benchmark_report.py --abrir
+```
+
+O conteúdo (os textos de cada experimento, com marcadores que recebem os números do placar) fica em
+`tests/benchmark/relatorio/`; o formato está no README de lá.
+
 ## Testes do gerador
 
 Herméticos (JSONs sintéticos, sem Ollama):
@@ -211,3 +224,5 @@ tests\reports\.venv\Scripts\python.exe -m pytest tests/reports
 | `report_charts.py` | Gráficos (PNG) |
 | `report_history.py` | `resumo.json`, `HISTORICO.md`, `historico.csv` e a cópia em `ultimo/` |
 | `test_run_all.py` | Testes do orquestrador (`tests/run_all.py`) e do histórico |
+| `benchmark_report.py` / `benchmark_data.py` / `benchmark_charts.py` | O relatório do benchmark: textos, dados das rodadas e gráficos |
+| `test_benchmark_report.py` | Testes do relatório do benchmark, com rodadas falsas |

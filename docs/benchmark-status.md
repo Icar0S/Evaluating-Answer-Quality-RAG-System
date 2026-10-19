@@ -2,7 +2,7 @@
 
 **Plano:** [plano-benchmark.md](../plano-benchmark.md) · **Branch:** `feat/indices-v2`
 (um commit por etapa) · **Última atualização:** 19/10/2026 (E0, E1, E2, E3, E5, E6, E7, E8 e E9 concluídos; E4
-não construído)
+não construído; o relatório em PDF, provisório, no R1)
 
 Este documento registra o que já foi construído do plano, etapa por etapa: o que
 mudou, onde, como usar, os testes que rodaram no fim de cada etapa e as decisões
@@ -23,14 +23,14 @@ antes do IC. Os números de cada linha estão na seção da etapa.
 
 | Experimento | O que mostrou | Para o assistente |
 |---|---|---|
-| E0 — ruído | O juiz é quase todo o ruído da C2: as mesmas respostas, julgadas de novo, mudam a fidelidade em 7 a 9 de 70 casos (margem 0,068). O gerador quase não varia (0 de 103 respostas). A C1 varia ~1 pergunta pelo HNSW. | Diferença de fidelidade menor que ~0,07 não é diferença. |
-| E1 — idioma | O bge-m3 leva a evidência@4 das perguntas em português de 0,13 para 0,66, a fidelidade de 0,70 para 0,85 e as respostas aprovadas de 7 para 35 em 70. A tradução da pergunta chega perto (0,56). O preço: a abstenção correta cai de 0,83 para 0,63. | **Trocar o embedding pelo bge-m3** (`RAG_INDEX=pdf-v1-bgem3`): +113 ms por busca, ~600 tokens a mais no prompt. |
+| E0 — ruído | O juiz é quase todo o ruído da C2: as mesmas respostas, julgadas de novo, mudam a fidelidade em 7 a 9 de 70 casos (margem 0,068). O gerador quase não varia (2 de 103 respostas numa repetição, nenhuma na outra). A C1 varia ~1 pergunta pelo HNSW. | Diferença de fidelidade menor que ~0,07 não é diferença. |
+| E1 — idioma | O bge-m3 leva a evidência@4 das perguntas em português de 0,13 para 0,66, a fidelidade de 0,70 para 0,85 e as respostas aprovadas de 7 para 35 em 70. A tradução da pergunta chega perto (0,56). O preço: a abstenção correta cai de 0,83 para 0,63 (inconclusivo; com o nomic, o gerador recusava também 39 das 70 de dentro). | **Trocar o embedding pelo bge-m3** (`RAG_INDEX=pdf-v1-bgem3`): +113 ms por busca, ~600 tokens a mais no prompt. |
 | E5 — 80/20 | Com o nomic, os quatro artigos em português são ímãs e as respostas apoiadas neles são piores. Com o bge-m3, os ímãs somem (H5a). A bibliografia não é ímã (H5b). | O 80/20 era viés do embedding; resolve com o E1. Cortar a bibliografia não se paga. |
 | E6 — parâmetros | O MMR nunca ajudou. Na confirmação, o `top_k` 8 não melhora a fidelidade, dobra o prompt e derruba a abstenção correta; o limiar barra perguntas fora de escopo, mas não muda a abstenção da resposta. | **Manter `top_k` 4, sem MMR.** O limiar é inofensivo, mas não resolve. |
 | E2 — formato | Com os mesmos artigos, a conversão para Markdown (Docling) perde para o texto do PDF; o chunker por seção, com orçamento igual, só empata. | **Manter o PDF.** |
 | E7 — híbrida | Com a pergunta na língua do acervo, a busca híbrida soma (+0,20 em inglês). Com perguntas em português e o bge-m3, ela piora (−0,11): o BM25 traz o ímã de idioma de volta. | **Não ligar** a híbrida para perguntas em português. |
 | E8 — reranker (LLM) | Melhora a ordem da lista em português (+0,08 de precisão@4), mas a busca fica 40× mais lenta (~11 s) e a nota separa as perguntas de fora pior que o cosseno. | **Não ligar.** |
-| E3 — cabeçalho e citação | O cabeçalho no embedding ajuda a citar a fonte certa (44 → 50 de 70), sem mudar a taxa de atribuição errada; no texto, as fabricações dobram. A citação obrigatória derruba a abstenção correta de 0,63 para 0,37: o gerador responde as perguntas de fora citando algum trecho. | **Não ligar a citação obrigatória** com o `gemma3:4b`. O cabeçalho no embedding é opcional. |
+| E3 — cabeçalho e citação | Nenhum cabeçalho muda a taxa de atribuição errada. No embedding, ele cita a fonte certa um pouco mais (44 → 50 de 70, inconclusivo); no texto, cita menos (pior) e as fabricações dobram. A citação obrigatória derruba a abstenção correta de 0,63 para 0,37: o gerador responde as perguntas de fora citando algum trecho. | **Não ligar a citação obrigatória** com o `gemma3:4b`. O cabeçalho no embedding é opcional. |
 | E9 — gerador | O `llama3.1:8b` recusa as 30 perguntas de fora (o `gemma3:4b`, 19): o problema que sobrava é do gerador. As recusas a mais nas de dentro são quase todas de perguntas cuja evidência a busca não trouxe (11 de 24; com a evidência nos trechos, 3 de 46, dentro do ruído). Nas respostas, a fidelidade não muda. Custa +1,2 s por resposta. | **Trocar o gerador pelo `llama3.1:8b`**, se a latência e a memória couberem. A separação pela evidência foi definida depois de ver os dados: vale confirmar com perguntas novas. |
 
 **O problema que sobrava:** com a recuperação boa, o `gemma3:4b` responde
@@ -41,8 +41,11 @@ mesma busca, recusa as 30.
 
 **Pendente com você:** a revisão humana dos 103 goldens e dos títulos; as
 decisões do `localhost` e do HNSW (seção 2); a troca do gerador (E9); as §9 a
-§14 do plano; e o E4 (os distratores e as perguntas por degrau), que não foi
-construído.
+§14 do plano; o E4 (os distratores e as perguntas por degrau), que não foi
+construído; e o tom dos textos do relatório (`tests/benchmark/relatorio/textos/`).
+
+**O relatório:** `tests\reports\.venv\Scripts\python.exe tests\reports\benchmark_report.py --abrir`
+gera o PDF com tudo acima, explicado (R1).
 
 ---
 
@@ -63,12 +66,13 @@ construído.
 | **B3** | E6 — parâmetros de recuperação | **concluída**: na confirmação, o `top_k` 8 não melhora a fidelidade, dobra o prompt e derruba a abstenção correta (0,67 → 0,27); o limiar barra 4 de 15 de fora, mas a abstenção correta da C2 não muda; o MMR nunca ajudou |
 | **B4** | E5 — concentração das fontes | **concluída**: o cruzamento com a C2 (as respostas apoiadas nos ímãs são piores), o H5a (os ímãs somem com o bge-m3) e o H5b (a bibliografia não é ímã); falta a demanda real das aulas |
 | **B5** | E2 — formato: PDF × Markdown | **concluída** (só a C1, em inglês): a conversão do Docling perde 8 de 39 perguntas para o PDF; o chunker por seção, com orçamento igual, só empata com o PDF |
-| **B6** | E3 — cabeçalho contextual e atribuição errada | **concluída** (no bge-m3): o cabeçalho no embedding cita mais a fonte certa; no texto, piora; a citação obrigatória custa 0,27 de abstenção correta |
+| **B6** | E3 — cabeçalho contextual e atribuição errada | **concluída** (no bge-m3): o cabeçalho no embedding cita um pouco mais a fonte certa (inconclusivo); no texto, piora; a citação obrigatória custa 0,27 de abstenção correta |
 | **B7** | E7 — busca híbrida (BM25 + RRF) | **concluída**: +0,20 de evidência@4 em inglês, sem a interação com a sigla; com o bge-m3 em português, **piora** (−0,11): o BM25 traz o ímã de idioma de volta |
 | **B8** | E8 — reranker (o LLM via Ollama) | **concluída**: a precisão@4 sobe em português (+0,08), a nota separa as perguntas de fora pior que o cosseno, e a busca fica 40× mais lenta (~11 s): não recomendado |
 | **B9** | E9 — gerador (opcional) | **concluída**: o `llama3.1:8b` recusa as 30 de fora (o `gemma3:4b`, 19) e, nas respostas, escreve tão fiel quanto ele; as recusas a mais nas de dentro são quase todas de perguntas sem a evidência nos trechos; +1,2 s por resposta |
 | B10 | E4 — escada de acervo | **não construído**: precisa dos distratores (PDFs do mesmo tema e de outra área) e de perguntas revisadas por degrau, que são decisão sua |
-| C | Placar (regra de veredito, Holm, interação) e as seções novas do relatório | aguarda a §11 |
+| **R1** | O relatório do benchmark em PDF, didático | **concluída** (provisório): `tests/reports/benchmark_report.py` lê as rodadas, e os textos editáveis ficam em `tests/benchmark/relatorio/`; 32 páginas e 18 figuras. O definitivo sai do mesmo comando depois da revisão dos goldens e da rodada final |
+| C | Placar (regra de veredito, Holm, interação) e as seções novas do relatório | aguarda a §11 (o R1 tem a estrutura provisória) |
 
 ### Portões, estado atual
 
@@ -77,7 +81,7 @@ Rodados no fim de cada etapa. Nenhum precisa de Ollama, GPU ou rede.
 ```
 tests/api       (pytest, backend/.venv)                     VERDE — 78 testes (35 antes do benchmark)
 tests/benchmark (pytest, backend/.venv; entra no CI)        VERDE — 71 testes
-tests/reports   (pytest, tests/reports/.venv)               VERDE — 44 testes
+tests/reports   (pytest, tests/reports/.venv)               VERDE — 67 testes (23 do relatório do benchmark)
 tests/jeveval   (pytest -m "not live", tests/jeveval/.venv) VERDE — 63 testes
 goldens v2      (validar --indice pdf-v1 --evidencia)       VERDE — 103 goldens, 0 erro, 0 aviso
 ```
@@ -1202,8 +1206,9 @@ e o placar foi refeito com as mesmas respostas, sem rodar de novo.
 - **Veredito na atribuição errada** (margem de 0,029, do A/A com citação do
   próprio cartão): `hdr-emb`, −0,01 [−0,09; +0,07], sem diferença relevante;
   `hdr`, +0,05 [−0,04; +0,14], inconclusivo, no sentido de piorar.
-- **O cabeçalho no embedding ajuda a citar a fonte certa** (44 → 50 das 70), sem
-  mudar a taxa principal. O Hit@4 das 7 perguntas que nomeiam o artigo fica
+- **O cabeçalho no embedding cita um pouco mais a fonte certa** (44 → 50 das
+  70: +0,07 [−0,03; +0,17], inconclusivo, corrigido no R1), sem mudar a taxa
+  principal. O Hit@4 das 7 perguntas que nomeiam o artigo fica
   em 6 de 7 nos dois braços: a primeira hipótese não aparece (n = 7).
 - **O cabeçalho no texto atrapalha a citação.** As fabricações dobram (5 → 11),
   e a guarda "sem citação não sobe" não passa (+4). Parte das fabricações é o
@@ -1383,7 +1388,8 @@ Os vereditos usam a margem do A/A do próprio cartão:
 **Duas notas de medida.**
 
 - O `llama3.1:8b` muda 19 das 103 respostas na outra ordem, com temperatura 0 e
-  a mesma semente; o `gemma3:4b` mudava 0 no E0. A margem do A/A do cartão já
+  a mesma semente; o `gemma3:4b` mudava 2 numa repetição do E0, e nenhuma na
+  outra. A margem do A/A do cartão já
   conta isso, e é por isso que o plano pede a margem refeita para um gerador
   novo.
 - A revisão à mão das recusas, que o detector pede para um gerador novo. As 46
@@ -1410,6 +1416,65 @@ acervo e, em quase metade dos casos, o que a busca não trouxe; com a evidência
 no prompt, escreve tão fiel quanto o gemma. Duas ressalvas: a separação pela
 evidência foi definida depois de ver os dados, e as perguntas de fora são só
 30. Vale confirmar com perguntas novas.
+
+### R1 — O relatório do benchmark em PDF (19/10)
+
+O `tests/reports/` gerava o relatório das suítes (RAGAS, DeepEval, JevEval) e não
+lia nada do benchmark; do benchmark só saía um `resumo.md` cru por rodada, e a
+leitura de cada resultado estava escrita à mão neste documento. O R1 junta as
+duas coisas num PDF para os dois públicos do plano (§1): a turma, que precisa
+entender como o teste foi feito, e quem mantém o RAG, que precisa do ajuste.
+
+```powershell
+tests\reports\.venv\Scripts\python.exe tests\reports\benchmark_report.py --abrir
+```
+
+| Arquivo | Mudança |
+|---|---|
+| `tests/reports/benchmark_report.py` (novo) | lê o manifesto e os textos, preenche os marcadores com o placar, monta o cartão, as figuras e as tabelas, confere os vereditos que cada texto afirma e gera o PDF e o Markdown em `tests/benchmark/out/relatorio_<data>/` |
+| `tests/reports/benchmark_data.py` (novo) | as rodadas (cartão, placar, medidas, execução), a margem de cada métrica (a do cartão ou a do E0), as análises que cruzam rodadas (o E5, o preço da citação, as respostas que mudam, a curva ROC) e os números no padrão brasileiro |
+| `tests/reports/benchmark_charts.py` (novo) | as figuras que a "Saída" de cada experimento pede no plano: o gráfico das diferenças com o IC e a faixa de ruído, as margens do E0, a curva de Lorenz, evidência × tokens, a ROC do reranker, as categorias de citação e o painel custo × qualidade. A paleta e o estilo são os do `report_charts.py` |
+| `tests/benchmark/relatorio/` (novo) | o conteúdo: `relatorio.yaml` (a ordem e os avisos da capa), um texto por experimento, o resumo, "como o teste foi feito", as ressalvas e o glossário, e o `README.md` com o formato |
+| `tests/benchmark/run_experiment.py`, `placar.py` | o placar grava também `medidas.json` (a medida de cada pergunta), para o relatório contar acertos e comparar rodadas sem importar o backend; `LOWER_IS_BETTER` e `BINARY_METRICS` passam para o `placar.py` |
+| `tests/reports/report_pdf.py`, `report_markdown.py`, `report_document.py` | o título do PDF por parâmetro, a caixa didática (ℹ, ao lado da de aviso), a lista numerada, e uma correção: título seguido de figura quebrava a página mesmo cabendo (um KeepTogether dentro de outro). O relatório das suítes ganha com isso também |
+| testes | 23 em `tests/reports/test_benchmark_report.py` (9 de comportamento e 14 que conferem o cabeçalho de cada texto) e 1 asserção nova no placar |
+
+**O texto é de quem escreve; os números, das rodadas.** Nenhum número dos textos
+é digitado: um marcador como `{{delta e9 gemma→llama abstention.correct_abstention}}`
+vira "+0,37 [+0,20; +0,53]" na hora de gerar. Cada texto declara os vereditos
+que ele afirma; se uma rodada nova mudar um deles, o relatório põe um aviso na
+própria seção e no apêndice. Marcador que não se resolve vira `⟨?⟩` e entra nos
+avisos. O apêndice lista as rodadas de onde saiu cada número.
+
+**Todas as rodadas tiveram o placar refeito** (`--so-placar`, com o cartão e o
+recorte de cada uma), para gravar o `medidas.json`. Nenhum veredito e nenhuma
+média mudou.
+
+**A revisão dos textos contra os números corrigiu três afirmações deste
+documento:**
+
+- **E3:** o cabeçalho no embedding cita a fonte certa um pouco mais (44 → 50 de
+  70), mas o veredito é **inconclusivo** (+0,07 [−0,03; +0,17]); este documento
+  dizia "ajuda". O documento certo chega aos trechos no mesmo número de perguntas
+  nos dois braços. O cabeçalho no texto cita **menos** a fonte (−0,13, pior).
+- **E1:** a queda da abstenção correta (25 → 19 de 30) é **inconclusiva**: o
+  intervalo encosta no zero. E ela tem uma explicação que faltava aqui: com o
+  nomic, o gerador recusava também 39 das 70 perguntas de dentro. Ele recusava
+  quase tudo, e a abstenção "correta" era efeito de uma busca ruim.
+- **E0:** o gerador mudou 2 de 103 respostas numa repetição, e nenhuma na outra;
+  este documento dizia 0.
+
+**O PDF de agora** (`tests/benchmark/out/relatorio_<data>/`, 32 páginas):
+resumo com a tabela dos experimentos e o `.env` recomendado; como o teste foi
+feito (o funil, as regras, como ler um veredito e o gráfico das diferenças); uma
+seção por experimento, com o cartão, as figuras, a leitura, a recomendação e uma
+caixa "para a turma"; as ressalvas; o glossário; e o apêndice das rodadas. Ele é
+**provisório**: a capa avisa que as perguntas são rascunho e a regra de veredito
+é provisória.
+
+**Para o relatório definitivo:** revisar os goldens (e os títulos), rodar os
+cartões de novo, trocar as pastas em `rodadas:` de cada texto e gerar de novo.
+Os textos são o lugar de ajustar o tom.
 
 ### B4 — E5: a análise de concentração e a primeira leitura (18/10)
 

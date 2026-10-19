@@ -36,6 +36,7 @@ BASELINE = colors.HexColor("#c3c2b7")
 HEADER_BG = colors.HexColor("#f0efec")
 ZEBRA = colors.HexColor("#f9f9f7")
 WARNING = colors.HexColor("#fab219")  # status "warning" da paleta; sempre com ícone + rótulo
+NOTE = colors.HexColor("#2a78d6")  # slot 1 da paleta: a caixa didática ("nota"), sempre com ícone + título
 
 PAGE_MARGIN = 2 * cm
 TITLE = "Relatório de qualidade de resposta do RAG"
@@ -120,11 +121,12 @@ def _table(block: Table, width: float, st: dict[str, ParagraphStyle]) -> list:
     return out
 
 
-def _bullets(items: list[str], style: ParagraphStyle) -> ListFlowable:
+def _bullets(items: list[str], style: ParagraphStyle, numbered: bool = False) -> ListFlowable:
     return ListFlowable(
         [ListItem(Paragraph(_inline(i), style), leftIndent=12) for i in items],
-        bulletType="bullet",
-        start="•",
+        bulletType="1" if numbered else "bullet",
+        start="1" if numbered else "•",
+        bulletFormat="%s." if numbered else None,
         bulletFontName="DejaVu",
         bulletFontSize=style.fontSize,
         leftIndent=12,
@@ -140,13 +142,18 @@ def _figure(block: Figure, width: float, st: dict[str, ParagraphStyle]) -> KeepT
 
 
 def _callout(block: Callout, width: float, st: dict[str, ParagraphStyle]) -> RLTable:
-    content = [Paragraph(f"⚠ {_inline(block.title)}", st["callout_title"]), _bullets(block.items, st["small"])]
+    note = block.tone == "nota"
+    content = [Paragraph(f"{'ℹ' if note else '⚠'} {_inline(block.title)}", st["callout_title"])]
+    if note:
+        content += [Paragraph(_inline(item), st["small"]) for item in block.items]
+    else:
+        content.append(_bullets(block.items, st["small"]))
     box = RLTable([[content]], colWidths=[width], hAlign="LEFT")
     box.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, -1), ZEBRA),
-                ("LINEBEFORE", (0, 0), (0, -1), 3, WARNING),
+                ("LINEBEFORE", (0, 0), (0, -1), 3, NOTE if note else WARNING),
                 ("LEFTPADDING", (0, 0), (-1, -1), 10),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 8),
                 ("TOPPADDING", (0, 0), (-1, -1), 6),
@@ -169,16 +176,20 @@ class _Doc(SimpleDocTemplate):
         self.canv.addOutlineEntry(flowable.getPlainText(), key, level=level, closed=level > 0)
 
 
-def _footer(canvas, doc) -> None:
-    canvas.saveState()
-    canvas.setFont("DejaVu", 7.5)
-    canvas.setFillColor(MUTED)
-    canvas.drawString(PAGE_MARGIN, 1.1 * cm, TITLE)
-    canvas.drawRightString(A4[0] - PAGE_MARGIN, 1.1 * cm, f"página {doc.page}")
-    canvas.restoreState()
+def _footer(title: str):
+    def draw(canvas, doc) -> None:
+        canvas.saveState()
+        canvas.setFont("DejaVu", 7.5)
+        canvas.setFillColor(MUTED)
+        canvas.drawString(PAGE_MARGIN, 1.1 * cm, title)
+        canvas.drawRightString(A4[0] - PAGE_MARGIN, 1.1 * cm, f"página {doc.page}")
+        canvas.restoreState()
+
+    return draw
 
 
-def render_pdf(blocks: list[Block], path: Path) -> Path:
+def render_pdf(blocks: list[Block], path: Path, title: str = TITLE,
+               author: str = "tests/reports/build_report.py") -> Path:
     _register_fonts()
     st = _styles()
     doc = _Doc(
@@ -188,8 +199,8 @@ def render_pdf(blocks: list[Block], path: Path) -> Path:
         rightMargin=PAGE_MARGIN,
         topMargin=1.8 * cm,
         bottomMargin=1.9 * cm,
-        title=TITLE,
-        author="tests/reports/build_report.py",
+        title=title,
+        author=author,
     )
     width = doc.width
     story: list = []
@@ -206,7 +217,7 @@ def render_pdf(blocks: list[Block], path: Path) -> Path:
         if isinstance(block, Para):
             flowables = [Paragraph(_inline(block.text), st["small" if block.small else "body"])]
         elif isinstance(block, Bullets):
-            flowables = [_bullets(block.items, st["small"])]
+            flowables = [_bullets(block.items, st["small"], block.numbered)]
         elif isinstance(block, Table):
             flowables = _table(block, width, st)
         elif isinstance(block, Figure):
@@ -220,9 +231,14 @@ def render_pdf(blocks: list[Block], path: Path) -> Path:
         else:
             continue
         if pending:
-            story.append(KeepTogether(pending + flowables[:1]))
+            # Um KeepTogether dentro de outro (o da figura) quebrava a página mesmo cabendo: título + figura
+            # iam para a página seguinte e deixavam meia página em branco. Junta tudo num só.
+            first = flowables[0]
+            inner = list(first._content) if isinstance(first, KeepTogether) else [first]
+            story.append(KeepTogether(pending + inner))
             flowables, pending = flowables[1:], []
         story += flowables
     story += pending
-    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
+    footer = _footer(title)
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
     return path

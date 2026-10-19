@@ -65,16 +65,11 @@ REQUIRED = ("id", "titulo", "pergunta", "hipotese", "goldens", "bracos", "metric
 C1_METRICS = ("hit_at_1", "hit_at_k", "hit_at_10", "mrr_at_10", "precision_at_k", "coverage_at_k", "evidence_at_k",
               "coverage_at_10", "retrieval_ms", "context_tokens")
 RAGAS_METRICS = ("faithfulness", "answer_relevancy", "context_precision", "context_recall", "context_relevance")
-# Métricas em que menos é melhor (o resto: mais é melhor).
-LOWER_IS_BETTER = {"undue_abstention", "with_evidence", "generation_ms", "retrieval_ms", "prompt_tokens",
-                   "completion_tokens", "context_tokens", "false_block", "misattribution", "no_citation"}
+# Métricas em que menos é melhor, e as de 0 ou 1 (McNemar, provisório até a §11): em placar.py, que o relatório lê.
+LOWER_IS_BETTER = placar.LOWER_IS_BETTER
+BINARY_METRICS = placar.BINARY_METRICS
 # Os grupos do placar: uma métrica do cartão (guarda) se escreve grupo.metrica, como c1.evidence_at_k.
 METRIC_GROUPS = ("c1", "c2", "abstention", "attribution", "cost")
-# Métricas de 0 ou 1 por pergunta: nelas o placar aplica o McNemar exato (provisório até a §11).
-BINARY_METRICS = {"c1.hit_at_1", "c1.hit_at_k", "c1.hit_at_10", "c1.evidence_at_k", "c1.correct_abstention",
-                  "c1.false_block", "abstention.correct_abstention", "abstention.undue_abstention",
-                  "abstention.with_evidence", "abstention.without_evidence",
-                  "attribution.misattribution", "attribution.no_citation", "attribution.cites_source"}
 SPLITS = ("selecao", "confirmacao")
 # c1: a recuperação; c2: as respostas e o juiz; respostas: só as respostas (recusa, atribuição e custo).
 LAYERS = ("c1", "c2", "respostas")
@@ -748,6 +743,10 @@ def scoreboard(card: dict, out: Path, limit: int | None, goldens: list[dict] | N
                 "verdict": placar.verdict(delta, margin, higher_is_better=metric.split(".", 1)[1] not in LOWER_IS_BETTER),
             }
     (out / "placar.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    # As medidas por pergunta: o relatório do benchmark conta acertos ("19 de 30") e compara braços de rodadas
+    # diferentes (o preço da citação: o E1 sem, o E3 com) sem importar o backend.
+    per_question = {a: {"clusters": m["clusters"], "metrics": _all_metrics(m)} for a, m in measures.items()}
+    (out / "medidas.json").write_text(json.dumps(per_question, ensure_ascii=False), encoding="utf-8")
     return result
 
 

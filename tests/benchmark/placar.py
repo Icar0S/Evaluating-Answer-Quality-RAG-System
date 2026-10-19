@@ -24,6 +24,20 @@ from collections import defaultdict
 
 BOOTSTRAP_SAMPLES = 2000
 BOOTSTRAP_SEED = 20261018
+# Métricas em que menos é melhor (o resto: mais é melhor). Aqui, e não no runner, porque o relatório do benchmark
+# (tests/reports/benchmark_report.py) também lê, e não importa o backend.
+LOWER_IS_BETTER = {"undue_abstention", "with_evidence", "generation_ms", "retrieval_ms", "prompt_tokens",
+                   "completion_tokens", "context_tokens", "false_block", "misattribution", "no_citation"}
+# Métricas de 0 ou 1 por pergunta (grupo.metrica): nelas o placar aplica o McNemar exato.
+BINARY_METRICS = {"c1.hit_at_1", "c1.hit_at_k", "c1.hit_at_10", "c1.evidence_at_k", "c1.correct_abstention",
+                  "c1.false_block", "abstention.correct_abstention", "abstention.undue_abstention",
+                  "abstention.with_evidence", "abstention.without_evidence",
+                  "attribution.misattribution", "attribution.no_citation", "attribution.cites_source"}
+
+
+def higher_is_better(metric: str) -> bool:
+    """`metric` com ou sem o grupo (c2.faithfulness ou faithfulness)."""
+    return metric.split(".", 1)[-1] not in LOWER_IS_BETTER
 
 
 def _percentile(ordered: list[float], q: float) -> float:
