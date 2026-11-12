@@ -179,7 +179,8 @@ def main() -> None:
     parser.add_argument("--no-open", action="store_true", help="não abre o painel no navegador ao terminar")
     args = parser.parse_args()
 
-    reason = stack_status()
+    # Com --answers, o assistente não é chamado: o índice não precisa estar ao alcance (container de testes).
+    reason = stack_status(need_index=args.answers is None)
     if reason:
         print(f"Stack real não está pronta, abortando: {reason}", file=sys.stderr)
         raise SystemExit(1)

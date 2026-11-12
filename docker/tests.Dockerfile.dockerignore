@@ -1,0 +1,31 @@
+# Contexto do build da imagem de testes (docker/tests.Dockerfile). O BuildKit usa
+# o <Dockerfile>.dockerignore ao lado do Dockerfile no lugar do .dockerignore da
+# raiz, que continua valendo só para o backend (ele exclui tests/ e frontend/,
+# que aqui entram).
+#
+# Fica de fora o que não está no Git ou é saída de execução: o .env (segredos),
+# os venvs e node_modules da máquina (a imagem tem os dela, e os do Windows nem
+# rodam no Linux), o acervo e o índice, os logs e os resultados (que entram por
+# bind mount, para continuarem na pasta do host).
+.git
+.github
+.env
+**/.venv
+**/venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+.deepeval
+**/.deepeval
+data
+logs
+docs/paper*
+tests/*/results/*
+tests/reports/out/*
+tests/benchmark/out/*
+tests/mutation/work
+tests/mutation/corpus/base
+tests/mutation/corpus/variants/*.pdf
+tests/human_review/annotations/*
+**/playwright-report
+**/test-results

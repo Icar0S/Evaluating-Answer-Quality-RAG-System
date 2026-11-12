@@ -16,6 +16,147 @@ Assistente de RAG 100% local, especializado em teste de sistemas baseados em LLM
 
 Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões técnicas e o racional por trás delas.
 
+## Início rápido com Docker (um comando)
+
+Na máquina, só o Docker: Python, Node, Ollama e os venvs ficam nos containers.
+Os comandos rodam da raiz do projeto, no Windows (PowerShell), no Linux ou no
+macOS.
+
+**Pré-requisitos**
+
+- Windows: Docker Desktop com WSL2. Linux: Docker Engine com o plugin
+  `compose`. macOS: Docker Desktop.
+- **12 GB ou mais de memória para a VM do Docker.** Com 7,6 GB, no ensaio de
+  13/10/2026, a VM matou o processo do modelo duas vezes, e o juiz devolveu
+  erro 500 (ver [Problemas comuns no Docker](#problemas-comuns-no-docker)). No
+  Windows, o limite vem do `%USERPROFILE%\.wslconfig` (`[wsl2]` e
+  `memory=12GB`).
+- ~27 GB de disco: a imagem do Ollama tem 9,3 GB, os quatro modelos 9,5 GB, a
+  imagem de testes 7,1 GB e a do backend 0,85 GB.
+- GPU NVIDIA: opcional. Sem ela, gerador e juiz rodam em CPU, bem mais devagar.
+
+**Documentos.** O acervo não é versionado. Ponha os PDFs em
+`data/source_pdfs/` e os Markdown em `data/new_papers_marks/`. Sem eles, a stack
+sobe do mesmo jeito, com o índice vazio, e o log do `ingest` e o quadro do
+`status` avisam.
+
+**Subir:**
+
+```bash
+docker compose up -d --build
+```
+
+A primeira vez baixa a imagem do Ollama e os modelos (~19 GB, sem barra de
+progresso no `up -d`), faz o build do backend e indexa os dois acervos (~1 min
+cada). Medido aqui, com volumes novos e a imagem do Ollama já baixada: 8,5 min,
+dos quais 6,5 min foram os modelos (~25 MB/s). Para acompanhar, em outro terminal:
+
+```bash
+docker compose logs -f models ingest ingest-md
+```
+
+No fim, `docker compose logs status` mostra os endereços, os trechos de cada
+índice, os modelos presentes no Ollama e os avisos. As subidas seguintes
+levam segundos (15 s, medido), sem baixar nem reindexar nada.
+
+**GPU NVIDIA.** No `.env` da raiz (copie o `.env.example`), descomente as duas
+linhas do bloco "Docker":
+
+```
+COMPOSE_PATH_SEPARATOR=:
+COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml
+```
+
+O comando continua o mesmo. O separador `:` é o que faz a linha valer também no
+Windows, onde o padrão do Compose é `;`. Para conferir antes se o Docker
+enxerga a GPU: `docker run --rm --gpus all ubuntu nvidia-smi`.
+
+**Reaproveitar os modelos da máquina.** Se o Ollama da máquina já tem os
+modelos, aponte a pasta dele no `.env`, com barras normais também no Windows:
+
+```
+OLLAMA_SEED_DIR=C:/Users/<você>/.ollama/models
+```
+
+O serviço `models-seed` copia só os modelos da stack para o volume do Docker,
+em vez de baixar: os quatro (9,5 GB) levaram 2 min 29 s nesta máquina. O que
+faltar na pasta, o serviço `models` baixa. No Linux, a pasta costuma ser
+`~/.ollama/models` ou `/usr/share/ollama/.ollama/models`.
+
+**Endereços**
+
+| O quê | Onde |
+|---|---|
+| Página inicial | http://localhost:5510 |
+| Chat do RAG dos PDFs (`pdf-v1`) | http://localhost:5510/chat.html |
+| Chat do RAG dos Markdown (`md-v1`) | http://localhost:5510/chat.html?api=http://localhost:8011 |
+| APIs dos dois RAGs | http://localhost:8010 e http://localhost:8011 |
+| Ollama do container | http://localhost:11435 |
+
+**Testes.** Rodam num container, contra o RAG que está no ar, pelos scripts
+abaixo. Sem a stack no ar, o script a sobe antes.
+
+```
+scripts\docker_tests.bat --rapido        (Windows)
+./scripts/docker_tests.sh --rapido       (Linux/macOS)
+```
+
+| Modo | O que roda |
+|---|---|
+| sem modo, ou só opções do `run_all` (`--rapido`, `--limite 2`, `--pular e2e deepeval`, `--abrir`...) | o mesmo do `run_all_tests.bat`, com as respostas geradas pela API do RAG no ar |
+| `demo [--goldens N]` | a demonstração dos dois RAGs, sem tela (com vídeo e trace), o RAGAS e o relatório que compara `pdf-v1` × `md-v1` |
+| `demo-rapido` | só os testes ao vivo da demonstração |
+| `hermeticos` | API, gerador de relatório e JevEval com o Jev falso; não precisa da stack |
+| `relatorio-e2e` | o relatório HTML do Playwright, com vídeo e trace, em http://localhost:9323 |
+| `reindexar` | reindexa os dois RAGs (ver abaixo) |
+| `shell` | `bash` no container, para depurar |
+
+Para a primeira conferência, use `--rapido` (herméticos e E2E, 3,3 min
+medidos) ou `--limite 2` (a qualidade em 2 goldens). Numa máquina sem nenhum
+resultado anterior, o `--rapido` termina com "nenhum resultado de avaliação"
+e código 1, como o `run_all_tests.bat`: o relatório precisa de ao menos uma
+rodada de qualidade, que o `--limite 2` faz. A tabela de
+[quanto tempo leva](#rodar-tudo-de-uma-vez) vale aqui também. No `.bat`,
+`--sem-pausa` dispensa a tecla no fim. O JevEval só roda com a
+`TYPESAFE_API_KEY` no `.env`; o container recebe a chave por variável e nunca
+a imprime.
+
+**Onde sai o relatório.** Nas mesmas pastas do fluxo sem Docker:
+`tests/reports/out/<data>/relatorio.pdf`, com o histórico em
+`tests/reports/out/HISTORICO.md` e o mais recente em
+`tests/reports/out/ultimo/`. Os resultados de cada framework ficam em
+`tests/*/results/`, e o vídeo e o trace de cada teste E2E, em
+`frontend/tests/playwright-report/` (modo `relatorio-e2e`). Com `--abrir`, o
+script abre o PDF novo no fim.
+
+**Reindexar depois de trocar os documentos.** A subida só indexa um índice
+vazio. Com o índice já populado, o `ingest` compara a pasta com o manifesto
+do índice e, se ela mudou, avisa no log, sem reindexar sozinho, porque o
+backend está com o banco aberto. Para reindexar:
+
+```
+scripts\docker_tests.bat reindexar       (ou ./scripts/docker_tests.sh reindexar)
+```
+
+O modo faz os três passos, que também valem à mão:
+
+1. `docker compose stop backend backend-md`
+2. `docker compose run --rm ingest python scripts/ingest_documents.py` (e o
+   mesmo com `ingest-md`)
+3. `docker compose up -d`
+
+**Parar e zerar**
+
+- `docker compose down` para tudo. Os índices e os modelos ficam nos volumes.
+- `docker compose down -v` apaga também os volumes: na subida seguinte, os
+  modelos são baixados de novo (~9,5 GB) e os acervos, reindexados.
+
+O início rápido sem Docker, logo abaixo, continua valendo para o
+desenvolvimento do dia a dia. A demonstração com o navegador visível, para uma
+turma, continua no `scripts\demo_e2e.bat`
+([Demonstração E2E ao vivo](#demonstração-e2e-ao-vivo-docker--playwright)): a
+stack sobe nestes mesmos containers, e os testes rodam na máquina.
+
 ## Início rápido
 
 Pré-requisitos: [Ollama](https://ollama.com/download) instalado e aberto, e
@@ -172,6 +313,43 @@ Em máquina sem disco `D:`, passe outro caminho:
 O backend não está respondendo em `http://localhost:8010`. Rode
 `curl.exe http://localhost:8010/health` e veja a janela do backend. Confira
 também se a página foi aberta por `http://localhost:5510` e não por `file://`.
+
+### Problemas comuns no Docker
+
+O primeiro lugar para olhar é sempre o quadro do `status`
+(`docker compose logs status`) e o `docker compose ps`.
+
+- **"port is already allocated" ou "address already in use" na 8010 ou na
+  5510.** São as portas do ambiente local: o `start_dev.bat` está aberto.
+  Feche as janelas "RAG backend" e "RAG frontend" e suba de novo. Se for outro
+  programa, o item [Porta ocupada](#porta-ocupada-por-outro-serviço-ou-erros-estranhos-de-json-e-404)
+  mostra como descobrir qual.
+- **O juiz devolve erro 500, ou o RAGAS e o DeepEval falham no meio.** Falta
+  memória na VM do Docker: com gerador, juiz e embeddings carregados juntos, a
+  VM de 7,6 GB matou o processo do modelo (ensaio de 13/10/2026). Confira com
+  `docker stats` e dê 12 GB ou mais à VM: no Windows, `memory=12GB` na seção
+  `[wsl2]` do `%USERPROFILE%\.wslconfig` e depois `wsl --shutdown`; no macOS,
+  em Settings > Resources do Docker Desktop. Os scripts já tiram o gerador da
+  memória antes dos juízes, mas não fazem milagre com 7,6 GB.
+- **Índice vazio.** O `status` avisa "Índice ... VAZIO", e os testes com
+  geração real desse RAG se auto-pulam. Ponha os documentos na pasta (a do
+  aviso) e rode `scripts\docker_tests.bat reindexar`.
+- **Modelo faltando.** O `status` marca `[FALTA]` no modelo. Veja
+  `docker compose logs models`: sem internet, o `ollama pull` falha. Aponte o
+  `OLLAMA_SEED_DIR` para uma pasta que tenha o modelo, ou baixe de novo com
+  `docker compose run --rm models`.
+- **A primeira subida parece parada.** O `up -d` não mostra progresso, e são
+  ~19 GB (a imagem do Ollama e os modelos) mais o build. Acompanhe com
+  `docker compose logs -f models ingest ingest-md`. A velocidade muda muito de
+  um registro para outro: em 12/11/2026, nesta máquina, o do Ollama entregou
+  ~14 MB/s (o `nomic-embed-text` em ~20 s), e o da Microsoft, de onde vem a
+  base da imagem de testes, ~0,4 MB/s (35 min para ela). Se a máquina já tem o
+  Ollama com os modelos, o `OLLAMA_SEED_DIR` dispensa o download deles.
+- **GPU não detectada.** Teste com `docker run --rm --gpus all ubuntu nvidia-smi`.
+  Se esse comando falhar, falta o driver NVIDIA no Windows ou o suporte do
+  Docker Desktop (WSL2) à GPU. Se ele funcionar, confira as linhas
+  `COMPOSE_FILE` e `COMPOSE_PATH_SEPARATOR` no `.env`. Com uma pergunta em
+  andamento, `docker compose exec ollama ollama ps` deve mostrar `100% GPU`.
 
 ## Instalação detalhada
 
@@ -347,6 +525,11 @@ scripts\run_all_tests.bat --rapido        # só os herméticos (API, relatório,
 scripts\run_all_tests.bat --limite 2      # qualidade em só 2 goldens, para conferir que tudo roda
 scripts\run_all_tests.bat --pular e2e deepeval --abrir
 ```
+
+Com a stack em Docker, as mesmas opções valem no `scripts\docker_tests.bat`
+([Início rápido com Docker](#início-rápido-com-docker-um-comando)), que roda
+tudo num container e gera as respostas pela API do RAG no ar
+(`run_all.py --api`).
 
 O script ([tests/run_all.py](tests/run_all.py)) roda, nesta ordem:
 
@@ -650,6 +833,11 @@ scripts\demo_e2e.bat subir    # só sobe os containers, para abrir o chat de cad
 scripts\demo_e2e.bat parar    # derruba os containers (índices e modelos ficam nos volumes)
 ```
 
+Sem Node nem Python na máquina, `scripts\docker_tests.bat demo` roda a mesma
+demonstração num container, sem tela, com vídeo e trace de cada teste
+(`scripts\docker_tests.bat relatorio-e2e` mostra os dois). É para conferir,
+não para a turma assistir.
+
 Para comparar **formatos** em vez de acervos, a demonstração roda com as
 versões v2, que têm os mesmos artigos nos dois formatos. Na primeira vez, a
 subida indexa as duas versões novas (alguns minutos); as v1 continuam no
@@ -687,13 +875,16 @@ Playwright, com vídeo e trace de cada teste.
 
 | Container ([docker-compose.yml](docker-compose.yml)) | O que faz |
 |---|---|
+| `models-seed` | Copia os modelos da stack da pasta do Ollama da máquina (`OLLAMA_SEED_DIR`) para o volume, antes do `ollama`, e sai; sem a pasta, não faz nada |
 | `ollama` | Embeddings (`nomic-embed-text`), gerador (`gemma3:4b`) e juiz (`qwen3:8b`), com GPU via `docker-compose.gpu.yml` |
 | `models` | Baixa os modelos que faltarem e sai |
-| `ingest` | Indexa os PDFs de `data/source_pdfs` (`pdf-v1`, ou `DEMO_PDF_INDEX`), se o índice estiver vazio |
-| `ingest-md` | Indexa os Markdown de `data/new_papers_marks` (`md-v1`, ou `DEMO_MD_INDEX`), se o índice estiver vazio |
+| `ingest` | Indexa os PDFs de `data/source_pdfs` (`pdf-v1`, ou `DEMO_PDF_INDEX`), se o índice estiver vazio; senão, avisa se a pasta mudou |
+| `ingest-md` | Indexa os Markdown de `data/new_papers_marks` (`md-v1`, ou `DEMO_MD_INDEX`), do mesmo jeito |
 | `backend` | RAG dos PDFs: API em `http://localhost:8010` |
 | `backend-md` | RAG dos Markdown: API em `http://localhost:8011` |
 | `frontend` | nginx servindo o frontend em `http://localhost:5510` |
+| `status` | Confere tudo no fim, mostra os endereços, os trechos de cada índice, os modelos e os avisos, e sai (`docker compose logs status`) |
+| `tests` | Só com `--profile tests`: o container dos testes do `scripts\docker_tests.bat` ([Início rápido com Docker](#início-rápido-com-docker-um-comando)) |
 
 Cada RAG tem o próprio volume de índice. O chat do RAG dos PDFs fica em
 `http://localhost:5510/chat.html`; o dos Markdown, em
@@ -726,12 +917,15 @@ mostra o teste em execução, o RAG e os dois modelos.
 - Para o relatório: Python e os venvs `tests\ragas\.venv` e
   `tests\reports\.venv` (seção "Testes"). Sem eles, o `rapido` continua
   funcionando.
-- Espaço em disco: a imagem do Ollama tem ~9,3 GB e os três modelos, ~8,4 GB.
+- Espaço em disco: a imagem do Ollama tem ~9,3 GB e os quatro modelos (com o
+  bge-m3 do benchmark), ~9,5 GB.
 
 **Primeira vez:**
 
-1. Se a máquina já tem os modelos no Ollama dela, o script copia **só os três
-   da demonstração** para um volume do Docker (~2,5 min; nada é baixado).
+1. Se a máquina já tem os modelos no Ollama dela (`%OLLAMA_MODELS%` ou
+   `%USERPROFILE%\.ollama\models`), o script aponta o `OLLAMA_SEED_DIR` para a
+   pasta, e o serviço `models-seed` copia **só os modelos da stack** para um
+   volume do Docker (2 min 29 s para os quatro; nada é baixado).
 2. Faz o build do backend.
 3. Indexa os PDFs e os Markdown dentro do Docker (~1 min cada).
 
@@ -813,8 +1007,10 @@ tests/compare_indices.py  Compara versões do índice (pdf-v1 × md-v1) com as m
 tests/retrieval_diagnostic.py  O documento certo vem entre os trechos? Pergunta em PT e em EN, por índice
 data/new_papers_marks/    Acervo Markdown do índice md-v1 (não versionado, como os PDFs)
 data/sync_corpora.py      Converte o que falta para os dois acervos terem os mesmos artigos (PDF ↔ Markdown; venv em data/requirements.txt)
-docker-compose.yml        Demonstração ao vivo: Ollama, os dois RAGs (PDFs e Markdown) e o frontend em containers
-docker/                   Dockerfile do backend e a cópia dos modelos para o volume do Docker
+docker-compose.yml        O projeto inteiro em containers: Ollama, os dois RAGs (PDFs e Markdown), o frontend, o status e os testes (perfil tests)
+docker/                   Dockerfiles do backend e dos testes, o entrypoint dos testes e a cópia dos modelos para o volume do Docker
+scripts/docker_tests.bat  Os testes num container, contra a stack do Docker (scripts/docker_tests.sh no Linux e no macOS)
+scripts/stack_status.py   O quadro do serviço status e o preflight dos testes: endereços, índices, modelos e avisos
 scripts/demo_e2e.bat      Sobe a stack em Docker, roda os testes E2E nos dois RAGs e gera o relatório comparando os dois
 tests/demo_e2e.py         O que o demo_e2e.bat roda com os containers no ar: testes ao vivo, RAGAS e relatório
 tests/mutation/           Estudo de mutação para RAG (Fase 4) — operadores, oráculos, campanha e análise

@@ -134,11 +134,16 @@ def _bullets(items: list[str], style: ParagraphStyle, numbered: bool = False) ->
     )
 
 
-def _figure(block: Figure, width: float, st: dict[str, ParagraphStyle]) -> KeepTogether:
+def _figure(block: Figure, width: float, st: dict[str, ParagraphStyle], max_height: float | None = None) -> KeepTogether:
     with PILImage.open(block.path) as img:
         px_w, px_h = img.size
     w = width * block.width
-    return KeepTogether([Image(str(block.path), width=w, height=w * px_h / px_w), Paragraph(_inline(block.caption), st["caption"])])
+    h = w * px_h / px_w
+    # Mais alta que a página, a figura derrubava o PDF inteiro (LayoutError): o heatmap de uma rodada com 103
+    # perguntas (benchmark, 19/10/2026) tinha 1505 pt num quadro de 725. Encolhe, mantendo a proporção.
+    if max_height is not None and h > max_height:
+        w, h = w * max_height / h, max_height
+    return KeepTogether([Image(str(block.path), width=w, height=h), Paragraph(_inline(block.caption), st["caption"])])
 
 
 def _callout(block: Callout, width: float, st: dict[str, ParagraphStyle]) -> RLTable:
@@ -221,7 +226,8 @@ def render_pdf(blocks: list[Block], path: Path, title: str = TITLE,
         elif isinstance(block, Table):
             flowables = _table(block, width, st)
         elif isinstance(block, Figure):
-            flowables = [_figure(block, width, st)]
+            # A legenda e o título que vem junto (KeepTogether) precisam de lugar na mesma página.
+            flowables = [_figure(block, width, st, max_height=0.8 * doc.height)]
         elif isinstance(block, Callout):
             flowables = [_callout(block, width, st), Spacer(1, 8)]
         elif isinstance(block, PageBreak):
