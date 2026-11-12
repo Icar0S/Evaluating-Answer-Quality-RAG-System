@@ -170,13 +170,20 @@ def means_chart(runs: list[Run], path: Path) -> Path:
 
 
 def framework_colors(frameworks: list[str]) -> dict[str, str]:
-    """Cor de cada framework (para o histórico, onde a entidade é o framework, não a rodada)."""
-    reserved = set(FRAMEWORK_SLOT.values())
-    free = [i for i in range(len(CATEGORICAL)) if i not in reserved]
+    """Cor de cada framework (para o histórico, onde a entidade é o framework, não a rodada).
+
+    Como em run_colors: acabados os slots livres, vale o reservado de um framework que não está no gráfico. Antes,
+    a sexta série sem slot próprio derrubava o relatório inteiro (IndexError), e bastou uma rodada do RAGAS no
+    pdf-v1-bgem3 (benchmark, 19/10/2026) entrar no histórico para isso acontecer.
+    """
+    names = list(dict.fromkeys(frameworks))
+    claimed = {FRAMEWORK_SLOT[n] for n in names if n in FRAMEWORK_SLOT}
+    free = [i for i in range(len(CATEGORICAL)) if i not in set(FRAMEWORK_SLOT.values())]
+    free += [i for i in sorted(set(FRAMEWORK_SLOT.values())) if i not in claimed]
+    if len(names) - len(claimed) > len(free):
+        raise ValueError(f"no máximo {len(CATEGORICAL)} séries por gráfico")
     colors = {}
-    for name in frameworks:
-        if name in colors:
-            continue
+    for name in names:
         slot = FRAMEWORK_SLOT.get(name)
         colors[name] = CATEGORICAL[slot if slot is not None else free.pop(0)]
     return colors
@@ -200,6 +207,13 @@ def history_chart(runs: list[dict], path: Path, threshold: float = 0.7) -> Path 
     def series_of(r: dict) -> str:
         return r.get("name") or r["framework"]
 
+    # O histórico só cresce, e a paleta tem 8 cores: ficam as 8 séries com a rodada mais recente. A tabela do
+    # HISTORICO.md continua com todas.
+    latest: dict[str, str] = {}
+    for r in points:
+        latest[series_of(r)] = max(latest.get(series_of(r), ""), r["run_generated_at"])
+    kept = set(sorted(latest, key=latest.get, reverse=True)[: len(CATEGORICAL)])
+    points = [r for r in points if series_of(r) in kept]
     per_framework = {series_of(r): sum(1 for p in points if series_of(p) == series_of(r)) for r in points}
     if not per_framework or max(per_framework.values()) < 2:
         return None  # nenhum framework com duas rodadas: não há linha, só pontos soltos
