@@ -121,3 +121,15 @@ def test_versao_registrada_so_compara_os_documentos_da_lista(cli, monkeypatch):
 
     assert cli.folder_divergence() == {"created_at": "2026-10-13T17:20:00+00:00", "added": [], "removed": [],
                                            "changed": []}
+
+
+def test_versao_sem_nenhum_documento_da_lista_resume_em_vez_de_listar(cli, monkeypatch):
+    # Pasta vazia numa versão registrada (o Docker num clone novo): a contagem vai no aviso, sem uma linha por arquivo.
+    monkeypatch.setattr(ingestion, "select_documents",
+                        lambda source_dir=None: (cli.docs, [], {"registered": {"a.pdf": "0", "b.pdf": "1"},
+                                                                "missing": ["a.pdf", "b.pdf"], "ignored_in_folder": 0}))
+
+    out = cli.run()
+
+    assert "A lista da versão pede 2 arquivo(s), e nenhum deles está na pasta." in out
+    assert "na lista da versão e fora da pasta" not in out

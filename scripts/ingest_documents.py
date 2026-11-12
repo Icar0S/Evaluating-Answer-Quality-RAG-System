@@ -270,8 +270,11 @@ def _print_result(result: dict) -> None:
     if result.get("registered_documents") is not None:
         print(f"Documentos na lista da versão: {result['registered_documents']} "
               f"({result['ignored_in_folder']} arquivo(s) da pasta fora da lista, de outras versões)")
-    for name in result.get("missing_documents") or []:
-        print(f"[AVISO] na lista da versão e fora da pasta: {name}")
+    # Sem nenhum documento, a lista inteira faltaria aqui (39 linhas no pdf-v1), repetindo o log da ingestão:
+    # o aviso grande do fim (warn_no_documents) dá a contagem.
+    if result["status"] != "no_documents":
+        for name in result.get("missing_documents") or []:
+            print(f"[AVISO] na lista da versão e fora da pasta: {name}")
     for name in result.get("changed_documents") or []:
         print(f"[AVISO] mudou desde o registro da versão (SHA-256 diferente): {name}")
     print(f"Chunks criados: {result['chunks_created']}")
