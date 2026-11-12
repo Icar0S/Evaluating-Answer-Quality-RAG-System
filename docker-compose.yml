@@ -1,6 +1,8 @@
-# Stack completa do RAG em containers, para a demonstração E2E ao vivo
-# (scripts\demo_e2e.bat; README, "Demonstração E2E ao vivo").
+# O projeto inteiro em containers: o RAG dos PDFs, o dos Markdown, o Ollama e
+# o frontend (README, "Início rápido com Docker"; a demonstração ao vivo,
+# scripts\demo_e2e.bat, sobe esta mesma stack).
 #
+#   models-seed copia os modelos do Ollama da máquina para o volume (OLLAMA_SEED_DIR), se houver, e sai
 #   ollama      embeddings (nomic-embed-text), gerador (gemma3:4b) e juiz (qwen3:8b)
 #   models      baixa os modelos que faltarem, uma vez, e sai (com o bge-m3, o embedding do
 #               índice pdf-v1-bgem3 do benchmark, E1 do plano-benchmark.md)
@@ -9,6 +11,8 @@
 #   backend     RAG dos PDFs: API em http://localhost:8010
 #   backend-md  RAG dos Markdown: API em http://localhost:8011
 #   frontend    nginx servindo frontend/ em http://localhost:5510
+#   status      confere tudo, mostra os endereços e sai (docker compose logs status)
+#   tests       só com --profile tests: o container dos testes (scripts/docker_tests.bat|.sh)
 #
 # Os dois RAGs usam o mesmo Ollama, com o mesmo gerador e os mesmos
 # embeddings, e só o acervo muda. É isso que deixa a demonstração comparar a
@@ -16,11 +20,11 @@
 # processo divide o banco do Chroma com outro.
 #
 # Uso:
-#   docker compose up -d --build                                       # CPU
-#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build   # GPU NVIDIA
-#   docker compose down                                                # para (volumes ficam)
+#   docker compose up -d --build     # sobe tudo (CPU; GPU NVIDIA: COMPOSE_FILE no .env, ver .env.example)
+#   docker compose logs status       # endereços, trechos de cada índice e modelos
+#   docker compose down              # para (índices e modelos ficam nos volumes)
 #
-# Os modelos da demonstração vêm de variáveis próprias (DEMO_*), não do
+# Os modelos da stack vêm de variáveis próprias (DEMO_*), não do
 # GENERATION_MODEL do .env: a demonstração precisa garantir que quem responde
 # (gerador) e quem julga (juiz) sejam modelos DIFERENTES, em qualquer máquina.
 # As portas 8010/5510 são as mesmas do ambiente local: pare o start_dev.bat
@@ -61,7 +65,28 @@ x-backend-health: &backend-health
   retries: 30
   start_period: 20s
 
+# Os modelos que a stack usa: o models-seed copia estes da máquina, e o models
+# baixa os que ainda faltarem. Uma lista só, para os dois nunca divergirem.
+x-models: &models "${DEMO_EMBEDDING_MODEL:-nomic-embed-text} ${DEMO_GENERATION_MODEL:-gemma3:4b} ${DEMO_JUDGE_MODEL:-qwen3:8b} bge-m3"
+
 services:
+  # Copiar em vez de montar a pasta da máquina: lido do volume, o gemma3:4b
+  # carrega em ~44 s; pela pasta do Windows montada, a primeira resposta levou
+  # ~1 min 50 s (docker/seed_models.sh). Sem OLLAMA_SEED_DIR, a pasta montada
+  # é uma vazia do repositório: nada a copiar, e o serviço sai com 0.
+  models-seed:
+    image: ollama/ollama:0.35.0
+    environment:
+      MODELS: *models
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'sh /scripts/seed_models.sh /src /dst $$MODELS'
+    volumes:
+      - ${OLLAMA_SEED_DIR:-./docker/ollama-seed-vazio}:/src:ro
+      - ${OLLAMA_MODELS_DIR:-ollama-models}:/dst
+      - ./docker:/scripts:ro
+    restart: "no"
+
   ollama:
     image: ollama/ollama:0.35.0
     ports:
@@ -74,6 +99,9 @@ services:
       OLLAMA_KEEP_ALIVE: 30m
     volumes:
       - ${OLLAMA_MODELS_DIR:-ollama-models}:/root/.ollama/models
+    depends_on:
+      models-seed:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 5s
@@ -87,19 +115,27 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: ollama:11434
-      MODELS: "${DEMO_EMBEDDING_MODEL:-nomic-embed-text} ${DEMO_GENERATION_MODEL:-gemma3:4b} ${DEMO_JUDGE_MODEL:-qwen3:8b} bge-m3"
+      MODELS: *models
     entrypoint: ["/bin/sh", "-c"]
     # Só baixa o que falta: com os modelos já na pasta, sobe sem internet.
     command:
       - 'for m in $$MODELS; do ollama show "$$m" > /dev/null 2>&1 && echo "ok: $$m" || ollama pull "$$m" || exit 1; done'
     restart: "no"
 
+  # Sem nenhum documento na pasta (o acervo não é versionado), o índice fica
+  # vazio: o ingest avisa no log, o backend sobe assim mesmo, o status repete o
+  # aviso e os testes desse RAG se auto-pulam. Com o índice já populado, o
+  # ingest só confere a pasta contra o manifesto e avisa se ela mudou: não
+  # reindexa sozinho, porque o backend está com o banco aberto.
   ingest:
     build: *backend-build
     image: rag-test-specialist/backend
     working_dir: /app
     command: ["python", "scripts/ingest_documents.py", "--if-empty"]
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      # Para os avisos mostrarem o comando de reindexação do Docker, não o da máquina.
+      INGEST_COMPOSE_SERVICE: ingest
     volumes:
       - ./data/source_pdfs:/app/data/source_pdfs:ro
       - vector-store:/data/vector_store
@@ -108,14 +144,14 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
-  # Sem nenhum .md na pasta (o acervo não é versionado), o índice fica vazio:
-  # o backend-md sobe assim mesmo, e os testes do RAG dos Markdown se auto-pulam.
   ingest-md:
     build: *backend-build
     image: rag-test-specialist/backend
     working_dir: /app
     command: ["python", "scripts/ingest_documents.py", "--if-empty"]
-    environment: *backend-md-env
+    environment:
+      <<: *backend-md-env
+      INGEST_COMPOSE_SERVICE: ingest-md
     volumes:
       - ./data/new_papers_marks:/app/data/new_papers_marks:ro
       - vector-store-md:/data/vector_store
@@ -124,6 +160,8 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
+  # tests/deepeval/results entra só para leitura: é de lá que o /stats tira a
+  # última fidelidade do DeepEval para a homepage (backend/app/main.py).
   backend:
     build: *backend-build
     image: rag-test-specialist/backend
@@ -133,6 +171,7 @@ services:
     volumes:
       - vector-store:/data/vector_store
       - rag-logs:/data/logs
+      - ./tests/deepeval/results:/app/tests/deepeval/results:ro
     depends_on:
       ingest:
         condition: service_completed_successfully
@@ -147,13 +186,14 @@ services:
     volumes:
       - vector-store-md:/data/vector_store
       - rag-logs-md:/data/logs
+      - ./tests/deepeval/results:/app/tests/deepeval/results:ro
     depends_on:
       ingest-md:
         condition: service_completed_successfully
     healthcheck: *backend-health
 
   frontend:
-    image: nginx:1.27-alpine
+    image: nginx:1.27.5-alpine
     ports:
       - "5510:80"
     volumes:
@@ -161,6 +201,33 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    # O mesmo critério do start_dev.bat: a 5510 serve o chat DESTE projeto.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/chat.html | grep -q components/chat.js"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # O quadro final: endereços do host, trechos de cada índice, modelos no Ollama
+  # e avisos. Aparece no `docker compose up` em primeiro plano e em
+  # `docker compose logs status`. O preflight do container de testes usa o
+  # mesmo script.
+  status:
+    build: *backend-build
+    image: rag-test-specialist/backend
+    command: ["python", "/app/scripts/stack_status.py"]
+    environment:
+      DEMO_GENERATION_MODEL: ${DEMO_GENERATION_MODEL:-gemma3:4b}
+      DEMO_JUDGE_MODEL: ${DEMO_JUDGE_MODEL:-qwen3:8b}
+      DEMO_EMBEDDING_MODEL: ${DEMO_EMBEDDING_MODEL:-nomic-embed-text}
+    depends_on:
+      backend:
+        condition: service_healthy
+      backend-md:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   ollama-models:
