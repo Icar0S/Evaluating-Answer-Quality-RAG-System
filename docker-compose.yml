@@ -229,6 +229,68 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # O container dos testes: só com --profile tests, para o `up` normal não o
+  # construir nem subir. Quem chama é scripts/docker_tests.bat|.sh (docker
+  # compose --profile tests run --rm --build tests [modo] [opções]). Testa o RAG
+  # como caixa-preta, pela API: não monta os volumes do Chroma. O localhost
+  # dele chega aos serviços por encaminhamento (docker/tests-entrypoint.sh).
+  # Sem env_file: o .env traria o OLLAMA_BASE_URL da máquina e o resto da
+  # configuração do host. A chave da TypeSafe vem do .env só por interpolação.
+  tests:
+    profiles: ["tests"]
+    build:
+      context: .
+      dockerfile: docker/tests.Dockerfile
+    image: rag-test-specialist/tests
+    # init: o tini repassa os sinais e recolhe os processos do Chromium.
+    # shm_size: recomendação do Playwright para o Chromium em Docker (o padrão de 64 MB derruba abas).
+    init: true
+    shm_size: "1gb"
+    environment:
+      # Juízes do RAGAS e do DeepEval, e o check de Ollama do run_all.
+      OLLAMA_BASE_URL: http://ollama:11434
+      # Juiz do judge-vs-generator.spec.ts e o Ollama de que o demo_e2e.py descarrega o gerador.
+      RAG_JUDGE_OLLAMA_URL: http://ollama:11434
+      RAG_JUDGE_MODEL: ${DEMO_JUDGE_MODEL:-qwen3:8b}
+      RAGAS_JUDGE_MODEL: ${DEMO_JUDGE_MODEL:-qwen3:8b}
+      DEEPEVAL_JUDGE_MODEL: ${DEMO_JUDGE_MODEL:-qwen3:8b}
+      # O aviso de self-grading e o stack_status do RAGAS dependem destes.
+      GENERATION_MODEL: ${DEMO_GENERATION_MODEL:-gemma3:4b}
+      EMBEDDING_MODEL: ${DEMO_EMBEDDING_MODEL:-nomic-embed-text}
+      ACTIVE_PROVIDER: local
+      DEMO_GENERATION_MODEL: ${DEMO_GENERATION_MODEL:-gemma3:4b}
+      DEMO_JUDGE_MODEL: ${DEMO_JUDGE_MODEL:-qwen3:8b}
+      DEMO_EMBEDDING_MODEL: ${DEMO_EMBEDDING_MODEL:-nomic-embed-text}
+      DEMO_PDF_INDEX: ${DEMO_PDF_INDEX:-pdf-v1}
+      DEMO_MD_INDEX: ${DEMO_MD_INDEX:-md-v1}
+      DEMO_GOLDENS: ${DEMO_GOLDENS:-}
+      # As respostas do run_all saem da API do RAG no ar (tests/run_all.py --api).
+      RUN_ALL_API_URL: http://localhost:8010
+      # Sem tela no container, e sem a câmera lenta que a turma precisa.
+      DEMO_HEADLESS: "1"
+      DEMO_SLOWMO: "0"
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      DEEPEVAL_TELEMETRY_OPT_OUT: "1"
+      RAGAS_DO_NOT_TRACK: "true"
+      PYTHONUTF8: "1"
+    # As saídas ficam nas mesmas pastas do host que o fluxo da máquina usa: o
+    # HISTORICO.md, o ultimo/ e o reaproveitamento de resultados anteriores
+    # continuam valendo entre execuções no host e no container.
+    volumes:
+      - ./tests/reports/out:/app/tests/reports/out
+      - ./tests/ragas/results:/app/tests/ragas/results
+      - ./tests/deepeval/results:/app/tests/deepeval/results
+      - ./tests/jeveval/results:/app/tests/jeveval/results
+      - ./frontend/tests/playwright-report:/app/frontend/tests/playwright-report
+      - ./frontend/tests/test-results:/app/frontend/tests/test-results
+    depends_on:
+      backend:
+        condition: service_healthy
+      backend-md:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+
 volumes:
   ollama-models:
   vector-store:
