@@ -372,7 +372,12 @@ def main() -> int:
     print(f"\n=== Resumo ({(time.monotonic() - t0) / 60:.1f} min) ===")
     for step in runner.steps:
         print(f"  {ra.STATUS_TAG.get(step.status, step.status)} {step.name}")
-    print("\nVídeo e trace de cada teste: cd frontend\\tests && npm run demo:report")
+    # No container de testes (docker/tests.Dockerfile) não há Node na máquina: o relatório sai por um modo do script.
+    report_hint = (
+        "scripts\\docker_tests.bat relatorio-e2e (Linux/macOS: ./scripts/docker_tests.sh relatorio-e2e)"
+        if os.environ.get("RAG_TESTS_IN_DOCKER") else "cd frontend\\tests && npm run demo:report"
+    )
+    print(f"\nVídeo e trace de cada teste: {report_hint}")
     if pdf:
         print(f"Relatório comparando os dois RAGs: {pdf}")
         if args.abrir and hasattr(os, "startfile"):
