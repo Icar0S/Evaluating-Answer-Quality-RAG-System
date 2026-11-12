@@ -35,7 +35,6 @@ import re
 import shutil
 import sys
 import time
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -205,25 +204,8 @@ def _health(url: str) -> dict | None:
         return None
 
 
-def unload_model(ollama_url: str, model: str) -> bool:
-    """Tira o modelo da memória do Ollama (keep_alive 0), se estiver carregado. True se tirou."""
-    body = ra.http_get(f"{ollama_url}/api/ps", timeout=5)
-    try:
-        loaded = {m["name"] for m in json.loads(body).get("models", [])} if body else set()
-    except (json.JSONDecodeError, AttributeError):
-        return False
-    if not loaded & {model, f"{model}:latest"}:
-        return False
-    request = urllib.request.Request(
-        f"{ollama_url}/api/generate",
-        data=json.dumps({"model": model, "keep_alive": 0}).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=60):  # noqa: S310 - Ollama local
-            return True
-    except OSError:
-        return False
+# Tira o gerador da memória antes do julgamento; mora em run_all.py porque o modo --api de lá faz o mesmo.
+unload_model = ra.unload_model
 
 
 def _per_set(value: str | None) -> int | None:
