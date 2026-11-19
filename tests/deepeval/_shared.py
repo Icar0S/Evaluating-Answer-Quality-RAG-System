@@ -121,8 +121,13 @@ def build_judge_model() -> OllamaModel:
     )
 
 
-def stack_status() -> str | None:
-    """None se a stack real (Ollama + vector store) estiver pronta pra avaliação; senão, o motivo do skip."""
+def stack_status(need_index: bool = True) -> str | None:
+    """None se a stack real (Ollama + vector store) estiver pronta pra avaliação; senão, o motivo do skip.
+
+    need_index=False dispensa o vector store, como no RAGAS: julgar respostas prontas
+    (`run_and_export.py --answers`) não passa pelo SUT. É o caso do container de testes, em que as respostas
+    vêm da API e o índice fica num volume do backend, fora do alcance deste processo.
+    """
     settings = get_settings()
     try:
         resp = httpx.get(f"{settings.ollama_base_url}/api/tags", timeout=3)
@@ -139,6 +144,8 @@ def stack_status() -> str | None:
         if not _has(required):
             return f"Modelo '{required}' não está baixado no Ollama local (`ollama pull {required}`)"
 
+    if not need_index:
+        return None
     try:
         from app.rag import vector_store
 

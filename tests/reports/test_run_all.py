@@ -178,3 +178,122 @@ def test_relatorio_fora_da_pasta_de_historico_nao_mexe_no_indice(ragas_file: Pat
 
     assert (tmp_path / "avulso" / "resumo.json").is_file()
     assert not (tmp_path / "HISTORICO.md").exists()
+
+
+# ------------------------------------------------ modo --api (container de testes)
+# No Docker, as respostas vêm da API do RAG no ar: o pipeline in-process leria o
+# índice vazio da imagem e outro Ollama, e as notas seriam de outro RAG.
+
+
+def test_ollama_url_segue_ambiente_depois_env_depois_padrao(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(run_all, "dotenv_value", lambda name: "http://do-dotenv:11434")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama:11434")
+    assert run_all.ollama_url() == "http://ollama:11434"  # o ambiente ganha, como no pydantic-settings
+
+    monkeypatch.setenv("OLLAMA_BASE_URL", "  ")
+    assert run_all.ollama_url() == "http://do-dotenv:11434"
+
+    monkeypatch.delenv("OLLAMA_BASE_URL")
+    monkeypatch.setattr(run_all, "dotenv_value", lambda name: None)
+    assert run_all.ollama_url() == "http://localhost:11434"
+
+
+def test_api_vem_de_RUN_ALL_API_URL_e_sem_ela_nada_muda(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RUN_ALL_API_URL", raising=False)
+    assert run_all.build_parser().parse_args([]).api is None
+
+    monkeypatch.setenv("RUN_ALL_API_URL", "http://localhost:8010")
+    assert run_all.build_parser().parse_args([]).api == "http://localhost:8010"
+    assert run_all.build_parser().parse_args(["--api", "http://outra:8010"]).api == "http://outra:8010"
+
+
+@pytest.fixture
+def fake_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
+    """run_logged falso: grava um respostas.json como o generate_answers.py e guarda o comando."""
+    calls: dict = {"cmds": [], "unloaded": []}
+    python = tmp_path / "python-do-backend"
+    python.write_text("", encoding="utf-8")
+    monkeypatch.setitem(run_all.PY, "backend", python)
+
+    def fake_run_logged(cmd, log_path, **kwargs):
+        calls["cmds"].append([str(c) for c in cmd])
+        target = Path(cmd[cmd.index("--out") + 1])
+        target.write_text(json.dumps({"generation_model": "gemma3:4b", "answers": [{"name": "g1", "error": None}]}),
+                          encoding="utf-8")
+        return 0, 1.0
+
+    monkeypatch.setattr(run_all, "run_logged", fake_run_logged)
+    monkeypatch.setattr(run_all, "unload_model", lambda url, model: calls["unloaded"].append((url, model)) or True)
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama:11434")
+    calls["python"] = str(python)
+    return calls
+
+
+def test_sem_api_as_respostas_saem_do_pipeline_in_process_como_antes(tmp_path: Path, fake_generation: dict) -> None:
+    runner = _runner(tmp_path)  # Namespace sem o campo api, como o demo_e2e.py monta
+
+    runner.generate_answers()
+
+    cmd = fake_generation["cmds"][0]
+    assert cmd[0] == fake_generation["python"]
+    assert cmd[1].endswith("generate_answers.py") and "--api" not in cmd
+    assert runner.steps[0].name == "Respostas do assistente (geradas uma vez)"
+    assert "api_url" not in runner.shared_answers
+    assert fake_generation["unloaded"] == []  # na máquina, o gerador fica onde está
+
+
+def test_com_api_as_respostas_vem_da_api_e_o_gerador_sai_da_memoria(tmp_path: Path, fake_generation: dict) -> None:
+    runner = _runner(tmp_path)
+    runner.args.api = "http://localhost:8010"
+    runner.args.limite = 1
+
+    runner.generate_answers()
+
+    cmd = fake_generation["cmds"][0]
+    assert cmd[cmd.index("--api") + 1] == "http://localhost:8010"
+    assert cmd[cmd.index("--limit") + 1] == "1"
+    step = runner.steps[0]
+    assert (step.name, step.status) == ("Respostas do assistente (pela API em http://localhost:8010)", "concluída")
+    assert runner.shared_answers["api_url"] == "http://localhost:8010"
+    assert runner.answers_file == tmp_path / "respostas.json"
+    # Os juízes não usam o gerador: sai da memória do Ollama da stack antes deles (o OOM de 13/10/2026).
+    assert fake_generation["unloaded"] == [("http://ollama:11434", "gemma3:4b")]
+
+
+def test_com_api_o_pytest_de_qualidade_sai_pulado_com_o_motivo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ran = []
+    monkeypatch.setattr(run_all.Runner, "pytest_step", lambda self, key, *a, **k: ran.append(key))
+    runner = _runner(tmp_path)
+    runner.args.api = "http://localhost:8010"
+
+    runner.quality_pytest("ragas_pytest", "RAGAS: pytest de qualidade", "ragas", "tests/ragas/test_rag_quality.py")
+
+    assert ran == []
+    assert (runner.steps[0].key, runner.steps[0].status) == ("ragas_pytest", "pulada")
+    assert "in-process" in runner.steps[0].detail and "índice local" in runner.steps[0].detail
+
+    runner.args.api = None
+    runner.quality_pytest("deepeval_pytest", "DeepEval: pytest de qualidade", "deepeval", "tests/deepeval")
+    assert ran == ["deepeval_pytest"]  # sem --api, roda como antes
+
+
+def test_unload_model_so_descarrega_o_que_esta_carregado(monkeypatch: pytest.MonkeyPatch) -> None:
+    posted = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_urlopen(request, timeout=None):
+        posted.append(json.loads(request.data))
+        return Response()
+
+    monkeypatch.setattr(run_all.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(run_all, "http_get", lambda url, timeout=3: json.dumps({"models": [{"name": "gemma3:4b"}]}))
+
+    assert run_all.unload_model("http://ollama:11434", "qwen3:8b") is False
+    assert run_all.unload_model("http://ollama:11434", "gemma3:4b") is True
+    assert posted == [{"model": "gemma3:4b", "keep_alive": 0}]

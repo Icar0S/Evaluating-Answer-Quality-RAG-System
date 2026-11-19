@@ -22,6 +22,8 @@ RUN python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 
 COPY backend/app backend/app
 COPY scripts/ingest_documents.py scripts/ingest_documents.py
+# O quadro do serviço `status` (docker-compose.yml): endereços, índices e modelos.
+COPY scripts/stack_status.py scripts/stack_status.py
 
 WORKDIR /app/backend
 EXPOSE 8010

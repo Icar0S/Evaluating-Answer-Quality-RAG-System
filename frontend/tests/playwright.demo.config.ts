@@ -42,7 +42,10 @@ const SKIP_GOLDENS = process.env.DEMO_ANSWERS_DIR ? [] : [/goldens\.spec\.ts$/];
 
 const browser = {
   ...devices["Desktop Chrome"],
-  headless: false,
+  // Navegador visível, para a turma. DEMO_HEADLESS=1 é o container de testes
+  // (docker/tests.Dockerfile), que não tem tela: o resto da demonstração (vídeo,
+  // trace, faixa do teste) continua igual.
+  headless: process.env.DEMO_HEADLESS === "1",
   viewport: { width: 1366, height: 800 },
   launchOptions: { slowMo },
 };

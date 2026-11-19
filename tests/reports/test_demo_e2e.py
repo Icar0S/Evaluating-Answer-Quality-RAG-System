@@ -5,8 +5,14 @@ Herméticos: nenhum navegador, container ou juiz roda aqui. Rodar da raiz:
 """
 from __future__ import annotations
 
+import json
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 import build_report
 
@@ -143,3 +149,33 @@ def test_relatorio_da_demonstracao_diz_de_onde_vieram_respostas_e_diagnostico(tm
     assert "Tirado dos trechos que o chat devolveu" in text
     assert "**md-v1**, perguntas em PT: 1/1" in text
     assert "**pdf-v1**, perguntas em PT: 0/1" in text
+
+
+# Um reporter mínimo do Playwright: com --list, nenhum navegador abre, e o
+# onBegin recebe a configuração resolvida de cada projeto.
+HEADLESS_REPORTER = (
+    "class R { onBegin(config) { console.log('HEADLESS=' + JSON.stringify(config.projects.map(p => p.use.headless))); } }\n"
+    "module.exports = R;\n"
+)
+
+
+@pytest.mark.parametrize(("value", "headless"), [(None, False), ("1", True)])
+def test_demo_abre_o_navegador_visivel_e_so_o_container_pede_headless(value, headless, tmp_path, monkeypatch):
+    # O padrão é o que a turma assiste; DEMO_HEADLESS=1 é o container de testes, sem tela.
+    npx = shutil.which("npx")
+    if not npx or not (demo_e2e.E2E_DIR / "node_modules").is_dir():
+        pytest.skip("Playwright não instalado em frontend/tests (npm ci)")
+    reporter = tmp_path / "headless-reporter.js"
+    reporter.write_text(HEADLESS_REPORTER, encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if k != "DEMO_HEADLESS"}
+    if value is not None:
+        env["DEMO_HEADLESS"] = value
+
+    result = subprocess.run(
+        [npx, "playwright", "test", "-c", "playwright.demo.config.ts", "--list", f"--reporter={reporter}"],
+        cwd=demo_e2e.E2E_DIR, env=env, capture_output=True, text=True, encoding="utf-8", timeout=180,
+    )
+
+    line = next((ln for ln in result.stdout.splitlines() if ln.startswith("HEADLESS=")), None)
+    assert line, result.stdout + result.stderr
+    assert set(json.loads(line.removeprefix("HEADLESS="))) == {headless}

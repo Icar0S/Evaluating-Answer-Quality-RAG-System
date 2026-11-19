@@ -118,3 +118,42 @@ jobs:
           name: playwright-report
           path: frontend/tests/playwright-report/
           retention-days: 7
+
+  # A stack e o container de testes do docker compose (README, "Inicio rapido
+  # com Docker"): os arquivos do compose montam (base, GPU e perfil tests), a
+  # imagem de testes builda, e os testes hermeticos passam dentro dela. Sem
+  # Ollama e sem GPU: o modo hermeticos nao precisa da stack (--no-deps).
+  docker:
+    name: Docker (compose e container de testes)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir os arquivos do compose
+        run: |
+          docker compose config -q
+          docker compose -f docker-compose.yml -f docker-compose.gpu.yml config -q
+          docker compose --profile tests config -q
+
+      # A imagem de testes tem a base do Playwright e os 5 venvs: o runner
+      # comeca com pouco disco livre, e as ferramentas abaixo nao sao usadas aqui.
+      - name: Liberar disco no runner
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build da imagem de testes
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/tests.Dockerfile
+          tags: rag-test-specialist/tests:latest
+          load: true
+          cache-from: type=gha,scope=tests-image
+          cache-to: type=gha,mode=max,scope=tests-image
+
+      - name: Testes hermeticos no container
+        run: docker compose --profile tests run --rm --no-deps -T tests hermeticos
