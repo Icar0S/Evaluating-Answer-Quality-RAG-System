@@ -175,11 +175,15 @@ def refresh_latest(root: Path, out_dir: Path) -> Path:
     """Copia o relatório recém-gerado para root/ultimo (caminho que não muda).
 
     Cópia, não link: link simbólico no Windows pede privilégio de administrador.
+    A pasta video/ da apresentação gravada (tests/apresentacao.py) fica de fora:
+    o vídeo não é parte do relatório e, na hora dele, ainda está sendo gravado.
+    A cópia seria um MKV cortado de ~100 MB (19/11/2026).
     """
     target = root / LATEST_DIR
     if target.exists():
         shutil.rmtree(target)
-    shutil.copytree(out_dir, target)
+    shutil.copytree(out_dir, target,
+                    ignore=lambda pasta, nomes: {"video"} if Path(pasta) == Path(out_dir) else set())
     return target
 
 

@@ -1,0 +1,50 @@
+<!doctype html>
+<!--
+  O palco da apresentação gravada (tests/apresentacao.py): a página que conta a rotina, e é ela que o vídeo grava
+  (frontend/tests/apresentacao/palco.mjs, num Chromium sem janela). Os dados vêm do orquestrador, por /estado, /log
+  e /espelho.jpg; nada aqui é fixo de uma rodada.
+-->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rotina ao vivo</title>
+  <link rel="stylesheet" href="/styles/shared.css">
+  <link rel="stylesheet" href="/palco.css">
+</head>
+<body class="modo-abertura">
+  <header class="topo">
+    <div class="marca">
+      <span class="ao-vivo"><span class="pulso" aria-hidden="true"></span>ao vivo</span>
+      <h1 id="titulo">Arquitetura de testes do RAG</h1>
+    </div>
+    <dl class="contexto" id="contexto"></dl>
+    <div class="relogio"><span id="relogio">00:00</span><small>decorrido</small></div>
+  </header>
+
+  <nav class="trilha" aria-label="Fases da rotina">
+    <ol class="fases" id="fases"></ol>
+  </nav>
+
+  <main class="cena">
+    <section class="passo" id="passo">
+      <p class="passo-fase" id="passo-fase"></p>
+      <h2 class="passo-nome" id="passo-nome">Preparando a rotina</h2>
+      <p class="passo-linha"><code id="passo-comando"></code><span class="passo-tempo" id="passo-tempo"></span></p>
+    </section>
+    <p class="aviso" id="aviso" hidden></p>
+    <section class="visual" id="visual"></section>
+    <section class="terminal" aria-label="Log ao vivo do passo">
+      <pre id="log"></pre>
+    </section>
+  </main>
+
+  <div class="cartao-fase" id="cartao-fase" aria-hidden="true">
+    <p class="cartao-n" id="cartao-n"></p>
+    <p class="cartao-nome" id="cartao-nome"></p>
+    <p class="cartao-desc" id="cartao-desc"></p>
+  </div>
+
+  <script src="/palco.js"></script>
+</body>
+</html>
