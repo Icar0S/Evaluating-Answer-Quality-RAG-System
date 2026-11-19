@@ -944,6 +944,85 @@ cada julgamento. Para montar a pasta mesmo assim, defina `OLLAMA_MODELS_DIR`.
 O `scripts\run_all_tests.bat` continua igual: testa o backend da máquina, com
 um RAG só.
 
+## Apresentação gravada (vídeo da rotina completa)
+
+Para mostrar tudo funcionando sem ninguém tocar no teclado, e sair com um vídeo,
+um comando faz a rotina inteira e a conta numa página, o palco. É essa página
+que vai para o vídeo:
+
+```powershell
+scripts\apresentacao.bat                               # tudo; no fim, um MP4
+scripts\apresentacao.bat --goldens 2                   # 2 perguntas de referência por acervo (vídeo mais longo)
+scripts\apresentacao.bat --avaliadores ragas jeveval   # sem o DeepEval, o mais lento
+scripts\apresentacao.bat --assistir                    # abre o palco no navegador, para acompanhar ao vivo
+scripts\apresentacao.bat --sem-video                   # ensaio, sem gravar
+scripts\apresentacao.bat --abrir                       # abre o vídeo no fim
+```
+
+**O que o vídeo mostra, nesta ordem:**
+
+1. **A aplicação sobe.** O `docker compose up -d --build`, os dois RAGs no ar,
+   os trechos de cada índice, os modelos no Ollama e a homepage.
+2. **Os testes locais.** API, gerador de relatório e JevEval com o Jev falso,
+   um teste por linha.
+3. **O E2E com o Playwright.** O navegador usa o chat nos dois RAGs, e a
+   página que ele testa aparece dentro do palco, ao vivo, com o nome do teste
+   embaixo: o fluxo do chat, as perguntas de referência e o "quem responde não
+   é quem julga" (a mesma rotina do `scripts\demo_e2e.bat`).
+4. **Os avaliadores.** O RAGAS, o DeepEval e o JevEval julgam as mesmas
+   respostas que o navegador coletou. Um placar se preenche ao vivo, um
+   cartão por avaliador e por RAG, com a média de cada métrica até o
+   momento, o limiar e ✓/✗.
+5. **O relatório.** O consolidado é gerado, e as figuras dele passam na tela.
+
+No fim, o palco mostra o resumo e onde ficou cada arquivo. O vídeo sai em
+`tests/reports/out/<data>/video/apresentacao.mp4` (1920×1080 a 15 quadros por
+segundo, H.264), ao lado do relatório e dos logs da mesma execução. Medido em
+19/11/2026, com uma pergunta por acervo e os três avaliadores: 43 min de
+vídeo, 103 MB. Quase tudo é o DeepEval, que levou 26 min nos dois RAGs.
+
+**A sua tela não é gravada.** O vídeo é a página do palco, desenhada num
+navegador sem janela, e o E2E também roda sem janela. Outras janelas,
+notificações e a barra de tarefas não entram no vídeo, e o computador fica
+livre durante a rotina. Para acompanhar, `--assistir` abre o mesmo palco no
+seu navegador. Essa janela é só sua: ela também não é gravada.
+
+**O que a demonstração precisa:**
+
+- Docker Desktop, Node.js 18+ (o script instala o Playwright na primeira vez),
+  Python e os venvs das suítes (seção "Testes"). Um venv que falta vira uma
+  etapa pulada, com a instrução.
+- O ffmpeg, que monta o vídeo: `winget install Gyan.FFmpeg`.
+- O JevEval só roda com a `TYPESAFE_API_KEY` no `.env`, e é a única etapa que
+  manda conteúdo para fora da máquina (ver
+  [tests/jeveval/README.md](tests/jeveval/README.md)). Sem a chave, os
+  cartões dele saem como pulados.
+
+O comando é um `.bat`. O `tests/apresentacao.py` não depende do Windows, mas
+só foi rodado nele.
+
+**Como funciona.**
+
+- [tests/apresentacao.py](tests/apresentacao.py) é o orquestrador, só com a
+  biblioteca padrão. Ele roda as etapas com as mesmas peças do
+  `tests/run_all.py` e do `tests/demo_e2e.py`, e serve o palco
+  ([tests/palco/](tests/palco/)) num endereço local.
+- Um Chromium do Playwright sem janela abre o palco e o fotografa 15 vezes por
+  segundo, em 1920×1080, para o ffmpeg
+  ([frontend/tests/apresentacao/palco.mjs](frontend/tests/apresentacao/palco.mjs)).
+  Quando uma foto atrasa, o último quadro se repete, e o vídeo fica com a
+  duração real.
+- No E2E, o fixture de [frontend/tests/e2e/fixtures.ts](frontend/tests/e2e/fixtures.ts)
+  manda os quadros da página testada ao palco (variável `DEMO_ESPELHO`). Sem
+  ela, os testes rodam como sempre.
+- O placar não muda os avaliadores: ele lê, linha a linha, o log que cada
+  `run_and_export.py` já imprime.
+- O ffmpeg grava em MKV, que não se perde se o processo cair, e no fim o vídeo
+  vira MP4 sem recodificar.
+
+O vídeo de cada teste, gravado pelo próprio Playwright, continua em
+`frontend/tests/playwright-report/`.
+
 ## Fase 2 — Arquitetura de testes
 
 Testes de API (pytest), testes E2E (Playwright/TypeScript) e avaliação de qualidade de
@@ -1013,6 +1092,7 @@ scripts/docker_tests.bat  Os testes num container, contra a stack do Docker (scr
 scripts/stack_status.py   O quadro do serviço status e o preflight dos testes: endereços, índices, modelos e avisos
 scripts/demo_e2e.bat      Sobe a stack em Docker, roda os testes E2E nos dois RAGs e gera o relatório comparando os dois
 tests/demo_e2e.py         O que o demo_e2e.bat roda com os containers no ar: testes ao vivo, RAGAS e relatório
+scripts/apresentacao.bat  A rotina completa contada numa página, gravada em MP4 (tests/apresentacao.py e a página em tests/palco/)
 tests/mutation/           Estudo de mutação para RAG (Fase 4) — operadores, oráculos, campanha e análise
 logs/                     interactions.jsonl (log estruturado, não versionado)
 docs/ARCHITECTURE.md      Decisões técnicas e racional

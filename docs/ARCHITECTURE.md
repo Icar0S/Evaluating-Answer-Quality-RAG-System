@@ -689,6 +689,63 @@ mudaria o `run_all_tests.bat` na máquina. O modo roda o pytest da raiz
 (`tests/api` e `tests/benchmark`), o de `tests/reports` e o do JevEval com
 `-m "not live"`, e não grava nada no histórico.
 
+### A apresentação gravada (nov/2026)
+
+O `scripts\apresentacao.bat` faz, com um comando, a rotina inteira:
+1. sobe a stack;
+2. roda os testes locais;
+3. roda o E2E nos dois RAGs;
+4. faz o RAGAS, o DeepEval e o JevEval julgarem as mesmas respostas;
+5. gera o relatório.
+
+Tudo é contado numa página, o palco (`tests/palco/`), e a página é gravada
+num MP4, para mostrar o projeto funcionando. Decisões:
+
+**Uma página conta a rotina, e não os vídeos do Playwright juntados.** O
+Playwright grava cada página de teste em separado, em WebM. Os avaliadores nem
+têm página: são processos Python que imprimem notas. O palco mostra a fase, o
+passo, o log ao vivo e o placar, que ele lê do orquestrador por HTTP local.
+
+**Gravar a página, e não a tela.** Na primeira versão, o ffmpeg gravava a
+tela principal inteira pelo `gdigrab`, com o palco em tela cheia. Na primeira
+rodada completa, de 50 minutos (19/11/2026), o computador estava em uso, e
+as outras janelas abertas entraram no vídeo. Gravar a tela só dá certo se
+ninguém usar o computador durante a rotina. Agora o palco abre num Chromium
+do Playwright sem janela, e o `Page.captureScreenshot` do CDP fotografa a
+página 15 vezes por segundo para o ffmpeg
+(`frontend/tests/apresentacao/palco.mjs`). O vídeo só pode conter o palco. A
+página é desenhada em 1536×864 com escala 1,25, os mesmos 1920×1080 da tela
+onde o palco foi desenhado. O screencast do CDP (`Page.startScreencast`) sairia
+mais barato, mas entrega os quadros no tamanho CSS (1536×864), e o texto fica
+borrado em tela cheia. A captura com `clip.scale` sai em pixels físicos, em
+~50 ms (medido em 19/11/2026). Quando uma captura atrasa, o último quadro se
+repete, para o vídeo durar o que a rotina durou.
+
+**O E2E também roda sem janela e aparece dentro do palco.** Com
+`DEMO_ESPELHO`, o fixture automático de `frontend/tests/e2e/fixtures.ts`
+abre um screencast da página testada e manda cada quadro ao orquestrador
+(`POST /espelho`). O palco mostra o último (`GET /espelho.jpg`), com o nome do
+teste embaixo. Antes de construir, conferimos que o screencast convive com o
+`recordVideo` do Playwright: o vídeo de cada teste continua saindo. Sem a
+variável, o fixture não muda nada, e um teste hermético roda um teste da
+interface de verdade, sem janela, para conferir que os quadros chegam.
+
+**O placar lê os logs, e os avaliadores não mudaram.** Cada `run_and_export.py`
+já imprime `[i/n] pergunta` e uma linha por métrica. O RAGAS e o JevEval
+usam as chaves em inglês, o DeepEval o nome por extenso, com PASS/FAIL ou
+ERRO. O orquestrador lê esse log aos poucos e mostra a média de cada métrica
+até o momento: um medidor com o traço do limiar e ✓/✗, porque a cor de
+estado sempre vem com ícone. Uma métrica com erro não vira nota 0, e o N/A do
+JevEval fica fora da média.
+
+**MKV durante a gravação, MP4 no fim.** O MP4 só fica legível depois que o
+ffmpeg fecha o arquivo. Um MKV sobrevive a uma queda do processo. Parar é
+fechar a entrada do ffmpeg, e a conversão para MP4 é só cópia
+(`-c copy -movflags +faststart`). Se ela falhar, o MKV fica. O H.264 sai em
+BT.709 e faixa limitada, o padrão de vídeo em HD. O JPEG do Chromium vem em
+faixa cheia, e o `zscale` converte sem escurecer a página; o `scale` do
+ffmpeg escurecia uns 3 níveis.
+
 ### Avaliação de qualidade (JevEval, out/2026)
 
 Terceira camada de qualidade, sobre as mesmas respostas compartilhadas das
