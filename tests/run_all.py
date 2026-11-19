@@ -33,6 +33,14 @@ TYPESAFE_API_KEY no ambiente ou no .env; sem ela, saem como "pulada" com o
 motivo. É a única etapa que manda conteúdo para fora da máquina (ver
 tests/jeveval/README.md).
 
+Com --api URL (ou RUN_ALL_API_URL no ambiente), o passo 5 gera as respostas
+pela API do RAG no ar (tests/generate_answers.py --api) em vez de chamar o
+pipeline in-process. É o modo do container de testes (scripts/docker_tests.bat
+e .sh): lá o índice fica num volume do backend, e o pipeline in-process leria o
+data/vector_store da imagem, vazio, com outro Ollama. As notas avaliadas seriam
+de outro RAG, não do que está no ar. Pelo mesmo motivo, --qualidade-pytest sai
+como "pulada" nesse modo, e o gerador sai da memória do Ollama antes dos juízes.
+
 Fica de fora: a campanha do estudo de mutação (tests/mutation), que leva horas
 e tem protocolo próprio (ver o README de lá).
 
@@ -88,6 +96,11 @@ SETUP_HINT = {
     "deepeval": "crie com: python -m venv tests\\deepeval\\.venv && tests\\deepeval\\.venv\\Scripts\\pip install -r backend\\requirements-eval.txt",
     "jeveval": "crie com: python -m venv tests\\jeveval\\.venv && tests\\jeveval\\.venv\\Scripts\\pip install -r tests\\jeveval\\requirements.txt",
 }
+# Por que o --qualidade-pytest não roda com --api (container de testes).
+QUALITY_PYTEST_API_SKIP = (
+    "esses testes chamam o pipeline in-process e precisam do índice local; com a API, o índice está no backend "
+    "que responde (no Docker, num volume do container), e eles falhariam"
+)
 # Onde cada suíte de qualidade grava seus resultados; o relatório reaproveita o
 # mais recente de quem não rodou nesta execução.
 QUALITY_RESULTS = {
@@ -233,8 +246,36 @@ def dotenv_value(name: str) -> str | None:
 
 
 def ollama_url() -> str:
-    """OLLAMA_BASE_URL do .env, ou o padrão."""
-    return dotenv_value("OLLAMA_BASE_URL") or "http://localhost:11434"
+    """OLLAMA_BASE_URL do ambiente, depois do .env, depois o padrão: a mesma precedência do backend (pydantic-settings).
+
+    No container de testes, o ambiente aponta para o Ollama da stack (http://ollama:11434), e não há .env.
+    """
+    return os.environ.get("OLLAMA_BASE_URL", "").strip() or dotenv_value("OLLAMA_BASE_URL") or "http://localhost:11434"
+
+
+def unload_model(ollama: str, model: str) -> bool:
+    """Tira o modelo da memória do Ollama (keep_alive 0), se estiver carregado. True se tirou.
+
+    Medido no ensaio de 13/10/2026: com gerador, juiz e embeddings carregados juntos, a VM do Docker (7,6 GB)
+    matou o processo do modelo duas vezes por falta de memória, e o juiz devolveu erro 500 nessas chamadas.
+    """
+    body = http_get(f"{ollama}/api/ps", timeout=5)
+    try:
+        loaded = {m["name"] for m in json.loads(body).get("models", [])} if body else set()
+    except (json.JSONDecodeError, AttributeError):
+        return False
+    if not loaded & {model, f"{model}:latest"}:
+        return False
+    request = urllib.request.Request(
+        f"{ollama}/api/generate",
+        data=json.dumps({"model": model, "keep_alive": 0}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60):  # noqa: S310 - Ollama da stack
+            return True
+    except OSError:
+        return False
 
 
 def typesafe_key_configured() -> bool:
@@ -414,15 +455,14 @@ class Runner:
             self.evaluation("ragas", "RAGAS: avaliação", "ragas", ROOT / "tests" / "ragas" / "run_and_export.py",
                             ROOT / "tests" / "ragas" / "results", [])
             if self.args.qualidade_pytest:
-                self.pytest_step("ragas_pytest", "RAGAS: pytest de qualidade", "ragas",
-                                 "tests/ragas/test_rag_quality.py", timeout=4 * 3600)
+                self.quality_pytest("ragas_pytest", "RAGAS: pytest de qualidade", "ragas",
+                                    "tests/ragas/test_rag_quality.py")
         if do_deepeval:
             self.evaluation("deepeval", "DeepEval: avaliação", "deepeval",
                             ROOT / "tests" / "deepeval" / "run_and_export.py", ROOT / "tests" / "deepeval" / "results",
                             ["--no-open"])
             if self.args.qualidade_pytest:
-                self.pytest_step("deepeval_pytest", "DeepEval: pytest de qualidade", "deepeval",
-                                 "tests/deepeval", timeout=4 * 3600)
+                self.quality_pytest("deepeval_pytest", "DeepEval: pytest de qualidade", "deepeval", "tests/deepeval")
         if do_jeveval:
             self.jeveval()
 
@@ -445,14 +485,34 @@ class Runner:
         self.evaluation("jeveval", evaluation, "jeveval", ROOT / "tests" / "jeveval" / "run_and_export.py",
                         QUALITY_RESULTS["jeveval"], [])
 
+    def quality_pytest(self, key: str, name: str, venv: str, target: str) -> None:
+        """O pytest de qualidade (--qualidade-pytest), que chama o pipeline in-process."""
+        if self.api:
+            self.skip(key, name, f"--api: {QUALITY_PYTEST_API_SKIP}")
+            return
+        self.pytest_step(key, name, venv, target, timeout=4 * 3600)
+
+    @property
+    def api(self) -> str | None:
+        """A API do RAG no ar (--api), ou None. getattr: o demo_e2e.py monta o Namespace sem esse campo."""
+        return getattr(self.args, "api", None)
+
     def generate_answers(self) -> None:
-        name = "Respostas do assistente (geradas uma vez)"
+        name = (f"Respostas do assistente (pela API em {self.api})" if self.api
+                else "Respostas do assistente (geradas uma vez)")
         self.announce(name)
-        if not PY["backend"].exists():
+        if self.api:
+            # Só biblioteca padrão nesse modo: qualquer Python serve, o do backend se existir.
+            python = PY["backend"] if PY["backend"].exists() else Path(sys.executable)
+        elif not PY["backend"].exists():
             self.skip("respostas", name, f"venv do backend não encontrado ({SETUP_HINT['backend']})")
             return
+        else:
+            python = PY["backend"]
         target = self.out_dir / "respostas.json"
-        cmd = [PY["backend"], ROOT / "tests" / "generate_answers.py", "--out", target]
+        cmd = [python, ROOT / "tests" / "generate_answers.py", "--out", target]
+        if self.api:
+            cmd += ["--api", self.api]
         if self.args.limite:
             cmd += ["--limit", self.args.limite]
         log = self.logs / "respostas.log"
@@ -469,9 +529,17 @@ class Runner:
             "failures": failures,
             "generation_model": data.get("generation_model"),
         }
+        if self.api:
+            self.shared_answers["api_url"] = self.api
         self.record(Step("respostas", name, "concluída",
                          f"{len(data['answers'])} resposta(s) com {data.get('generation_model')} ({failures} falha(s))",
                          None, secs, self._rel(log)))
+        # As respostas estão gravadas e os juízes não usam o gerador: fora da memória antes deles, como no
+        # demo_e2e.py. Só no modo API, que é o do Docker; na máquina, nada muda.
+        model = data.get("generation_model")
+        if self.api and model and unload_model(ollama_url(), model):
+            print(f"    {model} descarregado do Ollama: daqui em diante só os juízes e os embeddings usam a memória.",
+                  flush=True)
 
     def evaluation(self, key: str, name: str, venv: str, script: Path, results_dir: Path, extra: list) -> None:
         self.announce(name)
@@ -544,8 +612,7 @@ class Runner:
         return self.out_dir / "relatorio.pdf"
 
 
-def main() -> int:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Roda todas as suítes de teste e gera o relatório consolidado.")
     parser.add_argument("--rapido", action="store_true",
                         help="só os testes herméticos (API, relatório, JevEval com Jev falso) e o E2E, sem juízes")
@@ -555,8 +622,16 @@ def main() -> int:
                         help="cada framework gera as próprias respostas (comportamento antigo; compara pior)")
     parser.add_argument("--qualidade-pytest", action="store_true",
                         help="roda também o pytest de qualidade do RAGAS e do DeepEval (dobra o tempo)")
+    parser.add_argument("--api", default=os.environ.get("RUN_ALL_API_URL") or None, metavar="URL",
+                        help="gera as respostas pela API do RAG no ar (padrão: RUN_ALL_API_URL); "
+                             "o modo do container de testes")
     parser.add_argument("--abrir", action="store_true", help="abre o PDF do relatório ao terminar")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> int:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    args = build_parser().parse_args()
 
     started = datetime.now(timezone.utc).astimezone()
     t0 = time.monotonic()

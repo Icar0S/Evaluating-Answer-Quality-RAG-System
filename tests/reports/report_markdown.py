@@ -42,12 +42,18 @@ def render_markdown(blocks: list[Block], path: Path) -> Path:
         elif isinstance(block, Para):
             out += [_text(block.text), ""]
         elif isinstance(block, Bullets):
-            out += [f"- {_text(item)}" for item in block.items] + [""]
+            marks = [f"{i}." for i in range(1, len(block.items) + 1)] if block.numbered else ["-"] * len(block.items)
+            out += [f"{mark} {_text(item)}" for mark, item in zip(marks, block.items)] + [""]
         elif isinstance(block, Table):
             out += _table(block) + [""]
         elif isinstance(block, Figure):
             rel = Path(block.path).relative_to(path.parent).as_posix()
             out += [f"![{_text(block.caption)}]({rel})", "", f"_{_text(block.caption)}_", ""]
+        elif isinstance(block, Callout) and block.tone == "nota":
+            out += [f"> **ℹ {_text(block.title)}**", ">"]
+            for i, item in enumerate(block.items):
+                out += ([">"] if i else []) + [f"> {_text(item)}"]
+            out.append("")
         elif isinstance(block, Callout):
             out += [f"> **⚠ {_text(block.title)}**", ">"] + [f"> - {_text(item)}" for item in block.items] + [""]
         elif isinstance(block, PageBreak):

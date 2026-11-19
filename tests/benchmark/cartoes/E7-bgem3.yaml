@@ -1,0 +1,45 @@
+# A busca híbrida do E7 com o embedding vencedor do E1 (plano-benchmark.md, §8). Formato provisório.
+#
+# No E7, com o nomic, a híbrida ganhou +0,20 de evidência@4 em inglês e quase nada em português, onde o ímã de
+# idioma puxa o resto da lista. Com o bge-m3, o português já acha 46 de 70: a pergunta é se a palavra exata do
+# BM25 ainda soma. Exploratório: é uma combinação de dois vencedores, fora da lista de braços do plano.
+id: E7-bgem3
+titulo: Busca híbrida com o bge-m3
+pergunta: A busca híbrida ainda ajuda quando o embedding já resolve o idioma?
+hipotese: >
+  A híbrida soma ao bge-m3 nas perguntas com sigla e nome próprio; em inglês, o ganho do E7 (+0,20) se repete.
+exploratorio: true
+goldens: tests/benchmark/goldens/v2.json
+classe_por: has_acronym
+
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+
+bracos:
+  base: {indice: pdf-v1-bgem3, camadas: [c1], papel: baseline}
+  hibrida: {indice: pdf-v1-bgem3, camadas: [c1], set: {retrieval_hybrid: true}}
+  base-en: {indice: pdf-v1-bgem3, lingua: en, camadas: [c1], papel: referencia}
+  hibrida-en: {indice: pdf-v1-bgem3, lingua: en, camadas: [c1], set: {retrieval_hybrid: true}}
+
+pares: [[base, hibrida], [base-en, hibrida-en]]
+metrica_primaria: {camada: c1, metrica: evidence_at_k}
+guardas:
+  - nome: sem sigla não piora
+    par: [base, hibrida]
+    metrica: c1.evidence_at_k
+    tolerancia_perguntas: 1
+    grupo: {campo: has_acronym, valor: false}
+  - {nome: latência da recuperação, par: [base, hibrida], metrica: c1.retrieval_ms, tolerancia: 200}
+saida: >
+  A evidência@4 por has_acronym, em português e em inglês, ao lado do E7 com o nomic.
+didatica: >
+  Duas melhorias que funcionam sozinhas não somam por obrigação: a segunda pode só repetir o que a primeira já
+  conserta.

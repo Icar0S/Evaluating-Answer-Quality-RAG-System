@@ -1,0 +1,44 @@
+# Cartão do E9 (plano-benchmark.md, §8, opcional). Formato provisório: a §9 do plano não chegou.
+#
+# O gerador novo não é o juiz (qwen3:8b), para não virar autoavaliação. Roda no índice vencedor do E1
+# (pdf-v1-bgem3), em português e sem citação: é a configuração que o benchmark recomenda até aqui.
+id: E9
+titulo: Gerador
+pergunta: Quanto da qualidade vem do gerador, e a que custo?
+hipotese: >
+  O llama3.1:8b (o dobro de parâmetros) sobe a fidelidade sobre o gemma3:4b, a um custo de latência; nem todo
+  problema de qualidade se resolve trocando o modelo (a abstenção correta das perguntas de fora do tema, por
+  exemplo).
+exploratorio: false
+goldens: tests/benchmark/goldens/v2.json
+
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+juiz:
+  modelo: qwen3:8b
+  num_ctx: 8192
+
+bracos:
+  gemma: {indice: pdf-v1-bgem3, camadas: [c2], papel: baseline}
+  llama: {indice: pdf-v1-bgem3, camadas: [c2], set: {generation_model: "llama3.1:8b"}}
+  # A margem refeita para o gerador novo (§8, E9): o mesmo braço em outra ordem, com o juiz.
+  llama-aa: {indice: pdf-v1-bgem3, camadas: [c2], ordem: 2, set: {generation_model: "llama3.1:8b"}, papel: ruido}
+
+pares: [[gemma, llama], [llama, llama-aa]]
+margem: {gerador_juiz: [[llama, llama-aa]]}
+metrica_primaria: {camada: c2, metrica: faithfulness}
+guardas:
+  # "Latência ≤ 2× o baseline": o gemma gera em ~3 s neste índice (E1), então a folga é de 3 s.
+  - {nome: latência ≤ 2× o baseline, par: [gemma, llama], metrica: cost.generation_ms, tolerancia: 3000}
+saida: >
+  O ponto de cada gerador no painel custo × qualidade (fidelidade, aprovação, abstenção e latência).
+didatica: >
+  Nem todo problema de qualidade se resolve trocando o modelo.

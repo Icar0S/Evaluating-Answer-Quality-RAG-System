@@ -1,5 +1,26 @@
-import { test as base, expect } from "@playwright/test";
+import { test as base, expect, Page } from "@playwright/test";
 import { API_BASE_URL, DEMO, JUDGE_MODEL, RagTarget } from "./helpers";
+
+// Apresentação gravada (tests/apresentacao.py): o navegador roda sem janela, e cada quadro da página vai, por
+// POST, ao palco, que o mostra ao vivo no vídeo. Sem DEMO_ESPELHO, nada disto roda.
+const ESPELHO = process.env.DEMO_ESPELHO;
+
+async function espelharPagina(page: Page, destino: string, titulo: string): Promise<() => Promise<void>> {
+  const cdp = await page.context().newCDPSession(page);
+  cdp.on("Page.screencastFrame", ({ data, sessionId }) => {
+    cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
+    fetch(destino, {
+      method: "POST",
+      body: Buffer.from(data, "base64"),
+      headers: { "Content-Type": "image/jpeg", "X-Teste": encodeURIComponent(titulo) },
+    }).catch(() => {});
+  });
+  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 80, maxWidth: 1366, maxHeight: 800 });
+  return async () => {
+    await cdp.send("Page.stopScreencast").catch(() => {});
+    await cdp.detach().catch(() => {});
+  };
+}
 
 /**
  * O `test` de todos os specs. Igual ao do Playwright, mais três coisas:
@@ -18,6 +39,9 @@ import { API_BASE_URL, DEMO, JUDGE_MODEL, RagTarget } from "./helpers";
  * /health do backend) e quem JULGA (juiz). A faixa ignora o mouse
  * (pointer-events: none) e é `position: fixed`: não muda o layout nem
  * intercepta cliques dos testes.
+ *
+ * Na apresentação gravada (DEMO_ESPELHO), os quadros de cada página vão ao
+ * palco, que os mostra ao vivo: o navegador do teste não precisa de janela.
  */
 export const test = base.extend<{ rag: RagTarget | null; apiBaseURL: string; ragSetup: void }>({
   rag: [null, { option: true }],
@@ -58,7 +82,11 @@ export const test = base.extend<{ rag: RagTarget | null; apiBaseURL: string; rag
           rag: rag ? `RAG dos ${rag.label} (${rag.index})` : null,
         });
       }
+      const pararEspelho = ESPELHO
+        ? await espelharPagina(page, ESPELHO, testInfo.titlePath.slice(1).join(" › "))
+        : null;
       await use();
+      if (pararEspelho) await pararEspelho();
     },
     { auto: true },
   ],

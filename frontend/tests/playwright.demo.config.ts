@@ -16,11 +16,20 @@ process.env.DEMO = process.env.DEMO ?? "1";
 
 const slowMo = Number(process.env.DEMO_SLOWMO ?? 400);
 
-// Os dois RAGs do docker-compose.yml: mesmo gerador, mesmos embeddings,
-// acervos diferentes.
+// Os dois RAGs do docker-compose.yml: mesmo gerador, mesmos embeddings. Com
+// pdf-v1 e md-v1 (o padrão), acervos diferentes; com DEMO_PDF_INDEX=pdf-v2 e
+// DEMO_MD_INDEX=md-v2, os mesmos artigos em formatos diferentes.
 const RAGS: RagTarget[] = [
-  { index: "pdf-v1", label: "PDFs", apiBaseURL: process.env.DEMO_PDF_API_URL ?? "http://localhost:8010" },
-  { index: "md-v1", label: "Markdown", apiBaseURL: process.env.DEMO_MD_API_URL ?? "http://localhost:8011" },
+  {
+    index: process.env.DEMO_PDF_INDEX || "pdf-v1",
+    label: "PDFs",
+    apiBaseURL: process.env.DEMO_PDF_API_URL ?? "http://localhost:8010",
+  },
+  {
+    index: process.env.DEMO_MD_INDEX || "md-v1",
+    label: "Markdown",
+    apiBaseURL: process.env.DEMO_MD_API_URL ?? "http://localhost:8011",
+  },
 ];
 
 // Specs que dependem do acervo: rodam uma vez por RAG. O resto (interface,
@@ -33,7 +42,10 @@ const SKIP_GOLDENS = process.env.DEMO_ANSWERS_DIR ? [] : [/goldens\.spec\.ts$/];
 
 const browser = {
   ...devices["Desktop Chrome"],
-  headless: false,
+  // Navegador visível, para a turma. DEMO_HEADLESS=1 é o container de testes
+  // (docker/tests.Dockerfile), que não tem tela: o resto da demonstração (vídeo,
+  // trace, faixa do teste) continua igual.
+  headless: process.env.DEMO_HEADLESS === "1",
   viewport: { width: 1366, height: 800 },
   launchOptions: { slowMo },
 };

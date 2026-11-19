@@ -70,8 +70,13 @@ vêm de índices diferentes:
   diferentes, que são o objeto da comparação, e continuam avisando de juiz,
   gerador ou limiar diferentes;
 - a seção **Por origem da pergunta** separa as notas pelo acervo de onde a
-  pergunta veio, e conta as abstenções (no acervo alheio, se abster é o
-  comportamento certo);
+  pergunta veio, conta as abstenções e diz, na coluna "No índice", se o
+  índice da rodada tem os artigos daquela origem. Fora do índice, se abster é
+  o comportamento certo; dentro, é resposta perdida. A informação vem de
+  `RAG_INDICES` (campo `origins`, em `backend/app/config.py`), lida da fonte
+  sem importar o backend: o `pdf-v1` e o `md-v1` têm um acervo cada, e as
+  versões v2 têm os dois. O `notas.csv` e a aba "Notas" trazem a mesma
+  coluna, depois de "Abstenção";
 - a seção **Recuperação do documento certo** mostra, por golden, a posição do
   documento-fonte entre os trechos, com a pergunta em português e em inglês.
 
@@ -188,6 +193,19 @@ O resto (gráficos, comparação par a par, os quatro formatos) sai de graça. E
 `report_charts.py`, `FRAMEWORK_SLOT` fixa a cor dele. Sem isso, ele pega o
 próximo slot livre da paleta.
 
+## Relatório do benchmark
+
+O benchmark de estratégias (`tests/benchmark/`, `plano-benchmark.md`) tem um relatório próprio, separado deste:
+um PDF didático com cada experimento, gerado das rodadas em `tests/benchmark/out/` com o mesmo venv e os mesmos
+renderizadores.
+
+```powershell
+tests\reports\.venv\Scripts\python.exe tests\reports\benchmark_report.py --abrir
+```
+
+O conteúdo (os textos de cada experimento, com marcadores que recebem os números do placar) fica em
+`tests/benchmark/relatorio/`; o formato está no README de lá.
+
 ## Testes do gerador
 
 Herméticos (JSONs sintéticos, sem Ollama):
@@ -206,3 +224,5 @@ tests\reports\.venv\Scripts\python.exe -m pytest tests/reports
 | `report_charts.py` | Gráficos (PNG) |
 | `report_history.py` | `resumo.json`, `HISTORICO.md`, `historico.csv` e a cópia em `ultimo/` |
 | `test_run_all.py` | Testes do orquestrador (`tests/run_all.py`) e do histórico |
+| `benchmark_report.py` / `benchmark_data.py` / `benchmark_charts.py` | O relatório do benchmark: textos, dados das rodadas e gráficos |
+| `test_benchmark_report.py` | Testes do relatório do benchmark, com rodadas falsas |

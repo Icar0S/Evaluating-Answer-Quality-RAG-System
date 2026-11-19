@@ -90,6 +90,17 @@ def test_recorte_por_origem_separa_acervo_proprio_de_alheio(md_run: Path):
     assert stats["md"].abstained == 0
     assert stats["pdf"].abstained == 1  # pergunta do acervo alheio: abstenção
     assert stats["pdf"].n_cases == 1
+    # Quem diz o que é alheio é o índice (RAG_INDICES, "origins"), lido do backend/app/config.py.
+    assert (stats["md"].in_index, stats["pdf"].in_index) == (True, False)
+
+
+def test_no_v2_as_duas_origens_estao_no_indice(tmp_path: Path):
+    # pdf-v2 e md-v2 têm os mesmos 61 artigos: nenhuma pergunta é de acervo alheio.
+    run = load_run(_ragas_run(tmp_path / "v2.json", "md-v2", "pt", [("p1", "pdf", "R.", 0.8), ("m1", "md", "R.", 0.8)]))
+    unknown = load_run(_ragas_run(tmp_path / "x.json", "colecao_avulsa", "pt", [("p1", "pdf", "R.", 0.8)]))
+
+    assert {o.origin: o.in_index for o in origin_stats(run)} == {"pdf": True, "md": True}
+    assert [o.in_index for o in origin_stats(unknown)] == [None]
 
 
 def test_relatorio_traz_origem_e_diagnostico_de_recuperacao(tmp_path: Path, pdf_run: Path, md_run: Path):
@@ -115,6 +126,7 @@ def test_relatorio_traz_origem_e_diagnostico_de_recuperacao(tmp_path: Path, pdf_
     assert "Execução de `tests/compare_indices.py`" in md
     assert "Comparação entre as rodadas" in md
     assert "Por origem da pergunta" in md
+    assert "| RAGAS · md-v1 | pdf | não |" in md  # pergunta dos PDFs fora do índice md-v1
     assert "Recuperação do documento certo" in md
     assert "**md-v1**, perguntas em EN: 1/1" in md
     assert "RAGAS · pdf-v1: média" in md

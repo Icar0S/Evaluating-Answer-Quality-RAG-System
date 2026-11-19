@@ -35,7 +35,6 @@ import re
 import shutil
 import sys
 import time
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -49,10 +48,13 @@ GOLDEN_SETS = [
     ("pdf", ROOT / "tests" / "deepeval" / "goldens" / "dataset.json"),
     ("md", ROOT / "tests" / "deepeval" / "goldens" / "dataset_md.json"),
 ]
-# Os dois RAGs do docker-compose.yml (os mesmos de playwright.demo.config.ts).
+# Os dois RAGs do docker-compose.yml (os mesmos de playwright.demo.config.ts). DEMO_PDF_INDEX=pdf-v2 e
+# DEMO_MD_INDEX=md-v2 trocam para as versões com os mesmos artigos nos dois formatos.
 RAGS = [
-    {"index": "pdf-v1", "label": "PDFs", "url": os.environ.get("DEMO_PDF_API_URL", "http://localhost:8010")},
-    {"index": "md-v1", "label": "Markdown", "url": os.environ.get("DEMO_MD_API_URL", "http://localhost:8011")},
+    {"index": os.environ.get("DEMO_PDF_INDEX") or "pdf-v1", "label": "PDFs",
+     "url": os.environ.get("DEMO_PDF_API_URL", "http://localhost:8010")},
+    {"index": os.environ.get("DEMO_MD_INDEX") or "md-v1", "label": "Markdown",
+     "url": os.environ.get("DEMO_MD_API_URL", "http://localhost:8011")},
 ]
 MISSING = "sem resposta no E2E (o teste falhou ou foi interrompido antes de responder)"
 DIAGNOSTIC_DESCRIPTION = (
@@ -128,6 +130,16 @@ def build_answers(index: str, records: list[dict], goldens: list[tuple[str, dict
     }
 
 
+def source_rank(documents: list[str], source: str) -> int | None:
+    """Posição (1 = primeiro) do documento-fonte entre os documentos dos trechos, ou None.
+
+    Compara pelo nome sem a extensão: nas versões v2 o mesmo artigo está nos dois formatos, e o golden dos
+    Markdown ("X.md") é achado no pdf-v2 como "X.pdf" (data/sync_corpora.py mantém o nome).
+    """
+    stem = Path(source).stem
+    return next((i for i, doc in enumerate(documents, start=1) if Path(doc).stem == stem), None)
+
+
 def retrieval_diagnostic(answer_sets: dict[str, dict], goldens: list[tuple[str, dict]]) -> dict | None:
     """Posição do documento-fonte de cada golden entre os trechos que o chat devolveu (formato de
     tests/retrieval_diagnostic.py, que o relatório já sabe mostrar)."""
@@ -140,8 +152,7 @@ def retrieval_diagnostic(answer_sets: dict[str, dict], goldens: list[tuple[str, 
         ranks = {}
         for index, data in answer_sets.items():
             answer = next((a for a in data["answers"] if a["name"] == name), {})
-            documents = answer.get("source_documents") or []
-            ranks[index] = {"pt": documents.index(source) + 1 if source in documents else None}
+            ranks[index] = {"pt": source_rank(answer.get("source_documents") or [], source)}
         rows.append(
             {"name": name, "conversion": golden.get("conversion"), "source_document": source, "ranks": ranks}
         )
@@ -193,25 +204,8 @@ def _health(url: str) -> dict | None:
         return None
 
 
-def unload_model(ollama_url: str, model: str) -> bool:
-    """Tira o modelo da memória do Ollama (keep_alive 0), se estiver carregado. True se tirou."""
-    body = ra.http_get(f"{ollama_url}/api/ps", timeout=5)
-    try:
-        loaded = {m["name"] for m in json.loads(body).get("models", [])} if body else set()
-    except (json.JSONDecodeError, AttributeError):
-        return False
-    if not loaded & {model, f"{model}:latest"}:
-        return False
-    request = urllib.request.Request(
-        f"{ollama_url}/api/generate",
-        data=json.dumps({"model": model, "keep_alive": 0}).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=60):  # noqa: S310 - Ollama local
-            return True
-    except OSError:
-        return False
+# Tira o gerador da memória antes do julgamento; mora em run_all.py porque o modo --api de lá faz o mesmo.
+unload_model = ra.unload_model
 
 
 def _per_set(value: str | None) -> int | None:
@@ -378,7 +372,12 @@ def main() -> int:
     print(f"\n=== Resumo ({(time.monotonic() - t0) / 60:.1f} min) ===")
     for step in runner.steps:
         print(f"  {ra.STATUS_TAG.get(step.status, step.status)} {step.name}")
-    print("\nVídeo e trace de cada teste: cd frontend\\tests && npm run demo:report")
+    # No container de testes (docker/tests.Dockerfile) não há Node na máquina: o relatório sai por um modo do script.
+    report_hint = (
+        "scripts\\docker_tests.bat relatorio-e2e (Linux/macOS: ./scripts/docker_tests.sh relatorio-e2e)"
+        if os.environ.get("RAG_TESTS_IN_DOCKER") else "cd frontend\\tests && npm run demo:report"
+    )
+    print(f"\nVídeo e trace de cada teste: {report_hint}")
     if pdf:
         print(f"Relatório comparando os dois RAGs: {pdf}")
         if args.abrir and hasattr(os, "startfile"):

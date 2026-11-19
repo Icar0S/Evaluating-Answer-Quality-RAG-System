@@ -10,9 +10,10 @@ import { DEMO, showSidePanel } from "./helpers";
 // arquivos ao RAGAS. O relatório compara a qualidade dos dois RAGs com as
 // respostas que a turma viu na tela.
 //
-// Os dois RAGs recebem as MESMAS perguntas, as dos PDFs e as dos Markdown. A
-// pergunta do acervo alheio mede se o RAG se abstém quando o assunto não está
-// nele.
+// Os dois RAGs recebem as MESMAS perguntas, as dos PDFs e as dos Markdown. Se
+// o índice do RAG não tem os artigos do acervo da pergunta, ela mede se o RAG
+// se abstém. Quem diz é o /health (rag_index_origins): o pdf-v1 e o md-v1 têm
+// um acervo cada; o pdf-v2 e o md-v2, os dois.
 
 const ANSWERS_DIR = process.env.DEMO_ANSWERS_DIR;
 // DEMO_GOLDENS=N: só os N primeiros de cada conjunto (para um ensaio rápido).
@@ -38,11 +39,14 @@ function clip(text: string, max: number): string {
 
 test.describe("Perguntas de referência", () => {
   for (const { origin, label, golden } of CASES) {
-    test(`${origin} · ${golden.name}`, async ({ page, rag }) => {
+    test(`${origin} · ${golden.name}`, async ({ page, rag, request }) => {
       test.skip(!ANSWERS_DIR || !rag, "Só na demonstração com relatório (scripts\\demo_e2e.bat).");
       test.setTimeout(360_000);
       const target = rag!;
-      const ownCorpus = target.index.startsWith(`${origin}-`);
+      const health = await (await request.get(`${target.apiBaseURL}/health`, { timeout: 15_000 })).json();
+      // Backend sem o campo (imagem antiga): vale o prefixo do nome do índice, como antes.
+      const origins: string[] = health.rag_index_origins ?? [target.index.split("-")[0]];
+      const ownCorpus = origins.includes(origin);
 
       await page.goto("/chat.html");
       await showSidePanel(page, {

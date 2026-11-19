@@ -1,0 +1,197 @@
+{
+  "2025_01_RETORCH_ICTSS24_ResearchGate": {
+    "titulo": "Software System Testing Assisted by Large Language Models: An Exploratory Study",
+    "origem": "primeira página",
+    "revisado": false
+  },
+  "AI LitReview A Web-Based Tool for LLM-Assisted Systematic Literature Reviews": {
+    "titulo": "AI LitReview: A Web-Based Tool for LLM-Assisted Systematic Literature Reviews",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "AIWare_2025___Testing_with_LLMs": {
+    "titulo": "Software Testing with Large Language Models: An Interview Study with Practitioners",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "ARES An Automated Evaluation Framework for Retrieval-Augmented Generation Systems": {
+    "titulo": "ARES: An Automated Evaluation Framework for Retrieval-Augmented Generation Systems",
+    "origem": "primeira página",
+    "revisado": false
+  },
+  "AnnotAISE Web-Based Data Annotation Platform For Software Engineering Research": {
+    "titulo": "AnnotAISE: Web-Based Data Annotation Platform For Software Engineering Research",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Cassiopeia A Retrieval-Augmented Generation Tool for Automated Test-Case Creation": {
+    "titulo": "Cassiopeia: A Retrieval-Augmented Generation Tool for Automated Test-Case Creation",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Combining TSL and LLM to Automate REST API Testing A Comparative Study": {
+    "titulo": "Combining TSL and LLM to Automate REST API Testing: A Comparative Study",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Comparative Analysis of Large Language Model Tools for Automated Test Data Generation from BDD": {
+    "titulo": "Comparative Analysis of Large Language Model Tools for Automated Test Data Generation from BDD",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Cronos Automating Bug Report Validation with LLMs using RAG Approach": {
+    "titulo": "Cronos: Automating Bug Report Validation with LLMs using RAG Approach",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "DesignandEvaluationofaModularMultilingualRAGArchitecture": {
+    "titulo": "Design and Evaluation of a Modular Multilingual RAG Architecture for Trustworthy and Auditable AI Systems: The PrivacyEthical Chat Tool",
+    "origem": "primeira página",
+    "revisado": false
+  },
+  "Does Prompt Engineering Really Impact LLM-Generated Unit Tests An Empirical Study Based on Mutation Testing": {
+    "titulo": "Does Prompt Engineering Really Impact LLM-Generated Unit Tests? An Empirical Study Based on Mutation Testing",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Does Retrieval-Augmented Vulnerability Repair Generalize Beyond Snippets A Study on TypeScript Web Applications": {
+    "titulo": "Does Retrieval-Augmented Vulnerability Repair Generalize Beyond Snippets? A Study on TypeScript Web Applications",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "EEVEE Uma Arquitetura Extensível Baseada em Workers para Avaliação Automatizada de Programação": {
+    "titulo": "EEVEE: Uma Arquitetura Extensível Baseada em Workers para Avaliação Automatizada de Programação",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Evaluating LLM-Generated Unit Tests with Mutation Testing ChatGPT vs DeepSeek": {
+    "titulo": "Evaluating LLM-Generated Unit Tests with Mutation Testing: ChatGPT vs DeepSeek",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Evaluating RAG-based QA Systems A Comparative Analysis of LLM as a Judge, Traditional Metrics, and Human Alignment": {
+    "titulo": "Evaluating RAG-based QA Systems: A Comparative Analysis of LLM as a Judge, Traditional Metrics, and Human Alignment",
+    "origem": "primeira página",
+    "revisado": false
+  },
+  "Evaluating the Effectiveness and Cost-Efficiency of Large Language Models in Automated Unit Test Generation": {
+    "titulo": "Evaluating the Effectiveness and Cost-Efficiency of Large Language Models in Automated Unit Test Generation",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Evaluator Bias in LLM-Based Program Repair A Disagreement Analysis on Android Resource Leaks": {
+    "titulo": "Evaluator Bias in LLM-Based Program Repair: A Disagreement Analysis on Android Resource Leaks",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "GenIA-E2ETest An AI-Based Platform for End-to-End Test Automation": {
+    "titulo": "GenIA-E2ETest: An AI-Based Platform for End-to-End Test Automation",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Generation of Test Datasets using LLM — Quality Assurance Perspective": {
+    "titulo": "Generation of test datasets using LLM - Quality Assurance Perspective",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Integrating_Large_Language_Models_into_Automated_S": {
+    "titulo": "Integrating Large Language Models into Automated Software Testing",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "LLMContextBench A Benchmark Tool for Evaluating Context Provisioning Strategies in LLM-Based Systems": {
+    "titulo": "LLMContextBench: A Benchmark Tool for Evaluating Context Provisioning Strategies in LLM-Based Systems",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "LLMs as Test Generators A Comparative Benchmarking Study": {
+    "titulo": "LLMs as Test Generators: A Comparative Benchmarking Study",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Large Language Models in Software Testing A Scoping Review": {
+    "titulo": "Large Language Models in Software Testing: A Scoping Review",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Large_Language_Models_for_Software_Testing_A_Resea": {
+    "titulo": "Large Language Models for Software Testing: A Research Roadmap",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "MeTMaP Metamorphic Testing for Detecting False Vector Matching Problems in LLM-Augmented Generation": {
+    "titulo": "MeTMaP: Metamorphic Testing for Detecting False Vector Matching Problems in LLM Augmented Generation",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "MetaRAG Metamorphic Testing for Hallucination Detection in RAG Systems": {
+    "titulo": "MetaRAG: Metamorphic Testing for Hallucination Detection in RAG Systems",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "NeurIPS-2024-ragchecker-a-fine-grained-framework-for-diagnosing-retrieval-augmented-generation-Paper-Datasets_and_Benchmarks_Track": {
+    "titulo": "RAGChecker: A Fine-grained Framework for Diagnosing Retrieval-Augmented Generation",
+    "origem": "corrigido à mão (versalete perdido)",
+    "revisado": false
+  },
+  "On the Limits of Text-Only LLM-Based Test Case Prioritization in Industrial Black-Box Regression Testing": {
+    "titulo": "On the Limits of Text-Only LLM-Based Test Case Prioritization in Industrial Black-Box Regression Testing",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "QAQuest A Gamified Plugin for Manual Testing": {
+    "titulo": "QAQuest: A Gamified Plugin for Manual Testing",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "RAG Corporativo com HyDE Uma Experiência Prática de Chatbot B2B com Conhecimento Proprietário": {
+    "titulo": "RAG Corporativo com HyDE: Uma Experiência Prática de Chatbot B2B com Conhecimento Proprietário",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "RAG-Driven Multiple Assertions Generation with Large Language Models": {
+    "titulo": "RAG-Driven Multiple Assertions Generation with Large Language Models",
+    "origem": "corrigido à mão (nome do arquivo)",
+    "revisado": false
+  },
+  "RAGAS": {
+    "titulo": "RAGAS: Automated Evaluation of Retrieval Augmented Generation",
+    "origem": "corrigido à mão (versalete perdido)",
+    "revisado": false
+  },
+  "Software_Testing_of_Generative_AI_Systems_Challeng": {
+    "titulo": "Software Testing of Generative AI Systems: Challenges and Opportunities",
+    "origem": "primeira página",
+    "revisado": false
+  },
+  "Subreddit Temporal Network An Interactive Web Interface": {
+    "titulo": "Subreddit Temporal Network: An Interactive Web Interface",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Sustainability Concerns in Open Source Software A Multi-Domain Mining Study of GitHub Issues": {
+    "titulo": "Sustainability Concerns in Open Source Software: A Multi-Domain Mining Study of GitHub Issues",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Teste de Mutação em System Prompts para Avaliação de Conjuntos de Testes de Chatbots Baseados em LLMs": {
+    "titulo": "Teste de Mutação em System Prompts para Avaliação de Conjuntos de Testes de Chatbots Baseados em LLMs",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Testing with AI Agents An Empirical Study of Test Generation Frequency, Quality, and Coverage": {
+    "titulo": "Testing with AI Agents: An Empirical Study of Test Generation Frequency, Quality, and Coverage",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "Utilizando a IA Generativa para Apoiar a Especificação de Casos de Teste Funcionais em um Sistema de Software do Setor Público": {
+    "titulo": "Utilizando a IA Generativa para Apoiar a Especificação de Casos de Teste Funcionais em um Sistema de Software do Setor Público",
+    "origem": "metadados",
+    "revisado": false
+  },
+  "When the Trigger Fails Metamorphic Testing of Tool-Calling AI Agents": {
+    "titulo": "When the Trigger Fails: Metamorphic Testing of Tool-Calling AI Agents",
+    "origem": "metadados",
+    "revisado": false
+  }
+}

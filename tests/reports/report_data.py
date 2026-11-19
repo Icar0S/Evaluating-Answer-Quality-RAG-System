@@ -16,6 +16,7 @@ máquina que tenha os JSONs.
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import re
 import statistics
@@ -113,6 +114,46 @@ def _read_not_found_marker() -> str | None:
 NOT_FOUND_MARKER = _read_not_found_marker()
 
 
+def _load_abstention():
+    """O detector de recusa do benchmark (tests/benchmark/abstention.py: sem acento, caixa e pontuação, e as
+    variantes revisadas no E0). Carregado pelo caminho do arquivo, sem mexer no sys.path: é só biblioteca padrão."""
+    path = PROJECT_ROOT / "tests" / "benchmark" / "abstention.py"
+    spec = importlib.util.spec_from_file_location("benchmark_abstention", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_abstention = _load_abstention()
+
+
+def _read_index_origins() -> dict[str, tuple[str, ...]]:
+    """De quais acervos de perguntas cada versão do índice contém os artigos, lido da fonte.
+
+    O valor mora em backend/app/config.py::RAG_INDICES (campo "origins"), lido sem importar o backend, como a
+    frase de abstenção acima. Serve também para rodadas antigas: o JSON delas só traz o nome do índice.
+    """
+    source = PROJECT_ROOT / "backend" / "app" / "config.py"
+    try:
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return {}
+    for node in tree.body:
+        target = node.target if isinstance(node, ast.AnnAssign) else None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+        if isinstance(target, ast.Name) and target.id == "RAG_INDICES" and node.value is not None:
+            try:
+                indices = ast.literal_eval(node.value)
+            except ValueError:
+                return {}
+            return {name: tuple(spec.get("origins", ())) for name, spec in indices.items()}
+    return {}
+
+
+INDEX_ORIGINS = _read_index_origins()
+
+
 # ------------------------------------------------------------------ modelo
 
 
@@ -144,8 +185,8 @@ class Case:
 
     @property
     def abstained(self) -> bool:
-        """O SUT respondeu com a frase de abstenção ("não encontrei...")."""
-        return bool(NOT_FOUND_MARKER) and NOT_FOUND_MARKER.lower() in self.answer.lower()
+        """O SUT respondeu com a frase de abstenção ("não encontrei..."), escrita de qualquer jeito."""
+        return bool(NOT_FOUND_MARKER) and _abstention.is_abstention(self.answer, NOT_FOUND_MARKER)
 
     @property
     def all_passed(self) -> bool:
@@ -473,10 +514,19 @@ class OriginStats:
     abstained: int
     all_passed: int
     means: dict[str, float | None]
+    # O índice da rodada contém os artigos desta origem? None = índice que o RAG_INDICES não conhece.
+    in_index: bool | None = None
+
+
+def origin_in_index(rag_index: str | None, origin: str) -> bool | None:
+    """Se o índice contém os artigos da origem da pergunta (RAG_INDICES). Fora dele, o certo é se abster."""
+    if rag_index not in INDEX_ORIGINS:
+        return None
+    return origin in INDEX_ORIGINS[rag_index]
 
 
 def origin_stats(run: Run) -> list[OriginStats]:
-    """Médias de cada dimensão separadas pela origem da pergunta (acervo próprio x alheio)."""
+    """Médias de cada dimensão separadas pela origem da pergunta (no acervo do índice ou fora dele)."""
     out = []
     for origin in origins([run]):
         cases = [c for c in run.cases if c.origin == origin]
@@ -491,6 +541,7 @@ def origin_stats(run: Run) -> list[OriginStats]:
                 abstained=sum(1 for c in cases if c.abstained),
                 all_passed=sum(1 for c in cases if c.all_passed),
                 means=means,
+                in_index=origin_in_index(run.rag_index, origin),
             )
         )
     return out

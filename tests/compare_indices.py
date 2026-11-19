@@ -3,6 +3,7 @@
 Uso, da raiz do repositório:
 
     backend\\.venv\\Scripts\\python.exe tests\\compare_indices.py                 # pdf-v1 x md-v1, RAGAS
+    backend\\.venv\\Scripts\\python.exe tests\\compare_indices.py --indices pdf-v2 md-v2   # mesmos artigos, formatos diferentes
     backend\\.venv\\Scripts\\python.exe tests\\compare_indices.py --limite 2      # 2 goldens de cada conjunto (fumaça)
     backend\\.venv\\Scripts\\python.exe tests\\compare_indices.py --deepeval --abrir
 
@@ -13,8 +14,10 @@ Passos:
     o documento certo vem entre os trechos? Pergunta em português e em inglês.
  3. Para cada versão (e para as de --en, também com as perguntas em inglês):
     gera as respostas uma vez, para os goldens dos DOIS acervos
-    (tests/deepeval/goldens/dataset.json e dataset_md.json). Perguntas do
-    acervo alheio medem se o RAG se abstém quando o assunto não está nele.
+    (tests/deepeval/goldens/dataset.json e dataset_md.json). Numa versão que
+    não tem os artigos de um acervo (pdf-v1 e md-v1 têm um cada), as
+    perguntas dele medem se o RAG se abstém; nas v2, que têm os dois, todas
+    são do próprio acervo (backend/app/config.py, RAG_INDICES, "origins").
  4. RAGAS: controles do juiz uma vez e a avaliação de cada conjunto de
     respostas. DeepEval só com --deepeval (pode levar horas).
  5. Relatório consolidado em tests/reports/out/<data>/, com as rodadas lado a
@@ -51,13 +54,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Compara versões do índice do RAG com as mesmas perguntas.")
     parser.add_argument("--indices", nargs="+", default=["pdf-v1", "md-v1"], help="versões a comparar")
     parser.add_argument(
-        "--en", nargs="*", default=["md-v1"],
-        help="versões que também recebem as perguntas em inglês (padrão: md-v1; vazio = nenhuma)",
+        "--en", nargs="*", default=None,
+        help="versões que também recebem as perguntas em inglês (padrão: as md-* comparadas; vazio = nenhuma)",
     )
     parser.add_argument("--deepeval", action="store_true", help="avalia também com o DeepEval (lento)")
     parser.add_argument("--limite", type=int, default=None, help="só os N primeiros goldens de cada conjunto")
     parser.add_argument("--abrir", action="store_true", help="abre o PDF do relatório ao terminar")
     args = parser.parse_args()
+    if args.en is None:
+        # Só os goldens dos Markdown têm pergunta em inglês, e era no md-v1 que o idioma pesava (README).
+        args.en = [index for index in args.indices if index.startswith("md-")]
 
     started = datetime.now(timezone.utc).astimezone()
     t0 = time.monotonic()

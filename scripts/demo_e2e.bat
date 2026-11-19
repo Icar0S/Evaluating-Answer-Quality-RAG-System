@@ -17,7 +17,9 @@ REM
 REM Variaveis opcionais: DEMO_GENERATION_MODEL (padrao gemma3:4b),
 REM DEMO_JUDGE_MODEL (padrao qwen3:8b), DEMO_SLOWMO (ms entre acoes, padrao 400),
 REM DEMO_GOLDENS (so as N primeiras perguntas de referencia de cada acervo),
-REM OLLAMA_MODELS_DIR (pasta de modelos do Ollama a reaproveitar).
+REM OLLAMA_MODELS_DIR (pasta de modelos do Ollama a reaproveitar),
+REM DEMO_PDF_INDEX / DEMO_MD_INDEX (versao do indice de cada RAG, padrao pdf-v1 e
+REM md-v1, acervos diferentes; pdf-v2 e md-v2 = os mesmos artigos nos dois formatos).
 
 cd /d "%~dp0.."
 chcp 65001 >nul
@@ -43,9 +45,20 @@ if /i "%MODE%"=="parar" (
     exit /b !errorlevel!
 )
 
+REM As variaveis que o docker compose tambem le do .env (DEMO_*, OLLAMA_SEED_DIR,
+REM OLLAMA_MODELS_DIR), quando nao vierem do ambiente: no compose o ambiente
+REM ganha do .env, e sem isto os padroes abaixo passariam por cima do .env.
+if exist ".env" (
+    for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /c:"DEMO_" /c:"OLLAMA_SEED_DIR=" /c:"OLLAMA_MODELS_DIR=" ".env"`) do (
+        if not defined %%a set "%%a=%%b"
+    )
+)
 if not defined DEMO_GENERATION_MODEL set "DEMO_GENERATION_MODEL=gemma3:4b"
 if not defined DEMO_JUDGE_MODEL set "DEMO_JUDGE_MODEL=qwen3:8b"
 if not defined DEMO_EMBEDDING_MODEL set "DEMO_EMBEDDING_MODEL=nomic-embed-text"
+REM Definidas aqui (e nao so no compose) porque os testes e o relatorio tambem leem.
+if not defined DEMO_PDF_INDEX set "DEMO_PDF_INDEX=pdf-v1"
+if not defined DEMO_MD_INDEX set "DEMO_MD_INDEX=md-v1"
 
 REM O relatorio (modo padrao) roda em Python na maquina: o orquestrador so usa
 REM a biblioteca padrao, e o RAGAS e o relatorio usam os venvs de tests\.
@@ -69,27 +82,22 @@ if /i not "%MODE%"=="rapido" if /i not "%MODE%"=="ui" if /i not "%MODE%"=="subir
 
 REM Modelos: no volume do Docker, que carrega bem mais rapido que uma pasta do
 REM Windows montada no container (medido: ~44 s contra ~1 min 50 s para o
-REM gemma3:4b). Se a maquina ja tem os modelos no Ollama dela, copia so os tres
-REM da demonstracao para o volume (uma vez; nas outras, so confere). O que nao
-REM estiver na maquina, o servico "models" do compose baixa.
+REM gemma3:4b). Se a maquina ja tem os modelos no Ollama dela, o servico
+REM models-seed do compose copia so os da demonstracao para o volume (uma vez;
+REM nas outras, so confere): aqui basta apontar OLLAMA_SEED_DIR para a pasta. O
+REM que nao estiver na maquina, o servico "models" do compose baixa.
 REM Para montar a pasta da maquina direto (sem copiar), defina OLLAMA_MODELS_DIR.
-set "OLLAMA_IMAGE=ollama/ollama:0.35.0"
-set "MODELS_VOLUME=rag-test-specialist_ollama-models"
 if defined OLLAMA_MODELS_DIR (
     echo Modelos do Ollama: montados de !OLLAMA_MODELS_DIR!
 ) else (
-    set "MODELS_SRC="
-    if defined OLLAMA_MODELS if exist "!OLLAMA_MODELS!\manifests" set "MODELS_SRC=!OLLAMA_MODELS!"
-    if not defined MODELS_SRC if exist "%USERPROFILE%\.ollama\models\manifests" set "MODELS_SRC=%USERPROFILE%\.ollama\models"
-    REM Com as etiquetas do compose, ele reconhece o volume como dele (sem aviso).
-    docker volume create --label com.docker.compose.project=rag-test-specialist --label com.docker.compose.volume=ollama-models !MODELS_VOLUME! >nul
-    if defined MODELS_SRC (
-        echo.
-        echo == Copiando os modelos da maquina para o volume do Docker ^(so o que falta^) ==
-        docker run --rm --entrypoint sh -v "!MODELS_SRC!:/src:ro" -v !MODELS_VOLUME!:/dst -v "%CD%\docker:/scripts:ro" !OLLAMA_IMAGE! /scripts/seed_models.sh /src /dst !DEMO_EMBEDDING_MODEL! !DEMO_GENERATION_MODEL! !DEMO_JUDGE_MODEL!
-        if errorlevel 1 (
-            echo [AVISO] A copia falhou; o servico "models" vai baixar o que faltar.
-        )
+    if not defined OLLAMA_SEED_DIR (
+        if defined OLLAMA_MODELS if exist "!OLLAMA_MODELS!\manifests" set "OLLAMA_SEED_DIR=!OLLAMA_MODELS!"
+        if not defined OLLAMA_SEED_DIR if exist "%USERPROFILE%\.ollama\models\manifests" set "OLLAMA_SEED_DIR=%USERPROFILE%\.ollama\models"
+    )
+    if defined OLLAMA_SEED_DIR (
+        REM Barras normais: e assim que o caminho entra no volume do compose.
+        set "OLLAMA_SEED_DIR=!OLLAMA_SEED_DIR:\=/!"
+        echo Modelos do Ollama: o servico models-seed copia o que faltar de !OLLAMA_SEED_DIR! para o volume do Docker.
     ) else (
         echo Modelos do Ollama: volume do Docker ^(o primeiro "subir" baixa ~9 GB^).
     )
@@ -134,7 +142,7 @@ if not defined READY (
     goto :erro
 )
 REM O RAG dos Markdown sobe em paralelo; se nao vier, a demonstracao segue so
-REM com o dos PDFs (os testes do md-v1 se auto-pulam).
+REM com o dos PDFs (os testes do RAG dos Markdown se auto-pulam).
 set "READY_MD="
 for /l %%i in (1,1,60) do (
     if not defined READY_MD (
@@ -146,12 +154,12 @@ for /l %%i in (1,1,60) do (
         )
     )
 )
-echo    RAG dos PDFs ^(pdf-v1^):     http://localhost:8010   chat: http://localhost:5510/chat.html
+echo    RAG dos PDFs ^(!DEMO_PDF_INDEX!^):     http://localhost:8010   chat: http://localhost:5510/chat.html
 if defined READY_MD (
-    echo    RAG dos Markdown ^(md-v1^): http://localhost:8011   chat: http://localhost:5510/chat.html?api=http://localhost:8011
+    echo    RAG dos Markdown ^(!DEMO_MD_INDEX!^): http://localhost:8011   chat: http://localhost:5510/chat.html?api=http://localhost:8011
     curl.exe -s --max-time 5 http://localhost:8011/health 2>nul | findstr /r /c:"vector_store_documents.:0[,}]" >nul
     if not errorlevel 1 (
-        echo [AVISO] O indice md-v1 esta vazio: faltam os .md em data\new_papers_marks
+        echo [AVISO] O indice !DEMO_MD_INDEX! esta vazio: faltam os .md em data\new_papers_marks
         echo         ^(o acervo nao e versionado^). Os testes do RAG dos Markdown vao se auto-pular.
     )
 ) else (

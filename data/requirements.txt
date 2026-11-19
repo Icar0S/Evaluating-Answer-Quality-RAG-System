@@ -1,0 +1,16 @@
+# Conversão entre os dois acervos (data/sync_corpora.py). Venv próprio:
+#
+#   python -m venv data\.venv
+#   data\.venv\Scripts\pip install -r data\requirements.txt
+#
+# Fora do venv do backend de propósito: lá o PyMuPDF fica em 1.25.1 porque o
+# texto extraído dos PDFs precisa sair byte a byte igual (estudo de mutação).
+
+pymupdf4llm==1.28.2     # PDF -> Markdown (com o pymupdf-layout: ordem de leitura em colunas)
+pymupdf==1.28.2
+pymupdf-layout==1.28.2
+markdown-it-py==4.2.0   # Markdown -> HTML
+fpdf2==2.8.9            # HTML -> PDF (paginação, fontes de reserva por caractere, só os glifos usados)
+pymupdf-fonts==1.0.5    # as fontes do PDF: Noto Sans, Noto Sans Math, Noto Sans Symbols, Cascadia Code
+fonttools==4.66.1       # usado pelo fpdf2 para embutir só os glifos usados
+pillow==12.3.0          # dependência do fpdf2; fixada porque a 13.0.0 saiu em 16/10/2026

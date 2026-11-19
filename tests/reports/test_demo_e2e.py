@@ -5,8 +5,14 @@ Herméticos: nenhum navegador, container ou juiz roda aqui. Rodar da raiz:
 """
 from __future__ import annotations
 
+import json
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 import build_report
 
@@ -78,6 +84,17 @@ def test_diagnostico_sai_dos_trechos_que_o_chat_devolveu():
     assert rows["m2"]["conversion"] == "limpo"
 
 
+def test_no_v2_o_documento_certo_e_achado_no_outro_formato():
+    # O golden dos Markdown cita "a.md"; no pdf-v2 o mesmo artigo é "a.pdf" (data/sync_corpora.py).
+    answer_sets = {"pdf-v2": demo_e2e.build_answers("pdf-v2", [_record("m1", "r", ["x.pdf", "a.pdf"], "pdf-v2")],
+                                                    GOLDENS)}
+
+    diagnostic = demo_e2e.retrieval_diagnostic(answer_sets, GOLDENS)
+
+    assert {r["name"]: r["ranks"]["pdf-v2"]["pt"] for r in diagnostic["rows"]} == {"m1": 2, "m2": None}
+    assert demo_e2e.source_rank(["b.markdown.md"], "b.markdown.pdf") == 1  # só a última extensão sai
+
+
 def test_conta_os_testes_de_cada_projeto_do_playwright():
     results = {
         "suites": [
@@ -132,3 +149,33 @@ def test_relatorio_da_demonstracao_diz_de_onde_vieram_respostas_e_diagnostico(tm
     assert "Tirado dos trechos que o chat devolveu" in text
     assert "**md-v1**, perguntas em PT: 1/1" in text
     assert "**pdf-v1**, perguntas em PT: 0/1" in text
+
+
+# Um reporter mínimo do Playwright: com --list, nenhum navegador abre, e o
+# onBegin recebe a configuração resolvida de cada projeto.
+HEADLESS_REPORTER = (
+    "class R { onBegin(config) { console.log('HEADLESS=' + JSON.stringify(config.projects.map(p => p.use.headless))); } }\n"
+    "module.exports = R;\n"
+)
+
+
+@pytest.mark.parametrize(("value", "headless"), [(None, False), ("1", True)])
+def test_demo_abre_o_navegador_visivel_e_so_o_container_pede_headless(value, headless, tmp_path, monkeypatch):
+    # O padrão é o que a turma assiste; DEMO_HEADLESS=1 é o container de testes, sem tela.
+    npx = shutil.which("npx")
+    if not npx or not (demo_e2e.E2E_DIR / "node_modules").is_dir():
+        pytest.skip("Playwright não instalado em frontend/tests (npm ci)")
+    reporter = tmp_path / "headless-reporter.js"
+    reporter.write_text(HEADLESS_REPORTER, encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if k != "DEMO_HEADLESS"}
+    if value is not None:
+        env["DEMO_HEADLESS"] = value
+
+    result = subprocess.run(
+        [npx, "playwright", "test", "-c", "playwright.demo.config.ts", "--list", f"--reporter={reporter}"],
+        cwd=demo_e2e.E2E_DIR, env=env, capture_output=True, text=True, encoding="utf-8", timeout=180,
+    )
+
+    line = next((ln for ln in result.stdout.splitlines() if ln.startswith("HEADLESS=")), None)
+    assert line, result.stdout + result.stderr
+    assert set(json.loads(line.removeprefix("HEADLESS="))) == {headless}

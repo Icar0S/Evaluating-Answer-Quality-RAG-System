@@ -1,0 +1,11 @@
+# Conversão PDF -> Markdown com o Docling, para o degrau 2 do E2 (data/convert_docling.py). Venv próprio:
+#
+#   python -m venv data\.venv-docling
+#   data\.venv-docling\Scripts\pip install -r data\requirements-docling.txt
+#
+# Fora do data\.venv (o do pymupdf4llm) porque o Docling traz o torch e os
+# modelos de layout e de tabela. A versão é a mais nova com duas semanas em
+# 18/10/2026; o manifesto (data/conversions_docling.json) grava as versões dos
+# pacotes docling* que converteram cada arquivo.
+
+docling==2.133.0

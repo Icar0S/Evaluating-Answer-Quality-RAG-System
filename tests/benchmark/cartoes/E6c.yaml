@@ -1,0 +1,52 @@
+# A confirmação do E6 (plano-benchmark.md, §8): o Δ e o veredito do escolhido saem de confirmacao, rodada uma vez.
+# Formato provisório: a §9 do plano não chegou.
+#
+# Da seleção em português com o bge-m3 (E6-bgem3) passaram o top_k 8 (a evidência sobe por construção; o plano
+# manda a decisão para a C2 e o custo) e o limiar recalibrado, 0,436, que fica fixo aqui: recalibrar na
+# confirmação seria escolher de novo nos dados do veredito.
+id: E6c
+titulo: Parâmetros de recuperação — a confirmação (bge-m3, português)
+pergunta: O top_k 8 e o limiar escolhidos na seleção se sustentam nas perguntas de confirmação, com a C2?
+hipotese: >
+  O top_k 8 sobe a fidelidade, ao custo de cerca do dobro de tokens no prompt; o limiar de 0,436 devolve parte da
+  abstenção correta que o bge-m3 tirou no E1, sem barrar pergunta de dentro.
+exploratorio: false
+goldens: tests/benchmark/goldens/v2.json
+split: confirmacao
+
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+# "RAGAS_JUDGE_NUM_CTX dimensionado pelo braço TOP_K=8" (§8, E6): 8 trechos de 800 tokens não cabem em 8.192.
+juiz:
+  modelo: qwen3:8b
+  num_ctx: 12288
+
+bracos:
+  base: {indice: pdf-v1-bgem3, camadas: [c1, c2], papel: baseline}
+  k8: {indice: pdf-v1-bgem3, camadas: [c1, c2], set: {top_k: 8}}
+  lim:
+    indice: pdf-v1-bgem3
+    camadas: [c1, c2]
+    set: {min_similarity_score: 0.436}
+    metrica_primaria: {camada: abstention, metrica: correct_abstention}
+
+pares: [[base, k8], [base, lim]]
+metrica_primaria: {camada: c2, metrica: faithfulness}
+guardas:
+  - {nome: o limiar não barra pergunta de dentro, par: [base, lim], metrica: c1.false_block, tolerancia_perguntas: 1}
+  - {nome: a abstenção indevida não sobe com o limiar, par: [base, lim], metrica: abstention.undue_abstention, tolerancia_perguntas: 1}
+  - {nome: latência da geração com k8, par: [base, k8], metrica: cost.generation_ms, tolerancia: 2000}
+saida: >
+  O veredito dos dois escolhidos em confirmacao, com a C2 e o custo, ao lado do que a seleção prometia (o
+  vencedor "encolhe"?).
+didatica: >
+  Testar 10 configurações e escolher a melhor nos mesmos dados engana. A turma vê o vencedor "encolher" na
+  confirmação.

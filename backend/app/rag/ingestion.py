@@ -1,7 +1,8 @@
 """Ingestão de documentos (PDF e Markdown): extração de texto, chunking e indexação vetorial.
 
-PDF: chunking dentro de cada página (facilita citar a página como fonte).
-Markdown: o documento inteiro, sem página. Os dois usam o mesmo chunker por
+PDF: chunking dentro de cada página (facilita citar a página como fonte); com
+CHUNK_ACROSS_PAGES, a janela atravessa a página e o chunk leva a página onde
+começa. Markdown: o documento inteiro, sem página. Os dois usam o mesmo chunker por
 tokens (tiktoken cl100k_base como aproximação genérica, independente do
 tokenizer real do modelo local) e os mesmos parâmetros: comparar índices de
 formatos diferentes (config.RAG_INDICES) só faz sentido com o mesmo corte.
@@ -11,11 +12,12 @@ parâmetros, modelo de embedding) em <vector_store>/manifests/<coleção>.json.
 """
 from __future__ import annotations
 
+import bisect
 import hashlib
 import json
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,13 +25,17 @@ import fitz  # PyMuPDF
 import httpx
 import tiktoken
 
-from app.config import get_settings
+from app.config import PROJECT_ROOT, RAG_INDICES, get_settings
 from app.logging_utils import logger
-from app.rag import vector_store
+from app.rag import corpus_quality, titles, vector_store
 
 _encoding = tiktoken.get_encoding("cl100k_base")
 
 SUPPORTED_SUFFIXES = (".pdf", ".md")
+
+# Lista de documentos de cada versão registrada (config.RAG_INDICES): uma linha "<sha256>  <arquivo>" por
+# documento, "#" para comentário. Versões diferentes leem a mesma pasta; é a lista que diz o que entra em cada uma.
+INDEX_VERSIONS_DIR = Path(__file__).resolve().parent / "index_versions"
 
 # Versão da conversão Markdown -> texto, gravada no manifesto. Só a SINTAXE de
 # tabela vira texto: linhas separadoras somem e as células não vazias de cada
@@ -48,6 +54,32 @@ class ChunkRecord:
     document: str
     page: int | None
     text: str
+    # Título da seção do Markdown, com o chunker por seção (CHUNKER=section); None nos outros.
+    section: str | None = None
+
+    @property
+    def metadata(self) -> dict:
+        # O Chroma não aceita metadado None: página e seção só entram quando existem.
+        extra = {key: value for key, value in (("page", self.page), ("section", self.section)) if value is not None}
+        return {"document": self.document, **extra}
+
+
+@dataclass
+class DocumentText:
+    """O texto de um documento como o chunker recebe, e o que a leitura viu (para o C0 do manifesto).
+
+    PDF: uma entrada (página, texto) por página com texto. Markdown: uma só, (None, texto normalizado).
+    """
+
+    path: Path
+    format: str
+    segments: list[tuple[int | None, str]]
+    raw_markdown: str | None = None
+    pages_total: int | None = None
+
+    @property
+    def text(self) -> str:
+        return "\n".join(text for _, text in self.segments)
 
 
 def normalize_markdown(text: str) -> str:
@@ -65,15 +97,84 @@ def normalize_markdown(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
-def extract_pdf_pages(pdf_path: Path) -> list[tuple[int, str]]:
-    """Retorna [(numero_da_pagina_1_indexed, texto)] para um PDF."""
+_MD_HEADING = re.compile(r"#{1,6}(\s|$)")
+
+
+def markdown_sections(text: str) -> list[tuple[str | None, str]]:
+    """O Markdown normalizado em seções (título, texto), cortado nas linhas `#`, que o normalize_markdown mantém.
+
+    O texto antes do primeiro título é uma seção sem título. Cada seção traz a própria linha de título.
+    """
+    sections: list[tuple[str | None, list[str]]] = [(None, [])]
+    for line in text.splitlines():
+        if _MD_HEADING.match(line):
+            sections.append((line.lstrip("#").strip() or None, [line]))
+        else:
+            sections[-1][1].append(line)
+    return [(title, "\n".join(lines).strip()) for title, lines in sections if "\n".join(lines).strip()]
+
+
+def markdown_structure(raw: str) -> dict:
+    """Linhas de tabela (sem as separadoras) e títulos do Markdown cru, com o critério do normalize_markdown."""
+    lines = raw.splitlines()
+    return {
+        "table_rows": sum(1 for line in lines if line.lstrip().startswith("|") and not _MD_TABLE_SEPARATOR.match(line)),
+        "headings": sum(1 for line in lines if _MD_HEADING.match(line)),
+    }
+
+
+def _read_pdf(pdf_path: Path) -> tuple[list[tuple[int, str]], int]:
     pages: list[tuple[int, str]] = []
     with fitz.open(pdf_path) as doc:
         for i, page in enumerate(doc, start=1):
             text = page.get_text().strip()
             if text:
                 pages.append((i, text))
-    return pages
+        return pages, doc.page_count
+
+
+def extract_pdf_pages(pdf_path: Path) -> list[tuple[int, str]]:
+    """Retorna [(numero_da_pagina_1_indexed, texto)] para um PDF."""
+    return _read_pdf(pdf_path)[0]
+
+
+def read_document(path: Path) -> DocumentText:
+    """Lê um PDF ou Markdown do jeito que a ingestão lê (páginas sem texto ficam de fora)."""
+    if path.suffix.lower() == ".md":
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        return DocumentText(path, "md", [(None, normalize_markdown(raw))], raw_markdown=raw)
+    pages, total = _read_pdf(path)
+    return DocumentText(path, "pdf", list(pages), pages_total=total)
+
+
+def strip_references(doc: DocumentText) -> tuple[DocumentText, int]:
+    """O documento sem o bloco de referências que a C0 acha (corpus_quality.references_block), e quantas linhas
+    saíram. É o H5b do E5 (versão pdf-v1-noref): a bibliografia é ímã? Sem bloco, o documento volta como está.
+
+    O bloco é achado no texto inteiro e cortado página a página: o texto do documento é a junção das páginas
+    com uma quebra de linha, e as páginas vêm sem quebra nas pontas. Página que fica sem texto sai, como na
+    leitura do PDF.
+    """
+    block = corpus_quality.references_block(doc.text.splitlines(), markdown=doc.format == "md")
+    if block is None:
+        return doc, 0
+    start, end = block
+    segments: list[tuple[int | None, str]] = []
+    first = 0
+    for page, text in doc.segments:
+        lines = text.splitlines()
+        kept = "\n".join(line for i, line in enumerate(lines, start=first) if not start <= i < end).strip()
+        first += len(lines)
+        if kept:
+            segments.append((page, kept))
+    return DocumentText(doc.path, doc.format, segments, doc.raw_markdown, doc.pages_total), end - start
+
+
+def effective_overlap(chunk_size_tokens: int, overlap_tokens: int) -> int:
+    """Sobreposição que o chunker usa de fato: uma sobreposição >= ao chunk vira chunk // 4."""
+    if overlap_tokens >= chunk_size_tokens:
+        return max(chunk_size_tokens // 4, 0)
+    return overlap_tokens
 
 
 def chunk_text(
@@ -90,25 +191,97 @@ def chunk_text(
     acontece quando um corte cai no meio de uma regra.
     """
     tokens = _encoding.encode(text)
-    if not tokens:
+    return [
+        _encoding.decode(tokens[start:end])
+        for start, end in _windows(len(tokens), chunk_size_tokens, overlap_tokens, boundary_offset_tokens)
+    ]
+
+
+def _windows(
+    n_tokens: int, chunk_size_tokens: int, overlap_tokens: int, boundary_offset_tokens: int = 0
+) -> list[tuple[int, int]]:
+    """As janelas [início, fim) do chunker sobre n tokens (ver chunk_text)."""
+    if not n_tokens:
         return []
-    if overlap_tokens >= chunk_size_tokens:
-        overlap_tokens = max(chunk_size_tokens // 4, 0)
+    overlap_tokens = effective_overlap(chunk_size_tokens, overlap_tokens)
 
     offset = boundary_offset_tokens % chunk_size_tokens if chunk_size_tokens > 0 else 0
 
-    chunks: list[str] = []
+    windows: list[tuple[int, int]] = []
     start = 0
     first_size = chunk_size_tokens - offset if offset else chunk_size_tokens
     size = max(first_size, 1)
-    while start < len(tokens):
+    while start < n_tokens:
         end = start + size
-        chunks.append(_encoding.decode(tokens[start:end]))
-        if end >= len(tokens):
+        windows.append((start, min(end, n_tokens)))
+        if end >= n_tokens:
             break
         start = end - overlap_tokens
         size = chunk_size_tokens
-    return chunks
+    return windows
+
+
+def _chunk_across_pages(
+    doc: DocumentText, chunk_size_tokens: int, overlap_tokens: int, boundary_offset_tokens: int = 0
+) -> list[ChunkRecord]:
+    """PDF com a janela atravessando a página: as páginas viram uma sequência de tokens só, separadas por uma
+    quebra de linha, e cada chunk leva a página onde começa (E6 do plano-benchmark.md, pdf-v1-cont)."""
+    tokens: list[int] = []
+    page_starts: list[int] = []
+    pages: list[int | None] = []
+    newline = _encoding.encode("\n")
+    for i, (page_num, page_text) in enumerate(doc.segments):
+        if i:
+            tokens += newline
+        page_starts.append(len(tokens))
+        pages.append(page_num)
+        tokens += _encoding.encode(page_text)
+    records = []
+    for idx, (start, end) in enumerate(_windows(len(tokens), chunk_size_tokens, overlap_tokens, boundary_offset_tokens)):
+        page = pages[max(bisect.bisect_right(page_starts, start) - 1, 0)]
+        records.append(ChunkRecord(chunk_id=f"{doc.path.stem}::p{page}::c{idx}", document=doc.path.name, page=page,
+                                   text=_encoding.decode(tokens[start:end])))
+    return records
+
+
+def chunk_document(
+    doc: DocumentText,
+    chunk_size_tokens: int,
+    overlap_tokens: int,
+    boundary_offset_tokens: int = 0,
+    across_pages: bool = False,
+    chunker: str = "token",
+) -> list[ChunkRecord]:
+    """Os chunks do documento. `chunker="section"` (só Markdown): a janela corre dentro de cada seção, e o
+    chunk_id vira `{stem}::s{i}::c{j}`; as ferramentas do estudo de mutação leem `::p(\\d+)::` e não o veem."""
+    records: list[ChunkRecord] = []
+    doc_name, stem = doc.path.name, doc.path.stem
+    if doc.format == "md":
+        [(_, text)] = doc.segments
+        if chunker == "section":
+            for i, (title, section_text) in enumerate(markdown_sections(text)):
+                for j, chunk in enumerate(chunk_text(section_text, chunk_size_tokens, overlap_tokens,
+                                                     boundary_offset_tokens)):
+                    records.append(ChunkRecord(chunk_id=f"{stem}::s{i}::c{j}", document=doc_name, page=None,
+                                               text=chunk, section=title))
+            return records
+        for idx, chunk in enumerate(chunk_text(text, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)):
+            records.append(ChunkRecord(chunk_id=f"{stem}::c{idx}", document=doc_name, page=None, text=chunk))
+        return records
+    if across_pages:
+        return _chunk_across_pages(doc, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)
+    for page_num, page_text in doc.segments:
+        page_chunks = chunk_text(page_text, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)
+        for idx, chunk in enumerate(page_chunks):
+            chunk_id = f"{stem}::p{page_num}::c{idx}"
+            records.append(ChunkRecord(chunk_id=chunk_id, document=doc_name, page=page_num, text=chunk))
+    return records
+
+
+def with_header(records: list[ChunkRecord]) -> list[ChunkRecord]:
+    """O cabeçalho contextual no texto do chunk (CHUNK_HEADER=text; E3, pdf-hdr): "Artigo: <título> · pág. N"
+    antes do trecho. Fica fora da janela de tokens: o chunk cresce, e o prompt também."""
+    return [replace(r, text=f"{titles.header(r.document, r.page)}\n{r.text}") for r in records]
 
 
 def build_chunk_records(
@@ -117,19 +290,21 @@ def build_chunk_records(
     overlap_tokens: int,
     boundary_offset_tokens: int = 0,
 ) -> list[ChunkRecord]:
-    records: list[ChunkRecord] = []
-    doc_name = pdf_path.name
-    if pdf_path.suffix.lower() == ".md":
-        text = normalize_markdown(pdf_path.read_text(encoding="utf-8", errors="replace"))
-        for idx, chunk in enumerate(chunk_text(text, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)):
-            records.append(ChunkRecord(chunk_id=f"{pdf_path.stem}::c{idx}", document=doc_name, page=None, text=chunk))
-        return records
-    for page_num, page_text in extract_pdf_pages(pdf_path):
-        page_chunks = chunk_text(page_text, chunk_size_tokens, overlap_tokens, boundary_offset_tokens)
-        for idx, chunk in enumerate(page_chunks):
-            chunk_id = f"{pdf_path.stem}::p{page_num}::c{idx}"
-            records.append(ChunkRecord(chunk_id=chunk_id, document=doc_name, page=page_num, text=chunk))
-    return records
+    return chunk_document(read_document(pdf_path), chunk_size_tokens, overlap_tokens, boundary_offset_tokens)
+
+
+def document_quality(doc: DocumentText, records: list[ChunkRecord]) -> dict:
+    """C0 do documento (app/rag/corpus_quality.py), sobre o texto que o chunker recebeu."""
+    structure = markdown_structure(doc.raw_markdown) if doc.raw_markdown is not None else {}
+    return corpus_quality.document_quality(
+        fmt=doc.format,
+        text=doc.text,
+        chunk_texts=[r.text for r in records],
+        pages_total=doc.pages_total,
+        pages_with_text=len(doc.segments) if doc.format == "pdf" else None,
+        table_rows=structure.get("table_rows"),
+        headings=structure.get("headings", 0),
+    )
 
 
 def embed_texts(texts: list[str], model: str | None = None) -> list[list[float]]:
@@ -179,7 +354,118 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def write_manifest(source_dir: Path, documents: list[dict], chunks: int, duration_ms: float) -> Path:
+def registered_documents(index: str) -> dict[str, str] | None:
+    """{arquivo: sha256} registrados para a versão, ou None se ela não tem lista."""
+    path = INDEX_VERSIONS_DIR / f"{index}.sha256"
+    if not path.is_file():
+        return None
+    documents: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip() and not line.startswith("#"):
+            digest, name = line.split(None, 1)
+            documents[name.strip()] = digest
+    return documents
+
+
+def register_documents(index: str, source_dir: Path, like: str | None = None, by_stem: bool = False) -> Path:
+    """Grava a lista de documentos da versão com o que está na pasta agora ou, com `like`, a lista de outra versão.
+
+    `like` é para a versão derivada: os mesmos documentos da versão-base e uma mudança só (modelo de embedding,
+    chunker, cabeçalho...). Sem ele, a lista pegaria a pasta inteira, que pode ter documentos de outras versões
+    (data/source_pdfs tem os 61 do pdf-v2), e comparar a derivada com a base mediria também a troca de acervo.
+    Os arquivos da base precisam estar na pasta com o mesmo conteúdo.
+
+    `by_stem` (com `like`): os mesmos artigos da base em outro formato (E2: os 39 PDFs do pdf-v1 convertidos em
+    Markdown). Cada documento da base vira o arquivo da pasta com o mesmo nome sem extensão, e o hash é o dele.
+
+    Uma vez só: versão registrada não muda, e mudar o acervo é registrar uma versão nova.
+    """
+    path = INDEX_VERSIONS_DIR / f"{index}.sha256"
+    if path.exists():
+        raise FileExistsError(f"{path} já existe: versão registrada não muda (registre uma versão nova)")
+    today = datetime.now(timezone.utc).date().isoformat()
+    if like is not None and by_stem:
+        base = registered_documents(like)
+        if base is None:
+            raise FileNotFoundError(f"{like} não tem lista de documentos em {INDEX_VERSIONS_DIR}")
+        by_name: dict[str, list[Path]] = {}
+        for p in source_dir.iterdir():
+            if p.suffix.lower() in SUPPORTED_SUFFIXES:
+                by_name.setdefault(p.stem, []).append(p)
+        problems, entries = [], []
+        for name in base:
+            found = by_name.get(Path(name).stem, [])
+            if len(found) != 1:
+                problems.append(f"{Path(name).stem}: {len(found)} arquivo(s) com esse nome em {source_dir}")
+            else:
+                entries.append((found[0].name, _sha256(found[0])))
+        if problems:
+            raise ValueError(f"a pasta não tem os artigos de {like}, um arquivo por artigo: " + "; ".join(problems))
+        header = (
+            f"# {index}: os {len(entries)} artigo(s) de {like} (pelo nome sem a extensão), em {source_dir.name}, "
+            f"registrados em {today} (scripts/ingest_documents.py --register --like {like} --by-stem)"
+        )
+    elif like is not None:
+        base = registered_documents(like)
+        if base is None:
+            raise FileNotFoundError(f"{like} não tem lista de documentos em {INDEX_VERSIONS_DIR}")
+        problems = []
+        for name, digest in base.items():
+            if not (source_dir / name).is_file():
+                problems.append(f"{name}: não está em {source_dir}")
+            elif _sha256(source_dir / name) != digest:
+                problems.append(f"{name}: mudou desde o registro de {like}")
+        if problems:
+            raise ValueError(f"a pasta não tem os documentos de {like}: " + "; ".join(problems))
+        header = (
+            f"# {index}: os {len(base)} documento(s) de {like}, em {source_dir.name}, registrados em {today} "
+            f"(scripts/ingest_documents.py --register --like {like})"
+        )
+        entries = list(base.items())
+    else:
+        files = sorted(
+            (p for p in source_dir.iterdir() if p.suffix.lower() in SUPPORTED_SUFFIXES), key=lambda p: p.name.lower()
+        )
+        if not files:
+            raise FileNotFoundError(f"nenhum documento em {source_dir}")
+        header = (
+            f"# {index}: {len(files)} documento(s) de {source_dir.name}, registrados em {today} "
+            "(scripts/ingest_documents.py --register)"
+        )
+        entries = [(p.name, _sha256(p)) for p in files]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [header] + [f"{digest}  {name}" for name, digest in entries]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    return path
+
+
+def select_documents(source_dir: Path | None = None) -> tuple[Path, list[Path], dict]:
+    """Pasta e documentos que a ingestão do índice em uso pega.
+
+    Na pasta da própria versão registrada, só os arquivos da lista dela, na ordem de sempre (a da pasta). Com
+    outra pasta (`source_dir`, ou uma versão sem lista), tudo o que estiver nela, como antes das listas. O dict
+    diz o que a lista pedia e não estava na pasta ("missing") e quantos arquivos da pasta ficaram de fora.
+    """
+    settings = get_settings()
+    doc_dir = source_dir or settings.source_pdfs_path
+    files = sorted(p for p in doc_dir.iterdir() if p.suffix.lower() in SUPPORTED_SUFFIXES) if doc_dir.is_dir() else []
+    spec = RAG_INDICES.get(settings.index_name)
+    own_folder = spec is not None and (PROJECT_ROOT / spec["source_dir"]).resolve() == doc_dir.resolve()
+    registered = registered_documents(settings.index_name) if source_dir is None and own_folder else None
+    if registered is None:
+        return doc_dir, files, {"registered": None, "missing": [], "ignored_in_folder": 0}
+    selected = [p for p in files if p.name in registered]
+    present = {p.name for p in files}
+    return doc_dir, selected, {
+        "registered": registered,
+        "missing": sorted(name for name in registered if name not in present),
+        "ignored_in_folder": len(files) - len(selected),
+    }
+
+
+def write_manifest(
+    source_dir: Path, documents: list[dict], chunks: int, duration_ms: float, extra: dict | None = None
+) -> Path:
     """Registra o que entrou nesta versão do índice: arquivos (com hash), parâmetros e modelo.
 
     É o que permite dizer, meses depois, contra QUAL acervo uma avaliação rodou.
@@ -193,25 +479,91 @@ def write_manifest(source_dir: Path, documents: list[dict], chunks: int, duratio
         "embedding_model": settings.embedding_model,
         "chunk_size_tokens": settings.chunk_size_tokens,
         "chunk_overlap_tokens": settings.chunk_overlap_tokens,
+        # O pedido acima e o que o chunker usou (sobreposição >= chunk vira chunk // 4, sem aviso).
+        "chunk_overlap_tokens_effective": effective_overlap(settings.chunk_size_tokens, settings.chunk_overlap_tokens),
         "chunk_boundary_offset_tokens": settings.chunk_boundary_offset_tokens,
+        "chunk_across_pages": settings.chunk_across_pages,
+        "chunker": settings.chunker,
+        "strip_references": settings.strip_references,
+        "chunk_header": settings.chunk_header,
+        "titles_sha256": titles.titles_sha256() if settings.chunk_header != "none" else None,
         "md_normalization": MD_NORMALIZATION if any(d["format"] == "md" for d in documents) else None,
         "n_documents": len(documents),
         "n_chunks": chunks,
         "duration_ms": round(duration_ms),
+        **(extra or {}),
         "documents": documents,
     }
-    path = settings.vector_store_path / "manifests" / f"{settings.vector_store_collection}.json"
+    path = manifest_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
 
+def manifest_path() -> Path:
+    settings = get_settings()
+    return settings.vector_store_path / "manifests" / f"{settings.vector_store_collection}.json"
+
+
+def measure_corpus_quality() -> dict:
+    """Calcula o C0 da versão em uso, já ingerida, e grava no manifesto dela, sem reingerir.
+
+    Para as versões ingeridas antes do C0 (o pdf-v1 é de 13/10): lê os arquivos do manifesto e corta com os
+    parâmetros dele. Documento que mudou (SHA-256) ou cujo corte de hoje não dá o mesmo número de chunks fica
+    sem C0, listado em "not_measured": o texto dele não é o que está no índice.
+    """
+    path = manifest_path()
+    if not path.is_file():
+        raise FileNotFoundError(f"{get_settings().index_name} não tem manifesto em {path}: ingira a versão antes")
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    folder = Path(manifest["source_dir"])
+    if not folder.is_dir():
+        folder = get_settings().source_pdfs_path
+    params = (
+        manifest["chunk_size_tokens"],
+        manifest["chunk_overlap_tokens"],
+        manifest.get("chunk_boundary_offset_tokens", 0),
+        manifest.get("chunk_across_pages", False),
+        manifest.get("chunker", "token"),
+    )
+    counts: list[int] = []
+    not_measured: list[str] = []
+    for entry in manifest["documents"]:
+        file = folder / entry["file"]
+        if not file.is_file() or _sha256(file) != entry["sha256"]:
+            not_measured.append(entry["file"])
+            continue
+        doc = read_document(file)
+        if manifest.get("strip_references"):
+            doc, _ = strip_references(doc)
+        records = chunk_document(doc, *params)
+        if manifest.get("chunk_header") == "text":
+            records = with_header(records)
+        if len(records) != entry["chunks"]:
+            not_measured.append(entry["file"])
+            continue
+        entry.update(document_quality(doc, records))
+        counts += [corpus_quality.count_tokens(r.text) for r in records]
+    measured = [entry for entry in manifest["documents"] if entry["file"] not in not_measured]
+    c0 = {
+        **corpus_quality.summarize(measured, counts),
+        "measured_at": datetime.now(timezone.utc).isoformat(),
+        "not_measured": not_measured,
+    }
+    documents = manifest.pop("documents")
+    manifest.pop("c0", None)
+    path.write_text(json.dumps({**manifest, "c0": c0, "documents": documents}, ensure_ascii=False, indent=2),
+                    encoding="utf-8")
+    return c0
+
+
 def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict:
-    """Reprocessa todos os PDFs e Markdown de source_dir (ou da pasta do índice ativo)."""
+    """Reprocessa os PDFs e Markdown do índice ativo (ver select_documents) ou de source_dir."""
     settings = get_settings()
     start = time.perf_counter()
-    doc_dir = source_dir or settings.source_pdfs_path
-    doc_files = sorted(p for p in doc_dir.iterdir() if p.suffix.lower() in SUPPORTED_SUFFIXES) if doc_dir.is_dir() else []
+    doc_dir, doc_files, selection = select_documents(source_dir)
+    for name in selection["missing"]:
+        logger.warning(f"{settings.index_name}: {name} está na lista da versão e não está em {doc_dir}")
 
     if not doc_files:
         return {
@@ -219,6 +571,7 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
             "documents_processed": 0,
             "chunks_created": 0,
             "collection": settings.vector_store_collection,
+            "missing_documents": selection["missing"],
             "duration_ms": (time.perf_counter() - start) * 1000,
         }
 
@@ -226,12 +579,20 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
     manifest_docs: list[dict] = []
     for doc_path in doc_files:
         try:
-            records = build_chunk_records(
-                doc_path,
+            doc = read_document(doc_path)
+            removed = None
+            if settings.strip_references:
+                doc, removed = strip_references(doc)
+            records = chunk_document(
+                doc,
                 settings.chunk_size_tokens,
                 settings.chunk_overlap_tokens,
                 settings.chunk_boundary_offset_tokens,
+                across_pages=settings.chunk_across_pages,
+                chunker=settings.chunker,
             )
+            if settings.chunk_header == "text":
+                records = with_header(records)
             all_records.extend(records)
             manifest_docs.append(
                 {
@@ -240,6 +601,8 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
                     "bytes": doc_path.stat().st_size,
                     "sha256": _sha256(doc_path),
                     "chunks": len(records),
+                    **({"references_lines_removed": removed} if removed is not None else {}),
+                    **document_quality(doc, records),
                 }
             )
             logger.info(f"Ingerido {doc_path.name}: {len(records)} chunks")
@@ -251,24 +614,39 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
     batch_size = 64
     for i in range(0, len(all_records), batch_size):
         batch = all_records[i : i + batch_size]
-        embeddings = embed_texts([r.text for r in batch])
+        if settings.chunk_header == "embedding":
+            # Só o texto embedado leva o cabeçalho (E3, pdf-hdr-emb): o guardado, o prompt e os juízes não mudam.
+            embeddings = embed_texts([f"{titles.header(r.document, r.page)}\n{r.text}" for r in batch])
+        else:
+            embeddings = embed_texts([r.text for r in batch])
         vector_store.add_chunks(
             ids=[r.chunk_id for r in batch],
             embeddings=embeddings,
             documents=[r.text for r in batch],
-            # Markdown não tem página: a chave fica de fora (o Chroma não aceita
-            # metadado None) e a recuperação devolve page=None.
-            metadatas=[
-                {"document": r.document, "page": r.page} if r.page is not None else {"document": r.document}
-                for r in batch
-            ],
+            # Markdown não tem página, e só o chunker por seção tem seção: a chave
+            # fica de fora (o Chroma não aceita metadado None) e a recuperação
+            # devolve None.
+            metadatas=[r.metadata for r in batch],
             reset=reset and first_batch,
         )
         first_batch = False
         chunks_created += len(batch)
 
+    # Arquivo da lista que mudou depois do registro: a ingestão segue, mas o índice já não é a versão registrada.
+    registered = selection["registered"]
+    changed = [d["file"] for d in manifest_docs if registered and d["sha256"] != registered[d["file"]]]
+    for name in changed:
+        logger.warning(f"{settings.index_name}: {name} mudou desde que a versão foi registrada (SHA-256 diferente)")
+    extra = {
+        "registered_documents": len(registered) if registered is not None else None,
+        "missing_documents": selection["missing"],
+        "changed_documents": changed,
+        "ignored_in_folder": selection["ignored_in_folder"],
+    }
+
     duration_ms = (time.perf_counter() - start) * 1000
-    manifest = write_manifest(doc_dir, manifest_docs, chunks_created, duration_ms)
+    c0 = corpus_quality.summarize(manifest_docs, [corpus_quality.count_tokens(r.text) for r in all_records])
+    manifest = write_manifest(doc_dir, manifest_docs, chunks_created, duration_ms, {**extra, "c0": c0})
     return {
         "status": "ok",
         "documents_processed": len(manifest_docs),
@@ -277,4 +655,5 @@ def ingest_documents(source_dir: Path | None = None, reset: bool = True) -> dict
         "index": settings.index_name,
         "manifest": str(manifest),
         "duration_ms": duration_ms,
+        **extra,
     }

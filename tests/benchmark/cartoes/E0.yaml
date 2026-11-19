@@ -1,0 +1,56 @@
+# Cartão do E0 (plano-benchmark.md, §8). Formato provisório: a §9 do plano, que fixa o YAML, não chegou;
+# o formato está descrito em docs/benchmark-status.md. Rodar com tests/benchmark/run_experiment.py.
+id: E0
+titulo: Linha de base e ruído (rodada A/A)
+pergunta: Quanto duas rodadas idênticas diferem entre si?
+hipotese: >
+  A C1 tem ruído perto de zero, porque o embedding é determinístico (a reingestão pode variar um pouco).
+  A C2 tem dois ruídos separáveis: o do gerador, que vem do cache de prefixo do Ollama mesmo com temperatura 0,
+  e o do juiz.
+exploratorio: false
+goldens: tests/benchmark/goldens/v2.json
+
+# Os fixos do §8.2 (gerador gemma3:4b, temperatura 0, semente fixa, num_ctx auto, num_predict explícito, sem
+# raciocínio, recuperação nos padrões do repositório). O provider local vem do runner (--local).
+fixos:
+  generation_model: gemma3:4b
+  generation_temperature: 0
+  generation_seed: 42
+  generation_num_ctx: auto
+  generation_num_predict: 1024
+  generation_think: false
+  top_k: 4
+  retrieval_use_mmr: false
+  min_similarity_score: 0.0
+juiz:
+  modelo: qwen3:8b
+  num_ctx: 8192
+
+bracos:
+  A1: {indice: pdf-v1, lingua: pt, camadas: [c1, c2], papel: baseline}
+  # A ordem embaralhada (semente = número da repetição): em ordem fixa, as rodadas sairiam idênticas e o ruído
+  # medido seria zero por construção.
+  A2: {indice: pdf-v1, lingua: pt, camadas: [c2], ordem: 2, papel: ruido}
+  A3: {indice: pdf-v1, lingua: pt, camadas: [c2], ordem: 3, papel: ruido}
+  # As respostas do A1 julgadas de novo, em outra ordem: só o ruído do juiz.
+  A4: {rejulgar: A1, ordem_juiz: 4}
+  # O mesmo acervo reingerido numa coleção nova, comparando as listas ranqueadas: o ruído da C1.
+  A5: {indice: pdf-v1-aa, lingua: pt, camadas: [c1], papel: ruido}
+
+pares: [[A1, A2], [A1, A3], [A2, A3], [A1, A4], [A1, A5]]
+margem:
+  gerador_juiz: [[A1, A2], [A1, A3], [A2, A3]]
+  juiz: [[A1, A4]]
+  c1: [[A1, A5]]
+
+metrica_primaria: {camada: c2, metrica: faithfulness}
+guardas: []
+finalistas: todos (o E0 não corta braço)
+saida: >
+  A margem de ruído m_E0 por métrica (percentil 95 de |Δ| nos pares A/A, por bootstrap de documentos), em
+  margem.json: gerador e juiz (A1, A2 e A3), só o juiz (A1 contra A4) e a C1 (A1 contra A5). Ela entra na regra
+  de veredito dos outros experimentos e é refeita quando o prompt ou o gerador muda (E3 com citação, E9).
+precisa_construir:
+  - a versão pdf-v1-aa (a lista do pdf-v1, numa coleção nova), para a reingestão do A5
+didatica: >
+  Uma diferença de 0,03 entre dois braços pode ser só sorte, e dá para dizer de onde vem a sorte.

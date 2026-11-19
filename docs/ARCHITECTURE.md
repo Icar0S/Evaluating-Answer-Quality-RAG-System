@@ -506,9 +506,50 @@ mutação depende disso.
   sinal mais firme é o diagnóstico de recuperação, que não usa juiz. As notas
   de contexto pedem um juiz mais estrito.
 
-Próximas versões naturais: uma `md-v2` reconvertida dos mesmos PDFs por uma
-ferramenta melhor, e versões com embedding multilíngue (por exemplo,
-`bge-m3`) para atacar o idioma.
+### Versões v2: os mesmos artigos nos dois formatos (out/2026)
+
+O `data/sync_corpora.py` deixou as duas pastas com os mesmos 61 artigos: os 39
+PDFs viraram Markdown (pymupdf4llm, com o pymupdf-layout) e os 22 Markdown
+viraram PDF (fpdf2). O `pdf-v2` e o `md-v2` indexam esses 61, um formato cada.
+Comparar os dois é comparar formatos, que é o que o par v1 não permitia.
+Decisões:
+
+**Cada versão fixa a lista dos seus documentos.** As versões v1 e v2 leem a
+mesma pasta, então a pasta deixou de definir a versão. Cada uma tem a lista
+dos seus arquivos com o SHA-256 em `backend/app/rag/index_versions/`, e a
+ingestão da pasta da versão só pega o que está na lista. As listas do v1 saíram
+dos manifestos da ingestão de 13/10 e reproduzem os 39 e os 22 originais, na
+mesma ordem. Sem elas, uma reingestão do `pdf-v1` (o caminho padrão, sem
+`RAG_INDEX`) teria pegado os 61 PDFs em silêncio. Arquivo que sumiu ou mudou
+vira aviso e campo do manifesto, sem bloquear a ingestão. As listas ficam
+dentro do pacote do backend porque a imagem do Docker só copia `backend/app`.
+Ingestão com pasta explícita (`--source`, ou o estudo de mutação, com coleção
+e pasta próprias) continua pegando a pasta inteira.
+
+**O índice diz de quais acervos tem os artigos.** O campo `origins` de cada
+versão (`pdf`, `md` ou os dois) substitui a dedução pelo prefixo do nome
+(`md-v1` → `md`), que errava no v2. O `/health` expõe o campo
+(`rag_index_origins`) para o teste E2E das perguntas de referência, e o
+relatório o lê do `config.py` sem importar o backend, como já fazia com a frase
+de abstenção. Isso vale também para rodadas antigas, cujo JSON só tem o nome
+do índice.
+
+**Os PDFs gerados não são os artigos originais.** Herdam palavras grudadas e
+colunas intercaladas dos Markdown de origem, e não têm figuras. As tabelas
+dos Markdown viram uma linha de texto por linha, como a ingestão do `md-v1`
+já fazia. O PyMuPDF (Story) foi testado para diagramar e descartado: perdia o
+resto de parágrafos partidos entre páginas e gravava o código errado das
+letras matemáticas fora do plano básico do Unicode.
+
+**O diagnóstico de recuperação casa o artigo pelo nome sem extensão.** O
+golden dos Markdown cita "X.md", que no `pdf-v2` é "X.pdf". No primeiro
+diagnóstico (17/10/2026, 10 perguntas, em inglês), o documento certo veio em 5
+de 10 no `pdf-v2` e em 7 de 10 no `md-v2`.
+
+Próximas versões naturais: uma `md-v3` com os 22 artigos do `md-v1`
+reconvertidos a partir dos PDFs originais por uma ferramenta melhor, e
+versões com embedding multilíngue (por exemplo, `bge-m3`) para atacar o
+idioma.
 
 ### Demonstração E2E com os dois RAGs (out/2026)
 
@@ -535,6 +576,175 @@ gerador, juiz e embeddings carregados juntos, a VM do Docker (7,6 GB) matou o
 processo do modelo duas vezes, e o juiz devolveu erro 500 nessas chamadas.
 Depois que as respostas estão gravadas, o gerador não é mais usado, e o
 orquestrador o descarrega (`keep_alive: 0`).
+
+### O projeto inteiro com um comando, e os testes num container (nov/2026)
+
+O objetivo: numa máquina só com Docker, `docker compose up -d --build` sobe
+tudo, e `scripts\docker_tests.bat` (ou `.sh`) roda os testes num container,
+contra o RAG que está no ar. A demonstração com o navegador visível continua
+no `scripts\demo_e2e.bat`, com os testes na máquina, porque é o que a turma
+assiste; o container é headless. Decisões:
+
+**O localhost do container é encaminhado, e o frontend não muda.** O
+frontend, os testes e o `run_all.py` têm `localhost:8010/8011/5510` fixos, o
+`?api=` do chat só aceita localhost, e o CORS dos backends só libera a origem
+`http://localhost:5510`. No container de testes, o `socat` encaminha
+`127.0.0.1:8010` → `backend:8010`, `8011` → `backend-md:8010` e `5510` →
+`frontend:80`, e o mesmo no `[::1]` quando o container tem IPv6 no loopback
+(o Chromium e o Node podem resolver localhost para `::1`). A origem do
+navegador continua `http://localhost:5510`, e nenhum arquivo do frontend nem
+o CORS mudou. Reescrever as URLs do frontend mudaria o produto para caber no
+teste. O `network_mode: host` não funciona do mesmo jeito no Docker Desktop.
+
+**No Docker, as respostas vêm da API, e o Chroma não é dividido.** Com a stack
+no ar, o `run_all.py` misturava dois sistemas: o E2E batia no backend do
+container, mas o `generate_answers.py` rodava o pipeline in-process, com o
+`data/vector_store` da máquina (vazio, para quem só usa Docker) e o Ollama do
+`.env`. As notas avaliadas não eram do RAG no ar. Montar o volume do Chroma no
+container de testes quebraria a regra de que nenhum processo divide o banco com
+outro. Por isso o `generate_answers.py --api URL` pergunta pelo `POST /chat`,
+só com a biblioteca padrão, e grava no mesmo formato; o `run_all.py --api`
+(padrão: `RUN_ALL_API_URL`) usa esse modo, e o container testa o RAG como
+caixa-preta. Duas consequências: o `--qualidade-pytest` sai como "pulada"
+nesse modo, porque chama o pipeline in-process; e o `run_and_export.py` do
+DeepEval com `--answers` deixou de exigir o índice local, como o do RAGAS já
+fazia. Sem isso, ele abortava com "Vector store vazio" no container. Nesse
+modo, o gerador também sai da memória antes dos juízes, pelo mesmo OOM de
+13/10/2026.
+
+**O container de testes é um perfil do compose.** O serviço `tests` tem
+`profiles: ["tests"]`: o `up` normal não o constrói nem o sobe, e o
+`docker compose --profile tests run` herda a rede, os nomes de serviço e o
+`depends_on` da stack. Ele não usa `env_file: .env`, que traria o
+`OLLAMA_BASE_URL` e o resto da configuração da máquina. A chave da TypeSafe
+chega por interpolação do Compose e só aparece no preflight como
+"configurada: sim/não".
+
+**O código é copiado na imagem, não montado.** A imagem de testes parte da
+oficial do Playwright (a mesma versão do `package-lock.json`, senão ele
+procura um navegador que não está lá) e tem os cinco venvs nos caminhos que o
+`run_all.py` espera. Com o repositório montado, o bind mount esconderia os
+venvs e o `node_modules` da imagem, e os venvs do Windows na pasta nem rodam
+no Linux. As camadas dos requirements vêm antes do código, e o script sempre
+passa `--build`: com o cache, um teste novo entra em segundos, sem reinstalar
+nada (4 s, medido). A imagem tem 7,1 GB: ~2,5 GB da base (os navegadores do
+Playwright) e ~2,8 GB dos cinco venvs, dos quais 1,2 GB são do RAGAS (pyarrow,
+datasets, langchain). O primeiro build levou 40,7 min aqui, 35 deles baixando
+a base do registro da Microsoft a ~0,4 MB/s; os venvs, ~4 min. As saídas, ao contrário, são montadas (`tests/reports/out`,
+`tests/*/results` e as pastas do Playwright), para o `HISTORICO.md`, o
+`ultimo/` e o reaproveitamento de resultados valerem entre a máquina e o
+container. Pelo mesmo motivo, os scripts passam ao container o fuso da
+máquina (`TZ` no formato POSIX, que o glibc entende sem tzdata): o histórico
+ordena as execuções pelo `generated_at` com offset, e uma rodada do container
+em UTC sairia fora de ordem e com a hora errada na coluna "Data". No Linux, o
+container roda como root, e o entrypoint devolve ao dono da pasta do host os
+arquivos que criou.
+
+**A GPU entra pelo `COMPOSE_FILE`, não por um segundo `-f` para lembrar.** O
+Compose lê `COMPOSE_FILE` do `.env` da raiz. Com `COMPOSE_PATH_SEPARATOR=:` ao
+lado, a mesma linha vale no Windows, onde o separador padrão é `;` e
+`docker-compose.yml:docker-compose.gpu.yml` sem ele é recusado como um nome de
+arquivo só (conferido com o Compose 5.6.1). Nenhum leitor do `.env` se
+incomoda com as chaves novas: os três `Settings` usam `extra="ignore"`, e o
+`run_all.dotenv_value` só lê o que pede. Os scripts de testes usam os mesmos
+arquivos do `up`, ou um `run` que sobe as dependências recriaria o `ollama`
+sem a GPU.
+
+**A cópia dos modelos é um serviço.** O `models-seed` roda antes do `ollama`
+e copia da pasta `OLLAMA_SEED_DIR` só os modelos da stack, com a mesma lista do
+serviço `models`. Sem a pasta, monta uma vazia do repositório e sai com 0. Um
+modelo que falta na máquina, ou cuja cópia falha, fica para o `models` baixar,
+como o `demo_e2e.bat` já fazia: o seed nunca derruba a stack. O
+`demo_e2e.bat` passou a só definir `OLLAMA_SEED_DIR`, com a mesma detecção de
+`%OLLAMA_MODELS%` e `%USERPROFILE%\.ollama\models`. Medido aqui: os quatro
+modelos (9,5 GB) levaram 2 min 29 s, e a primeira subida inteira com volumes
+novos, 4 min 3 s. Baixando os modelos, sem a pasta, a mesma subida levou
+8,5 min (6,5 min de download, ~25 MB/s). Copiar e baixar não dão
+necessariamente os mesmos modelos: as tags do registro do Ollama mudam de
+conteúdo, e em 12/11/2026 o `gemma3:4b` e o `bge-m3` baixados tinham digests
+diferentes dos da máquina (o `ollama pull` não fixa por digest). Para comparar
+rodadas, o que vale é o digest que o Ollama do container mostra
+(`docker compose exec ollama ollama list`).
+
+**O acervo que falta é avisado, e a pasta que mudou também.** Sem documentos,
+o `ingest` terminava com `no_documents` e código 0, o backend subia vazio e os
+testes ao vivo se auto-pulavam, tudo em silêncio. Hoje o `ingest` imprime um
+aviso grande (a pasta, o índice vazio, os testes que vão se pular e como
+reindexar), e o `status` o repete. Com o índice já populado, o `ingest`
+compara a pasta com o manifesto da coleção (nome e SHA-256 de cada arquivo) e,
+se divergirem, avisa e mostra o comando. Não reindexa sozinho: o backend está
+com o banco aberto. Os dois casos saem com 0, para não parar a subida.
+
+**O `--wait` não serve com o `status`.** O `docker compose up -d --wait` do
+Compose 5.6.1 aceita os one-shots de que alguém depende (`models-seed`,
+`models`, `ingest`, `ingest-md`), mas trata a saída do `status`, de que
+ninguém depende, como falha: "container ... status-1 exited (0)", código 1.
+Por isso o README não o documenta. O `status` existe justamente para dizer
+"está pronto, e os endereços são estes".
+
+**O modo `hermeticos` roda os três pytest direto, e não pelo `run_all`.** O
+`run_all.py --rapido` sai com 1 quando não há nenhum resultado de qualidade
+para o relatório, o que é o caso de uma máquina nova e do CI. Mudar isso
+mudaria o `run_all_tests.bat` na máquina. O modo roda o pytest da raiz
+(`tests/api` e `tests/benchmark`), o de `tests/reports` e o do JevEval com
+`-m "not live"`, e não grava nada no histórico.
+
+### A apresentação gravada (nov/2026)
+
+O `scripts\apresentacao.bat` faz, com um comando, a rotina inteira:
+1. sobe a stack;
+2. roda os testes locais;
+3. roda o E2E nos dois RAGs;
+4. faz o RAGAS, o DeepEval e o JevEval julgarem as mesmas respostas;
+5. gera o relatório.
+
+Tudo é contado numa página, o palco (`tests/palco/`), e a página é gravada
+num MP4, para mostrar o projeto funcionando. Decisões:
+
+**Uma página conta a rotina, e não os vídeos do Playwright juntados.** O
+Playwright grava cada página de teste em separado, em WebM. Os avaliadores nem
+têm página: são processos Python que imprimem notas. O palco mostra a fase, o
+passo, o log ao vivo e o placar, que ele lê do orquestrador por HTTP local.
+
+**Gravar a página, e não a tela.** Na primeira versão, o ffmpeg gravava a
+tela principal inteira pelo `gdigrab`, com o palco em tela cheia. Na primeira
+rodada completa, de 50 minutos (19/11/2026), o computador estava em uso, e
+as outras janelas abertas entraram no vídeo. Gravar a tela só dá certo se
+ninguém usar o computador durante a rotina. Agora o palco abre num Chromium
+do Playwright sem janela, e o `Page.captureScreenshot` do CDP fotografa a
+página 15 vezes por segundo para o ffmpeg
+(`frontend/tests/apresentacao/palco.mjs`). O vídeo só pode conter o palco. A
+página é desenhada em 1536×864 com escala 1,25, os mesmos 1920×1080 da tela
+onde o palco foi desenhado. O screencast do CDP (`Page.startScreencast`) sairia
+mais barato, mas entrega os quadros no tamanho CSS (1536×864), e o texto fica
+borrado em tela cheia. A captura com `clip.scale` sai em pixels físicos, em
+~50 ms (medido em 19/11/2026). Quando uma captura atrasa, o último quadro se
+repete, para o vídeo durar o que a rotina durou.
+
+**O E2E também roda sem janela e aparece dentro do palco.** Com
+`DEMO_ESPELHO`, o fixture automático de `frontend/tests/e2e/fixtures.ts`
+abre um screencast da página testada e manda cada quadro ao orquestrador
+(`POST /espelho`). O palco mostra o último (`GET /espelho.jpg`), com o nome do
+teste embaixo. Antes de construir, conferimos que o screencast convive com o
+`recordVideo` do Playwright: o vídeo de cada teste continua saindo. Sem a
+variável, o fixture não muda nada, e um teste hermético roda um teste da
+interface de verdade, sem janela, para conferir que os quadros chegam.
+
+**O placar lê os logs, e os avaliadores não mudaram.** Cada `run_and_export.py`
+já imprime `[i/n] pergunta` e uma linha por métrica. O RAGAS e o JevEval
+usam as chaves em inglês, o DeepEval o nome por extenso, com PASS/FAIL ou
+ERRO. O orquestrador lê esse log aos poucos e mostra a média de cada métrica
+até o momento: um medidor com o traço do limiar e ✓/✗, porque a cor de
+estado sempre vem com ícone. Uma métrica com erro não vira nota 0, e o N/A do
+JevEval fica fora da média.
+
+**MKV durante a gravação, MP4 no fim.** O MP4 só fica legível depois que o
+ffmpeg fecha o arquivo. Um MKV sobrevive a uma queda do processo. Parar é
+fechar a entrada do ffmpeg, e a conversão para MP4 é só cópia
+(`-c copy -movflags +faststart`). Se ela falhar, o MKV fica. O H.264 sai em
+BT.709 e faixa limitada, o padrão de vídeo em HD. O JPEG do Chromium vem em
+faixa cheia, e o `zscale` converte sem escurecer a página; o `scale` do
+ffmpeg escurecia uns 3 níveis.
 
 ### Avaliação de qualidade (JevEval, out/2026)
 

@@ -1,0 +1,32 @@
+# O relatório do benchmark (tests/reports/benchmark_report.py): o título, os avisos da capa e a ordem dos textos.
+# Cada texto fica em textos/; o formato (cabeçalho, marcadores {{...}} e diretivas [[...]]) está no README.md.
+titulo: Benchmark de estratégias de RAG
+subtitulo: >
+  O que testamos no assistente de teste de sistemas com LLM, como medimos cada coisa e o que vale ajustar.
+titulo_avisos: Relatório provisório
+avisos:
+  - >
+    As 103 perguntas do benchmark ainda são **rascunho**. O plano só aceita veredito sobre perguntas revisadas
+    por uma pessoa; até lá, todo veredito deste relatório é provisório, e os números mudam quando elas forem
+    revisadas e os experimentos rodarem de novo.
+  - >
+    A regra de veredito também é provisória: a seção do plano que a fixa (§11) não chegou. A regra usada está
+    explicada em "Como o teste foi feito".
+  - >
+    O E4 (quanto acervo um chatbot deve ter) não rodou: faltam os documentos distratores e as perguntas de cada
+    degrau.
+textos:
+  - textos/resumo.md
+  - textos/como-testamos.md
+  - textos/E0.md
+  - textos/E1.md
+  - textos/E5.md
+  - textos/E6.md
+  - textos/E2.md
+  - textos/E7.md
+  - textos/E8.md
+  - textos/E3.md
+  - textos/E9.md
+  - textos/E4.md
+  - textos/limitacoes.md
+  - textos/glossario.md
