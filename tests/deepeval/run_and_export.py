@@ -28,11 +28,19 @@ mesmo tempo contra um Ollama servindo UM modelo numa GPU só vira fila gigante
 rodada presa por mais de 1h); (4) sem progresso visível, não dá pra saber se
 está rodando ou travado. Medindo caso a caso, sequencial por construção, com
 print a cada passo, os quatro problemas somem de uma vez.
+
+A pergunta única (plano-escopo-final.md, §5) julga as mesmas respostas 3 vezes:
+`--repeticao K --ordem-semente K` embaralha a ordem dos casos com semente e grava
+K no export; `--passos` guarda o que a métrica deixou no objeto depois do
+measure() (as afirmações, as verdades, os vereditos), a "anatomia de uma nota";
+`--out-dir` grava fora de results/ (inclusive o latest.html), para o relatório
+consolidado não tomar essas rodadas pela mais recente.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from types import SimpleNamespace
 import threading
@@ -78,12 +86,40 @@ from _shared import EVAL_JUDGE_MODEL, THRESHOLD, build_judge_model, run_pipeline
 
 RESULTS_DIR = Path(__file__).parent / "results"
 
+# O que cada métrica deixa no objeto depois do measure() (deepeval 4.2.0): as verdades e as afirmações da
+# fidelidade, as afirmações da relevância da resposta, os vereditos de todas e os vereditos por trecho da
+# relevância do contexto. As métricas são reaproveitadas entre os casos, então estes atributos são zerados
+# antes de cada measure() e lidos logo depois: um caso nunca herda os passos do anterior.
+STEP_ATTRIBUTES = ("truths", "claims", "statements", "verdicts", "verdicts_list")
+
 
 def _log(msg: str) -> None:
     print(msg, flush=True)
 
 
-def _measure_raw(metric, test_case: LLMTestCase) -> dict:
+def _dump(value):
+    """Objetos pydantic do deepeval (vereditos) viram dicionários; listas e dicts, recursivamente."""
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if isinstance(value, (list, tuple)):
+        return [_dump(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _dump(v) for k, v in value.items()}
+    return value
+
+
+def reset_steps(metric) -> None:
+    for attr in STEP_ATTRIBUTES:
+        if hasattr(metric, attr):
+            setattr(metric, attr, None)
+
+
+def metric_steps(metric) -> dict:
+    """Os passos que o measure() deste caso deixou no objeto da métrica (só os que existem)."""
+    return {attr: _dump(getattr(metric, attr)) for attr in STEP_ATTRIBUTES if getattr(metric, attr, None) is not None}
+
+
+def _measure_raw(metric, test_case: LLMTestCase, with_steps: bool = False) -> dict:
     """A chamada de verdade — roda dentro de uma thread daemon, com deadline
     aplicado por fora (ver _measure_one). Nunca propaga exceção: um JSON
     malformado ou vazio do juiz (visto na prática com o modelo local) vira
@@ -98,10 +134,15 @@ def _measure_raw(metric, test_case: LLMTestCase) -> dict:
     """
     t0 = time.monotonic()
     try:
+        reset_steps(metric)
         metric.measure(test_case, _show_indicator=False)
         elapsed = time.monotonic() - t0
         _log(f"      {metric.__name__:<22} {metric.score:.2f}  {'PASS' if metric.success else 'FAIL'}  ({elapsed:.0f}s)")
-        return {"name": metric.__name__, "score": metric.score, "success": metric.success, "reason": metric.reason, "error": None}
+        result = {"name": metric.__name__, "score": metric.score, "success": metric.success, "reason": metric.reason,
+                  "error": None}
+        if with_steps:
+            result["steps"] = metric_steps(metric)
+        return result
     except (KeyboardInterrupt, SystemExit):
         raise
     except BaseException as exc:  # noqa: BLE001 — deliberado, ver docstring da função
@@ -110,13 +151,13 @@ def _measure_raw(metric, test_case: LLMTestCase) -> dict:
         return {"name": metric.__name__, "score": None, "success": None, "reason": None, "error": repr(exc)}
 
 
-def _measure_one(metric, test_case: LLMTestCase) -> dict:
+def _measure_one(metric, test_case: LLMTestCase, with_steps: bool = False) -> dict:
     """Roda _measure_raw numa thread daemon com um teto de parede de
     METRIC_TIMEOUT_SECONDS — ver comentário da constante pra motivação."""
     box: dict = {}
 
     def worker() -> None:
-        box["result"] = _measure_raw(metric, test_case)
+        box["result"] = _measure_raw(metric, test_case, with_steps)
 
     t = threading.Thread(target=worker, daemon=True)
     t.start()
@@ -142,9 +183,11 @@ def _metrics_avg(cases: list[dict]) -> dict[str, float]:
     return {name: round(sum(s) / len(s), 4) for name, s in scores_by_metric.items() if s}
 
 
-def _build_output(cases: list[dict], n: int, i: int, settings, answers_meta: dict | None = None) -> dict:
+def _build_output(cases: list[dict], n: int, i: int, settings, answers_meta: dict | None = None,
+                  extra: dict | None = None) -> dict:
     answers_meta = answers_meta or {}
     return {
+        **(extra or {}),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         # Com --answers, o modelo que gerou é o do arquivo, não o do .env atual.
         "generation_model": answers_meta.get("generation_model", settings.generation_model),
@@ -164,7 +207,8 @@ def _write_outputs(output: dict, json_path: Path) -> Path:
     json_path.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")
     html_doc = report.render_html(output, source_label=f"tests/deepeval/results/{json_path.name}")
     json_path.with_suffix(".html").write_text(html_doc, encoding="utf-8")
-    latest_path = RESULTS_DIR / "latest.html"
+    # O latest.html fica na pasta do export: com --out-dir, results/latest.html continua sendo o da rodada normal.
+    latest_path = json_path.parent / "latest.html"
     latest_path.write_text(html_doc, encoding="utf-8")
     return latest_path
 
@@ -177,6 +221,14 @@ def main() -> None:
     )
     parser.add_argument("--limit", type=int, default=None, help="avalia só os N primeiros goldens")
     parser.add_argument("--no-open", action="store_true", help="não abre o painel no navegador ao terminar")
+    parser.add_argument("--only", action="append", default=[], help="nome de um golden (repetível)")
+    parser.add_argument("--out-dir", type=Path, default=RESULTS_DIR, help="pasta de saída")
+    parser.add_argument("--ordem-semente", type=int, default=None, metavar="N",
+                        help="embaralha a ordem dos casos com esta semente (julgamentos repetidos)")
+    parser.add_argument("--repeticao", type=int, default=None, metavar="K",
+                        help="número deste julgamento (vai ao export e ao nome do arquivo)")
+    parser.add_argument("--passos", action="store_true",
+                        help="guarda os passos de cada métrica (afirmações, verdades, vereditos)")
     args = parser.parse_args()
 
     # Com --answers, o assistente não é chamado: o índice não precisa estar ao alcance (container de testes).
@@ -212,8 +264,12 @@ def main() -> None:
             for a in answers_meta.get("answers", [])
             if "expected_output" in a or a["name"] in by_name
         ]
+    if args.only:
+        goldens = [g for g in goldens if g.name in set(args.only)]
     if args.limit:
         goldens = goldens[: args.limit]
+    if args.ordem_semente is not None:
+        random.Random(args.ordem_semente).shuffle(goldens)
 
     from app.config import get_settings
 
@@ -227,9 +283,17 @@ def main() -> None:
         ContextualRelevancyMetric(model=judge_model, threshold=THRESHOLD),
     ]
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    args.out_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    json_path = RESULTS_DIR / f"{timestamp}.json"
+    if args.repeticao is not None:
+        timestamp += f"-r{args.repeticao}"
+    json_path = args.out_dir / f"{timestamp}.json"
+    extra = {
+        "judge_repetition": args.repeticao,
+        "order_seed": args.ordem_semente,
+        "case_order": [g.name for g in goldens],
+        "with_steps": args.passos,
+    }
 
     n = len(goldens)
     origem = f"respostas de {args.answers.name}" if args.answers else f"gerador {settings.generation_model}"
@@ -283,7 +347,7 @@ def main() -> None:
                 retrieval_context=retrieval_context,
                 name=golden.name,
             )
-            case_metrics = [_measure_one(metric, test_case) for metric in metrics]
+            case_metrics = [_measure_one(metric, test_case, args.passos) for metric in metrics]
 
         overall = gen_error is None and all(m["success"] for m in case_metrics if m["error"] is None) and not any(
             m["error"] is not None for m in case_metrics
@@ -301,7 +365,7 @@ def main() -> None:
             }
         )
 
-        output = _build_output(cases, n, i, settings, answers_meta)
+        output = _build_output(cases, n, i, settings, answers_meta, extra)
         _write_outputs(output, json_path)
         _log(f"    concluído em {time.monotonic() - case_start:.0f}s\n")
 

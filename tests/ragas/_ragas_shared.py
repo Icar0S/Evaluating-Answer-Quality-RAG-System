@@ -123,6 +123,11 @@ class OllamaJudge(InstructorBaseRagasLLM):
         self.timeout = timeout
         self.calls = 0
         self.failures = 0
+        # Os passos de uma nota (plano-escopo-final.md, §5 e §7): com uma lista aqui, cada resposta do juiz
+        # que passou no schema entra nela (o nome do schema e a saída), na ordem em que o juiz respondeu. É de
+        # onde saem as afirmações e os vereditos do ragas, que o resultado da métrica não guarda. None = não
+        # registra (o padrão).
+        self.trace: list[dict] | None = None
         self._lock = threading.Lock()
 
     def generate(self, prompt: str, response_model: type[T]) -> T:
@@ -151,9 +156,12 @@ class OllamaJudge(InstructorBaseRagasLLM):
                     )
                 content = data.get("message", {}).get("content", "")
                 try:
-                    return response_model.model_validate_json(content)
+                    parsed = response_model.model_validate_json(content)
                 except ValueError as exc:
                     raise JudgeError(f"saída do juiz fora do schema: {exc}; início: {content[:200]!r}") from exc
+                if self.trace is not None:
+                    self.trace.append({"schema": response_model.__name__, "output": parsed.model_dump(mode="json")})
+                return parsed
             except Exception:
                 self.failures += 1
                 raise

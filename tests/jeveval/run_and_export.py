@@ -21,12 +21,17 @@ Rodar da raiz do repo (venv próprio, ver README.md desta pasta):
     tests\\jeveval\\.venv\\Scripts\\python.exe tests\\jeveval\\run_and_export.py --answers respostas.json
     tests\\jeveval\\.venv\\Scripts\\python.exe tests\\jeveval\\run_and_export.py --answers respostas.json --limit 2
     tests\\jeveval\\.venv\\Scripts\\python.exe tests\\jeveval\\run_and_export.py --answers r.json --metrics faithfulness,correctness
+
+Julgamentos repetidos (plano-escopo-final.md, §5): `--repeticao K --ordem-semente K`
+julga os mesmos casos numa ordem embaralhada com semente e grava K no export
+(`judge_repetition`, `order_seed`, `case_order`); o arquivo leva o sufixo `-rK`.
 """
 from __future__ import annotations
 
 import argparse
 import csv
 import json
+import random
 import sys
 import time
 from datetime import datetime, timezone
@@ -73,6 +78,10 @@ def main(argv: list[str] | None = None, model=None) -> int:
     parser.add_argument("--only", action="append", default=[], help="nome de um golden (repetível)")
     parser.add_argument("--metrics", default=None, help=f"subconjunto, separado por vírgula ({','.join(shared.METRIC_NAMES)})")
     parser.add_argument("--out-dir", type=Path, default=shared.RESULTS_DIR, help="pasta de saída")
+    parser.add_argument("--ordem-semente", type=int, default=None, metavar="N",
+                        help="embaralha a ordem dos casos com esta semente (julgamentos repetidos)")
+    parser.add_argument("--repeticao", type=int, default=None, metavar="K",
+                        help="número deste julgamento (vai ao export e ao nome do arquivo)")
     args = parser.parse_args(argv)
 
     if not args.answers.is_file():
@@ -95,9 +104,13 @@ def main(argv: list[str] | None = None, model=None) -> int:
     if not cases:
         _log("[ERRO] Nenhum caso selecionado.")
         return 1
+    if args.ordem_semente is not None:
+        random.Random(args.ordem_semente).shuffle(cases)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if args.repeticao is not None:
+        stamp += f"-r{args.repeticao}"
     json_path = args.out_dir / f"{stamp}.json"
     csv_path = args.out_dir / f"{stamp}.csv"
 
@@ -117,6 +130,9 @@ def main(argv: list[str] | None = None, model=None) -> int:
         "instrument_sha": shared.instrument_sha(names),
         "question_sets": shared.question_sets(names),
         "question_sources": {name: shared.METRIC_SPECS[name].source for name in names},
+        "judge_repetition": args.repeticao,
+        "order_seed": args.ordem_semente,
+        "case_order": [c.name for c in cases],
         "n_cases": len(cases),
         "cases_done": 0,
         "cases": [],

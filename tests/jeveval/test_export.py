@@ -177,3 +177,20 @@ def test_relatorio_consolidado_le_o_export(tmp_path: Path, monkeypatch: pytest.M
     stats = report_data.dimension_stats(run)["faithfulness"]
     assert (stats.n_cases, stats.n_measured, stats.n_not_applicable) == (2, 1, 1)
     assert [name for name, _ in stats.errors] == ["c3-falhou"]
+
+
+def test_julgamento_repetido_embaralha_com_semente_e_se_identifica(tmp_path: Path) -> None:
+    # plano-escopo-final.md, §5: cada resposta é julgada 3 vezes, numa ordem embaralhada com semente (o juiz
+    # também passa por cache); o export diz qual julgamento é, e o arquivo não colide com os outros.
+    for sub in "abc":
+        (tmp_path / sub).mkdir()
+    first = _run(tmp_path / "a", "--repeticao", "2", "--ordem-semente", "2")
+    again = _run(tmp_path / "b", "--repeticao", "2", "--ordem-semente", "2")
+    plain = _run(tmp_path / "c")
+
+    assert (first["judge_repetition"], first["order_seed"]) == (2, 2)
+    assert first["case_order"] == again["case_order"] == [c["name"] for c in first["cases"]]
+    assert sorted(first["case_order"]) == ["c1", "c2-recusa", "c3-falhou"]
+    assert first["case_order"] != plain["case_order"] == ["c1", "c2-recusa", "c3-falhou"]
+    assert (plain["judge_repetition"], plain["order_seed"]) == (None, None)
+    assert [p.name.endswith("-r2.json") for p in (tmp_path / "a" / "results").glob("*.json")] == [True]

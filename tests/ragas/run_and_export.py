@@ -21,12 +21,20 @@ Rodar da raiz do repo:
 Com --answers <arquivo> (gerado por tests/generate_answers.py), julga respostas
 já prontas em vez de chamar o assistente — é como tests/run_all.py faz o RAGAS e
 o DeepEval julgarem exatamente o mesmo texto.
+
+A pergunta única (plano-escopo-final.md, §5) julga as mesmas respostas 3 vezes:
+`--repeticao K --ordem-semente K` embaralha a ordem dos casos com semente (o juiz
+também passa pelo cache do Ollama) e grava K no export; `--passos` guarda, por
+métrica, cada resposta do juiz (as afirmações, os vereditos), a "anatomia de uma
+nota"; `--out-dir` grava fora de results/, para o relatório consolidado não
+tomar essas rodadas pela mais recente.
 """
 from __future__ import annotations
 
 import argparse
 import csv
 import json
+import random
 import statistics
 import sys
 import time
@@ -67,6 +75,13 @@ def main() -> int:
         "--answers", type=Path, default=None,
         help="respostas já geradas (tests/generate_answers.py): julga estas em vez de chamar o assistente",
     )
+    parser.add_argument("--out-dir", type=Path, default=shared.RESULTS_DIR, help="pasta de saída")
+    parser.add_argument("--ordem-semente", type=int, default=None, metavar="N",
+                        help="embaralha a ordem dos casos com esta semente (julgamentos repetidos)")
+    parser.add_argument("--repeticao", type=int, default=None, metavar="K",
+                        help="número deste julgamento (vai ao export e ao nome do arquivo)")
+    parser.add_argument("--passos", action="store_true",
+                        help="guarda, por métrica, cada resposta do juiz (afirmações, vereditos)")
     args = parser.parse_args()
 
     # Com --answers o SUT não roda: o índice local não precisa existir.
@@ -107,15 +122,19 @@ def main() -> int:
     if not goldens:
         _log("[ERRO] Nenhum golden selecionado.")
         return 1
+    if args.ordem_semente is not None:
+        random.Random(args.ordem_semente).shuffle(goldens)
 
     judge = shared.build_judge()
     metrics = shared.build_metrics(judge, shared.build_embeddings())
     active = providers.get_active_provider()
 
-    shared.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    args.out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    json_path = shared.RESULTS_DIR / f"{stamp}.json"
-    csv_path = shared.RESULTS_DIR / f"{stamp}.csv"
+    if args.repeticao is not None:
+        stamp += f"-r{args.repeticao}"
+    json_path = args.out_dir / f"{stamp}.json"
+    csv_path = args.out_dir / f"{stamp}.csv"
 
     output: dict = {
         "framework": "ragas",
@@ -131,6 +150,10 @@ def main() -> int:
         "judge_num_ctx": rs.ragas_judge_num_ctx,
         "threshold": rs.ragas_threshold,
         "prompt_overrides": shared.PROMPT_OVERRIDES,
+        "judge_repetition": args.repeticao,
+        "order_seed": args.ordem_semente,
+        "case_order": [g.name for g in goldens],
+        "with_steps": args.passos,
         "n_cases": len(goldens),
         "cases_done": 0,
         "cases": [],
@@ -162,22 +185,24 @@ def main() -> int:
         case_metrics = []
         for name, metric in metrics.items():
             t1 = time.perf_counter()
+            judge.trace = [] if args.passos else None
             if gen_error:
                 outcome = shared.MetricOutcome(name=name, score=None, error=f"geração falhou: {gen_error}")
             else:
                 case = shared.CaseInputs(golden.input, answer, contexts, golden.expected_output)
                 outcome = shared.score_metric(name, metric, case)
             success = None if outcome.score is None else outcome.score >= rs.ragas_threshold
-            case_metrics.append(
-                {
-                    "name": name,
-                    "score": None if outcome.score is None else round(outcome.score, 4),
-                    "success": success,
-                    "reason": outcome.reason,
-                    "error": outcome.error,
-                    "seconds": round(time.perf_counter() - t1, 1),
-                }
-            )
+            record = {
+                "name": name,
+                "score": None if outcome.score is None else round(outcome.score, 4),
+                "success": success,
+                "reason": outcome.reason,
+                "error": outcome.error,
+                "seconds": round(time.perf_counter() - t1, 1),
+            }
+            if args.passos:
+                record["steps"] = judge.trace
+            case_metrics.append(record)
             shown = f"{outcome.score:.3f}" if outcome.measured else f"NÃO MEDIDA ({outcome.error[:120]})"
             _log(f"    {name:18s} {shown}")
 
