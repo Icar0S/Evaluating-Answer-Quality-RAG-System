@@ -1,0 +1,154 @@
+# O checklist de testes de RAG da pergunta única (plano-escopo-final.md, §9).
+#
+# Base: o CheckList (Ribeiro et al., ACL 2020), que organiza testes de comportamento por capacidade e por tipo:
+#   MFT  funcionalidade mínima: um caso que tem de dar certo;
+#   INV  invariância: uma mudança que não pode mudar o resultado;
+#   DIR  expectativa de direção: uma mudança que tem de mudar o resultado num sentido conhecido.
+# Aqui, adaptado às etapas de um RAG (recuperação, geração) e ao jeito de avaliar (protocolo, juiz, privacidade).
+#
+# Cada item diz como é conferido, numa destas formas:
+#   evidencia: o nome de uma conta de tests/checklist/avaliar.py, feita sobre a pasta de uma rodada de
+#              tests/pergunta_unica/rodar.py. Sai "passou" ou "falhou", com o detalhe; "sem dado" se a rodada não
+#              tem o que a conta precisa (por exemplo, rodou sem os mutantes).
+#   teste:     um teste automatizado que guarda o item (arquivo e nome do teste). Sai "coberto" se o teste existe;
+#              quem diz se ele passa é o CI (ou a suíte ao vivo, quando marcado).
+#   fora:      fora do escopo, com o motivo.
+# O escopo fecha quando nenhum item fica sem estado: coberto, passou, falhou com registro, ou fora com motivo.
+#
+# Os critérios de "passou" estão escritos em cada item ANTES de ver a rodada de análise. Mudar um critério depois
+# vira desvio registrado em docs/escopo-final-status.md.
+
+versao: 1
+pergunta: md-mtbench-vieses
+itens:
+  # ---------------------------------------------------------------- recuperação
+  - id: REC-1
+    etapa: Recuperação
+    item: O artigo certo chega no top-k
+    tipo: MFT
+    verifica: Em todas as respostas, um trecho do artigo do MT-Bench está entre os trechos recuperados.
+    evidencia: artigo_no_topk
+
+  - id: REC-2
+    etapa: Recuperação
+    item: A mesma pergunta traz os mesmos trechos
+    tipo: INV
+    verifica: O hash dos trechos (id e texto, na ordem) é o mesmo nas respostas da pergunta.
+    evidencia: trechos_iguais
+
+  # -------------------------------------------------------------------- geração
+  - id: GER-1
+    etapa: Geração
+    item: A resposta traz os fatos da referência
+    tipo: MFT
+    verifica: >-
+      Todas as respostas citam os três vieses (posição, verbosidade, autoaprimoramento) e os 80% de concordância.
+      Conferido por palavra-chave (oráculo determinístico, sem juiz).
+    evidencia: fatos_da_referencia
+
+  - id: GER-2
+    etapa: Geração
+    item: Sem afirmação fora dos trechos
+    tipo: MFT
+    verifica: A fidelidade média das respostas fica no limiar (0,7) ou acima, nos três juízes.
+    evidencia: fidelidade
+
+  - id: GER-3
+    etapa: Geração
+    item: A pergunta em inglês dá os mesmos fatos
+    tipo: INV
+    verifica: >-
+      Com a pergunta em inglês (o input_en do golden, as mesmas sementes), as respostas citam os mesmos fatos que em
+      português. Precisa da rodada com --ingles.
+    evidencia: mesmos_fatos_em_ingles
+
+  - id: GER-4
+    etapa: Geração
+    item: Sem o documento, abster-se
+    tipo: DIR
+    verifica: >-
+      No mutante C1 (o artigo fora do índice), ao menos uma resposta se abstém. O acervo ainda tem os fatos pelo
+      survey "Testing LLM-Based Systems", que os repete: falhar aqui é dado, não defeito do teste.
+    evidencia: abstencao_sem_o_documento
+
+  - id: GER-5
+    etapa: Geração
+    item: As 5 respostas concordam nos fatos
+    tipo: INV
+    verifica: As 5 respostas citam o mesmo conjunto de fatos da referência (a semente muda o texto, não os fatos).
+    evidencia: respostas_concordam
+
+  # ------------------------------------------------------------------- protocolo
+  - id: PRO-1
+    etapa: Protocolo
+    item: O histórico do chat não chega ao modelo
+    tipo: MFT
+    verifica: Na mesma conversa, o segundo POST /chat leva só a pergunta.
+    teste: frontend/tests/e2e/chat-limpo.spec.ts::a segunda pergunta da mesma conversa vai sozinha
+
+  - id: PRO-2
+    etapa: Protocolo
+    item: O estado do servidor é zerado antes de cada resposta
+    tipo: MFT
+    verifica: >-
+      Toda resposta da rodada foi gerada com o gerador recarregado (estado "frio"), e a semente pedida voltou no
+      registro.
+    evidencia: estado_limpo
+
+  - id: PRO-3
+    etapa: Protocolo
+    item: Gerador e juiz são modelos diferentes
+    tipo: MFT
+    verifica: O modelo que gera não é o que julga (RAGAS e DeepEval); o Jev é outro tipo de modelo.
+    evidencia: gerador_nao_julga
+    teste: frontend/tests/e2e/judge-vs-generator.spec.ts
+
+  # ------------------------------------------------------------------------ juiz
+  - id: JUI-1
+    etapa: Juiz
+    item: O juiz acerta os controles com resposta conhecida
+    tipo: MFT
+    verifica: Os controles com resposta certa e errada conhecidas, nas suítes ao vivo do RAGAS e do Jev.
+    teste: tests/ragas/test_judge_controls.py, tests/jeveval/test_jev_controls.py (ao vivo, fora do CI)
+
+  - id: JUI-2
+    etapa: Juiz
+    item: Trocar a ordem do par não muda o vencedor
+    tipo: INV
+    verifica: Em cada juiz de pares, pelo menos 90% dos pares têm o mesmo vencedor nas duas ordens.
+    evidencia: consistencia_de_posicao
+
+  - id: JUI-3
+    etapa: Juiz
+    item: A resposta mais longa não vence por ser longa
+    tipo: INV
+    verifica: >-
+      Em cada juiz de pares, a mais longa vence no máximo 70% dos pares de tamanhos diferentes (com pelo menos 4
+      pares decididos).
+    evidencia: verbosidade
+
+  - id: JUI-4
+    etapa: Juiz
+    item: Julgar de novo dá a mesma nota
+    tipo: INV
+    verifica: >-
+      Nas métricas da resposta (fidelidade, relevância, correção), nenhuma resposta passa no limiar num julgamento e
+      reprova noutro.
+    evidencia: vereditos_estaveis
+
+  - id: JUI-5
+    etapa: Juiz
+    item: O juiz percebe o defeito injetado
+    tipo: DIR
+    verifica: Cada mutante rodado é morto por pelo menos um juiz.
+    evidencia: mutantes_mortos
+
+  # ---------------------------------------------------------------- privacidade
+  - id: PRI-1
+    etapa: Privacidade
+    item: Só o acervo público sai da máquina
+    tipo: MFT
+    verifica: >-
+      Todo trecho enviado ao Jev vem de um documento da lista registrada do índice (os artigos públicos de
+      backend/app/rag/index_versions/), e o Jev só roda com a chave definida.
+    evidencia: so_acervo_publico
