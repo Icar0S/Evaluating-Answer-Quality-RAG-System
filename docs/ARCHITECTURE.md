@@ -785,6 +785,90 @@ depois da campanha, é análise exploratória. Os vereditos ficam em
 `jev-latest`), e cada export grava as perguntas e uma impressão digital delas
 (`instrument_sha`).
 
+### A pergunta única (nov/2026)
+
+O escopo final ([plano-escopo-final.md](../plano-escopo-final.md); o estado em
+[escopo-final-status.md](escopo-final-status.md)) troca "muitas perguntas, uma
+resposta cada" por "uma pergunta, cinco respostas, três juízes, três vezes". O
+código fica em `tests/pergunta_unica/` (o orquestrador `rodar.py` e as contas,
+só biblioteca padrão) e nos scripts de cada juiz. Decisões:
+
+**O chat limpo é do servidor, não da conversa.** O `POST /chat` nunca recebeu o
+histórico (o teste `chat-limpo.spec.ts` guarda isso). O estado que pode mudar a
+resposta é o cache de prefixo do Ollama. O protocolo descarrega o gerador
+(`keep_alive: 0`) antes de cada resposta e espera ele sair do `/api/ps`, em vez
+de confiar que a ordem das perguntas não importa.
+
+**Semente por requisição, não por servidor.** `ChatRequest.seed` é opcional e
+vale só naquela chamada. A alternativa, reiniciar o backend com outra
+`GENERATION_SEED` a cada resposta, mudaria o processo e o grafo HNSW do Chroma
+entre as respostas. O frontend não manda o campo. Um backend antigo ignora o
+campo em silêncio (o Pydantic descarta o desconhecido), e por isso o protocolo
+confere que a semente voltou no metadata e para se não voltou.
+
+**Conferir os trechos em vez de supor.** Cada resposta grava o hash dos trechos.
+O protocolo para se uma resposta da mesma pergunta receber outros: a diferença
+entre as respostas tem de vir só do gerador. É a resposta ao HNSW não
+determinístico das coleções pequenas, sem mexer no Chroma.
+
+**Os juízes repetidos são processos separados.** Cada julgamento é um
+`run_and_export.py` com `--repeticao K --ordem-semente K`: a ordem dos casos muda
+com semente, porque o juiz também passa pelo cache do Ollama. Processo por
+julgamento deixa cada export igual ao de sempre (o relatório lê sem mudança) e
+deixa retomar uma rodada interrompida. `--out-dir` tira esses exports de
+`results/`, para o relatório consolidado não tomar a rodada pela mais recente.
+
+**Os passos da nota vêm de onde a nota nasce.** No RAGAS, o juiz local grava as
+respostas que passaram no schema (as afirmações e os vereditos), porque o
+resultado da métrica não as guarda. No DeepEval, os atributos que a métrica
+deixa no objeto (`claims`, `truths`, `verdicts`), zerados antes de cada
+`measure()`. No Jev, o `breakdown`. O relatório refaz a conta de cada um a partir
+desses passos, em todos os julgamentos de fidelidade da rodada, e diz quantas
+batem com a nota gravada. Uma conta que não bate aparece no relatório
+(`test_a_conta_refeita_bate_com_a_nota_e_o_relatorio_aponta_quando_nao_bate`).
+
+**Nota que falta é buraco, não é julgamento pronto.** Um export com todos os
+casos pode ter notas sem valor (erro, timeout). Contar o export como pronto
+escondeu 27 de 30 notas do Jev na rodada de 23/11/2026. Agora o passo tenta de
+novo só os casos com buraco, e o resultado preenche só o que faltava: uma nota já
+medida nunca é trocada, senão a nova tentativa escolheria entre valores. Se
+sobrar buraco, o passo sai "incompleta" e a rodada não termina com código 0. O
+N/A do Jev não é buraco.
+
+**A máquina faz parte do protocolo.** A mesma rodada perdeu notas porque o
+notebook saiu da tomada e suspendeu no meio. `energia.py` não deixa começar na
+bateria, segura a suspensão por inatividade só enquanto o processo dura (sem mexer
+na configuração do Windows) e registra, no passo em que aconteceu, qualquer salto
+do relógio. Antes do DeepEval, o modelo de embeddings do RAGAS sai da GPU: no log
+do Ollama, ele ainda estava carregado quando a GPU ficou sem memória.
+
+**A ordem do par é fixada, não sorteada, e o nome não anda com ela.** O
+`ArenaGEval` embaralha a ordem e os nomes ("Alice", "Bob") sem semente para
+esconder o viés de posição. Aqui, o objetivo é medir esse viés: o `random` do
+módulo é trocado por um que deixa a ordem como pedida. Se o primeiro fosse sempre
+"Alice", posição e nome seriam a mesma medida. Por isso o nome fica preso à
+resposta nas duas ordens do par, e cada resposta é "Alice" em metade dos pares
+dela (um torneio rotativo). O script confere a ordem e os nomes antes de julgar.
+Os trechos vão uma vez no `input`, e não por concorrente. O
+RAGAS, sem métrica de pares, entra pela preferência implícita das notas da
+resposta (as de contexto julgam os mesmos trechos nas 5 respostas).
+
+**Os mutantes não tocam no índice do usuário.** C1 e C2 copiam os vetores do
+`md-v1` para um índice na pasta da rodada (C2 reembeda só os trechos trocados);
+P1 e R1 são sobrescritas de configuração. Reverter é apagar a pasta.
+
+**Mutante sem controle não prova nada.** O juiz muda de nota sem defeito nenhum,
+e o original tem 3 julgamentos contra 1 do mutante. O controle nulo mede isso com
+a mesma conta: cada julgamento do original contra a média dos outros, e o N0, um
+mutante que não muda nada e passa pelo mesmo caminho (a cópia do índice, as
+sobrescritas, outro processo). A morte só conta se caíram mais respostas do que na
+pior comparação nula. E o efeito na resposta é contado por palavra-chave, sem
+juiz, porque um mutante que não muda a resposta não tem defeito nela para achar.
+
+**O checklist fecha o escopo.** Cada item do `tests/checklist/checklist.yaml`
+diz como é conferido (uma conta sobre a rodada, um teste automatizado ou fora do
+escopo), e o critério de "passou" é escrito antes da rodada de análise.
+
 ## Fase 3 — Human-in-the-loop (a documentar caso confirmado)
 
 ## Camada de movimento e ilha React na homepage

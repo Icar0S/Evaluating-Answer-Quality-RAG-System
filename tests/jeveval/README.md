@@ -30,16 +30,20 @@ Ela tem três partes:
 > roda com `TYPESAFE_API_KEY` definida. Sem a chave, as partes 2 e 3 se
 > auto-pulam, e só a parte 1 roda.
 
-**Estado (23/11/2026):** implementada e testada com o Jev falso (68 testes
+**Estado (23/11/2026):** implementada e testada com o Jev falso (69 testes
 herméticos). O Jev de verdade já julgou as respostas compartilhadas várias
-vezes, todas com o `jev-1.13.0` e sem falha de chamada:
+vezes, todas com o `jev-1.13.0`:
 
 | Data | O quê | Custo |
 | :--- | :--- | :--- |
 | 17/10/2026 | Os 10 goldens dos PDFs (`pdf-v1`), duas rodadas | ~US$ 0,006 cada |
 | 12/11/2026 | 1 caso (o controle de estabilidade da demonstração em Docker) | US$ 0,0006 |
 | 19/11/2026 | 2 casos em cada RAG (`pdf-v1` e `md-v1`), duas rodadas (a apresentação gravada) | ~US$ 0,001 cada |
-| 23/11/2026 | A pergunta única: 5 respostas × 3 julgamentos, e os 20 pares (`pairwise.py`) | ver docs/escopo-final-status.md |
+| 23/11/2026 | A pergunta única, 1 julgamento das 5 respostas: **falhou**, 3 de 30 notas (27 erros de conexão: a máquina tinha acabado de voltar da suspensão) | US$ 0,0004 |
+
+Até 19/11, nenhuma chamada falhou. Os 3 julgamentos da pergunta única e os 20
+pares (`pairwise.py`) ainda não rodaram por inteiro; o andamento está em
+[docs/escopo-final-status.md](../../docs/escopo-final-status.md).
 
 O que ainda não rodou com o Jev de verdade: a validade de critério (os 247
 pares rotulados) e o O6 sobre o log da campanha. Os scripts rodaram de ponta a
@@ -48,7 +52,7 @@ reproduz o escore oficial do O4 (16/18, |S| = 22, tabela T3 do estudo).
 
 A estabilidade (o mesmo caso julgado de novo) variou 0,041 numa medição de
 12/11, acima da tolerância de 0,02 do controle. Os 15 julgamentos da pergunta
-única (5 respostas × 3) medem essa variação com dado real.
+única (5 respostas × 3) vão medir essa variação com dado real.
 
 ## Setup (uma vez)
 

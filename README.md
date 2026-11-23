@@ -683,11 +683,18 @@ O escopo final da plataforma ([plano-escopo-final.md](plano-escopo-final.md); o 
    descreve: posição e verbosidade.
 
 ```powershell
-set OLLAMA_BASE_URL=http://127.0.0.1:11434
-backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py                   # a rodada de análise (~1h30)
+$env:OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py                   # a rodada de análise (horas)
 backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py --julgamentos 1 --uma-ordem   # a da apresentação
+backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py --ingles --mutantes N0 C1 C2 P1 R1   # tudo
+backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py --retomar tests\pergunta_unica\out\<pasta>   # continuar
 tests\reports\.venv\Scripts\python.exe tests\reports\build_report.py --pergunta-unica tests\pergunta_unica\out\<pasta>
 ```
+
+A rodada só começa com a máquina na tomada (`--na-bateria` para insistir) e segura a suspensão por inatividade
+enquanto dura; feche a tampa só depois. Nota que um juiz não deu (erro, timeout) é um **buraco**: o passo tenta de
+novo só o caso que faltou, sem trocar nota já medida. Se sobrar buraco, o passo sai "incompleta", e a rodada não
+termina com código 0. O `--retomar` completa os buracos.
 
 Tudo fica em `tests/pergunta_unica/out/<data>/`. Os `run_and_export.py` gravam ali (`--out-dir`), e não em
 `results/`: o relatório consolidado não toma essas rodadas pela mais recente.
@@ -748,9 +755,9 @@ lado (as afirmações e os vereditos do RAGAS e do DeepEval; as perguntas, as pr
 Com 5 respostas, são 10 pares; cada par é julgado nas duas ordens (20 julgamentos por juiz), com o critério "qual
 resposta responde melhor à pergunta, considerando a referência e sem afirmar nada que não esteja nos trechos?".
 
-- **DeepEval:** o `ArenaGEval`, com o qwen3:8b. Ele escolhe um vencedor, sem empate. Por padrão, embaralha a ordem
-  sem semente; aqui a ordem é fixa (o primeiro é sempre "Alice"), para o viés de posição ser medido
-  (`tests/deepeval/pairwise.py`).
+- **DeepEval:** o `ArenaGEval`, com o qwen3:8b. Ele escolhe um vencedor, sem empate. Por padrão, embaralha a ordem e
+  os nomes das respostas ("Alice", "Bob") sem semente; aqui a ordem é a pedida, para o viés de posição ser medido, e
+  o nome fica preso à resposta nas duas ordens, para não se confundir com a posição (`tests/deepeval/pairwise.py`).
 - **JevEval:** uma pergunta fechada com as opções "A", "B" e "Empate", que devolve a probabilidade de cada uma
   (`tests/jeveval/pairwise.py`).
 - **RAGAS:** não tem métrica de pares. Entra pela **preferência implícita**: A vence B se a média das notas da
@@ -758,7 +765,17 @@ resposta responde melhor à pergunta, considerando a referência e sem afirmar n
   notas do DeepEval e do Jev, e compara o pontual com o par no mesmo framework.
 
 O que se mede: o ranking das 5 respostas, o viés de posição (o mesmo vencedor nas duas ordens? quem vem primeiro
-vence mais?), o viés de verbosidade (a mais longa vence mais?) e a concordância entre os juízes.
+vence mais?), o viés de nome (a "Alice" vence mais? só no ArenaGEval), o viés de verbosidade (a mais longa vence
+mais?) e a concordância entre os juízes.
+
+### Os mutantes
+
+`--mutantes N0 C1 C2 P1 R1` injeta quatro defeitos na pergunta única e roda o mesmo protocolo em cada um: o artigo
+sai do índice (C1), o artigo tem os fatos trocados (C2), o prompt perde a regra de usar só os trechos (P1) e só um
+trecho chega ao gerador (R1). O **N0** é o controle: não muda nada. Um juiz mata o mutante quando reprova mais
+respostas do que reprova sem defeito nenhum (no N0 e nos julgamentos repetidos do original). O relatório mostra
+também o efeito na resposta, contado por palavra-chave, sem juiz: um mutante que não muda a resposta não tem defeito
+nela para o juiz perceber.
 
 **Glossário curto:**
 
