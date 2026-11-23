@@ -30,13 +30,25 @@ Ela tem três partes:
 > roda com `TYPESAFE_API_KEY` definida. Sem a chave, as partes 2 e 3 se
 > auto-pulam, e só a parte 1 roda.
 
-**Estado (16/10/2026):** implementada e testada com o Jev falso (63 testes
-herméticos), e os scripts rodaram de ponta a ponta sobre os artefatos reais
-(log da campanha, os 247 pares, respostas compartilhadas). Lendo o
-`verdicts.jsonl` da campanha, o resumo do O6 reproduz o escore oficial do O4
-(16/18, |S| = 22, tabela T3 do estudo). A validação com o Jev de verdade (controles, critério e O6) ainda
-não rodou, porque a máquina não tinha chave da TypeSafe. Até ela rodar, não há
-número do JevEval para ler.
+**Estado (23/11/2026):** implementada e testada com o Jev falso (68 testes
+herméticos). O Jev de verdade já julgou as respostas compartilhadas várias
+vezes, todas com o `jev-1.13.0` e sem falha de chamada:
+
+| Data | O quê | Custo |
+| :--- | :--- | :--- |
+| 17/10/2026 | Os 10 goldens dos PDFs (`pdf-v1`), duas rodadas | ~US$ 0,006 cada |
+| 12/11/2026 | 1 caso (o controle de estabilidade da demonstração em Docker) | US$ 0,0006 |
+| 19/11/2026 | 2 casos em cada RAG (`pdf-v1` e `md-v1`), duas rodadas (a apresentação gravada) | ~US$ 0,001 cada |
+| 23/11/2026 | A pergunta única: 5 respostas × 3 julgamentos, e os 20 pares (`pairwise.py`) | ver docs/escopo-final-status.md |
+
+O que ainda não rodou com o Jev de verdade: a validade de critério (os 247
+pares rotulados) e o O6 sobre o log da campanha. Os scripts rodaram de ponta a
+ponta com o Jev falso; lendo o `verdicts.jsonl` da campanha, o resumo do O6
+reproduz o escore oficial do O4 (16/18, |S| = 22, tabela T3 do estudo).
+
+A estabilidade (o mesmo caso julgado de novo) variou 0,041 numa medição de
+12/11, acima da tolerância de 0,02 do controle. Os 15 julgamentos da pergunta
+única (5 respostas × 3) medem essa variação com dado real.
 
 ## Setup (uma vez)
 
@@ -262,7 +274,8 @@ JSON e no CSV daqui.
 
 ## Limitações
 
-- **Ainda não há medida real.** Ver "Estado", no topo.
+- **A validade de critério ainda não rodou com o Jev de verdade.** Ver
+  "Estado", no topo: há notas reais, mas não a comparação com os 247 rótulos.
 - **O Jev é um serviço externo e fechado.** Não há como inspecionar o modelo,
   só o comportamento. Os controles e a validade de critério são a única base
   para confiar nele.

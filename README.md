@@ -669,6 +669,106 @@ tests\reports\.venv\Scripts\python.exe tests\reports\build_report.py --formats p
 
 Todas as interações são logadas em `logs/interactions.jsonl` (JSON Lines), uma linha por interação, com pergunta, contexto recuperado, resposta, métricas e metadados — isso alimenta a suíte DeepEval e a escrita do artigo.
 
+## A pergunta única: cinco respostas, três juízes e os pares
+
+O escopo final da plataforma ([plano-escopo-final.md](plano-escopo-final.md); o estado em
+[docs/escopo-final-status.md](docs/escopo-final-status.md)) conta uma história só, com uma pergunta:
+
+1. **A pergunta** é a do artigo do MT-Bench sobre os vieses do LLM-as-a-judge (`md-mtbench-vieses`, no índice
+   `md-v1`).
+2. **O gemma3:4b responde 5 vezes**, uma por semente (1 a 5), sempre com o servidor limpo e sempre com os mesmos
+   trechos.
+3. **O RAGAS, o DeepEval e o JevEval julgam as 5 respostas**, cada um 3 vezes.
+4. **Os juízes comparam as respostas em pares**, nas duas ordens. Medimos neles os vieses que a resposta
+   descreve: posição e verbosidade.
+
+```powershell
+set OLLAMA_BASE_URL=http://127.0.0.1:11434
+backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py                   # a rodada de análise (~1h30)
+backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py --julgamentos 1 --uma-ordem   # a da apresentação
+tests\reports\.venv\Scripts\python.exe tests\reports\build_report.py --pergunta-unica tests\pergunta_unica\out\<pasta>
+```
+
+Tudo fica em `tests/pergunta_unica/out/<data>/`. Os `run_and_export.py` gravam ali (`--out-dir`), e não em
+`results/`: o relatório consolidado não toma essas rodadas pela mais recente.
+
+### O chat limpo
+
+O histórico da conversa nunca chega ao modelo. O `POST /chat` recebe só a pergunta, e o histórico fica no
+navegador (o teste `frontend/tests/e2e/chat-limpo.spec.ts` garante isso). Por isso, perguntar no mesmo chat ou num
+chat novo dá ao modelo a mesma entrada. O estado que pode mudar a resposta é o do servidor: o cache de prefixo do
+Ollama. O protocolo o zera antes de cada resposta (o gerador sai da memória com `keep_alive: 0`), fixa a semente
+de cada resposta (o campo opcional `seed` do `POST /chat`) e para se uma resposta receber outros trechos. O
+controle quente × frio (`generate_answers.py --controle-estado`) mede o efeito do cache: em 23/11/2026, nenhuma
+das 5 respostas mudou.
+
+### Como cada juiz chega à nota
+
+Os três juízes dão notas de 0 a 1 com os mesmos nomes (fidelidade, relevância da resposta…), mas não fazem a
+mesma conta. O JevEval, em especial, é outro tipo de juiz:
+
+| | RAGAS e DeepEval: juiz generativo | JevEval: juiz de decisão |
+| :--- | :--- | :--- |
+| Quem julga | qwen3:8b, um LLM que gera texto, local, pelo Ollama | Jev (`jev-1.13.0`, TypeSafe AI), um modelo de decisão, hospedado |
+| O que recebe | Um prompt com instruções e exemplos, um por etapa | O caso (pergunta, resposta, trechos, referência) e perguntas fechadas escolhidas e adaptadas por nós (`tests/jeveval/_jev_shared.py`; as de contexto são as do próprio deepeval) |
+| O que devolve | Texto (JSON): as afirmações extraídas, os vereditos e as justificativas | Uma probabilidade para cada opção de cada pergunta |
+| Como vira nota | Uma contagem: afirmações aprovadas ÷ afirmações | A média ponderada das probabilidades, numa conta fixa, feita fora do modelo |
+| Chamadas por métrica | Várias: extrair, depois julgar cada afirmação | Uma |
+| Julgar de novo | A nota muda: no benchmark, 7 a 9 de 70 respostas mudaram de fidelidade | A conta não muda; as probabilidades vêm da API e também variam um pouco |
+| Quando não dá para julgar | Erro de formato ou timeout: a métrica sai como não medida | N/A: a pergunta sai da média; se nenhuma se aplica, a métrica sai como N/A |
+| Custo e dados | Sem custo em dinheiro; minutos de GPU; os dados ficam na máquina | US$ 0,042 por milhão de tokens de entrada; segundos; os dados saem para `api.typesafe.ai` |
+
+**A fidelidade, nos três:**
+
+- **RAGAS:** o juiz quebra a resposta em afirmações e diz, para cada uma, se ela "pode ser inferida diretamente"
+  dos trechos (1) ou não (0). A nota é inferíveis ÷ total.
+- **DeepEval:** o juiz extrai as afirmações da resposta e as "verdades" dos trechos, e diz se cada afirmação é
+  `yes`, `no` ou `idk` (os trechos não dizem). Só o `no` perde ponto: a nota é (`yes` + `idk`) ÷ total. Uma
+  afirmação que os trechos não mencionam derruba o RAGAS e não derruba o DeepEval.
+- **JevEval:** duas perguntas fechadas. "Toda afirmação factual é sustentada pelos trechos?" (sim ou não, peso 2) e
+  "Quanto da resposta é fundamentado?" (4 níveis, peso 1). O valor de cada uma é a soma das probabilidades vezes o
+  crédito de cada opção; a nota é a média ponderada. O que não é mencionado conta como não sustentado.
+
+**O que isso muda na leitura:**
+
+1. **A escala é outra.** 0,67 no RAGAS quer dizer "2 de 3 afirmações". 0,67 no Jev quer dizer "o Jev acha provável,
+   mas não certo". As notas generativas saem em frações de poucas afirmações; as do Jev são contínuas.
+2. **Compare posição, não número.** Entre juízes, o que se compara é o veredito (acima ou abaixo do limiar), o
+   ranking das 5 respostas e a escolha no par.
+3. **A correção só o JevEval mede:** a resposta contra a referência, com limiar 0,5.
+4. **N/A não é 0, e erro não é 0.** Os dois ficam fora da média.
+5. **Num juiz generativo, parte da diferença entre as 5 respostas é do juiz.** Por isso cada resposta é julgada 3
+   vezes, e o relatório separa a variação do gerador da do juiz.
+
+O relatório da pergunta única mostra a "anatomia de uma nota": para a resposta #1, os passos de cada juiz lado a
+lado (as afirmações e os vereditos do RAGAS e do DeepEval; as perguntas, as probabilidades e a conta do Jev).
+
+### A comparação em pares
+
+Com 5 respostas, são 10 pares; cada par é julgado nas duas ordens (20 julgamentos por juiz), com o critério "qual
+resposta responde melhor à pergunta, considerando a referência e sem afirmar nada que não esteja nos trechos?".
+
+- **DeepEval:** o `ArenaGEval`, com o qwen3:8b. Ele escolhe um vencedor, sem empate. Por padrão, embaralha a ordem
+  sem semente; aqui a ordem é fixa (o primeiro é sempre "Alice"), para o viés de posição ser medido
+  (`tests/deepeval/pairwise.py`).
+- **JevEval:** uma pergunta fechada com as opções "A", "B" e "Empate", que devolve a probabilidade de cada uma
+  (`tests/jeveval/pairwise.py`).
+- **RAGAS:** não tem métrica de pares. Entra pela **preferência implícita**: A vence B se a média das notas da
+  resposta (fidelidade e relevância) de A passa a de B por mais de 0,05; senão, empate. A mesma regra vale para as
+  notas do DeepEval e do Jev, e compara o pontual com o par no mesmo framework.
+
+O que se mede: o ranking das 5 respostas, o viés de posição (o mesmo vencedor nas duas ordens? quem vem primeiro
+vence mais?), o viés de verbosidade (a mais longa vence mais?) e a concordância entre os juízes.
+
+**Glossário curto:**
+
+- **Juiz generativo:** um LLM que escreve o julgamento em texto; a nota sai de uma contagem sobre esse texto.
+- **Juiz de decisão:** um modelo que só escolhe entre opções fechadas, com uma probabilidade para cada uma.
+- **N/A:** "não se aplica" (uma recusa não tem afirmação para ser fiel); fica fora da média.
+- **Confiança (Jev):** o quanto a probabilidade se concentra numa opção: 0 é uniforme, 1 é certeza.
+- **Limiar:** a nota mínima para aprovar (0,7 nas cinco dimensões; 0,5 na correção do Jev).
+- **Preferência implícita:** o par decidido pelas notas pontuais, sem pedir ao juiz que compare.
+
 ## Versões do índice do RAG (PDF × Markdown)
 
 O assistente pode responder a partir de acervos diferentes, cada um indexado
