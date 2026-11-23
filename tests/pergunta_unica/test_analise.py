@@ -70,7 +70,8 @@ def test_na_e_nao_medida_ficam_fora_e_sao_contadas():
 
 
 def test_deepeval_sem_campo_framework_e_o_limiar_proprio_da_correcao():
-    exports = [_export(None, 1, {"a#1": {"faithfulness": 1.0}}),
+    # O DeepEval grava o nome de exibição ("Faithfulness"): a análise usa a chave dos outros dois.
+    exports = [_export(None, 1, {"a#1": {"Faithfulness": 1.0}}),
                _export("jeveval", 1, {"a#1": {"correctness": 0.6}}, threshold=0.5),
                _export("jeveval", 2, {"a#1": {"correctness": 0.4}}, threshold=0.5)]
 
@@ -98,20 +99,43 @@ def fake_run(tmp_path: Path, monkeypatch):
     def fake_call(self, key, cmd, log_name):
         calls.append(log_name)
         cmd = [str(c) for c in cmd]
-        if log_name == "respostas":
+        if log_name == "relatorio":
+            out = Path(cmd[cmd.index("--pergunta-unica") + 1]) / "relatorio"
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "relatorio.md").write_text("# relatório", encoding="utf-8")
+        elif "respostas" in log_name:
             answers = [{"name": f"q#{k}", "error": None, "actual_output": f"r{k}"} for k in range(1, 3)]
-            self.answers.write_text(json.dumps({"n_cases": 2, "generation_model": "gemma3:4b", "answers": answers,
-                                                "protocolo": {"interrompido": None, "temperatura": 1.0,
-                                                              "ollama_url": "http://ollama:11434",
-                                                              "trechos": {"q": {"iguais": True}}}}), encoding="utf-8")
+            out = Path(cmd[cmd.index("--out") + 1])
+            out.write_text(json.dumps({"n_cases": 2, "generation_model": "gemma3:4b", "answers": answers,
+                                       "protocolo": {"interrompido": None, "temperatura": 1.0,
+                                                     "ollama_url": "http://ollama:11434",
+                                                     "trechos": {"q": {"iguais": True}}},
+                                       "_cmd": cmd}), encoding="utf-8")
+        elif log_name.endswith("preparar"):
+            op, out = cmd[cmd.index("--op") + 1], Path(cmd[cmd.index("--dir") + 1])
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "mutante.json").write_text(json.dumps({
+                "operador": op, "nome": f"nome {op}", "esperado": "cair", "artefatos": ["artefatos/x"],
+                "set": {"top_k": "1"} if op == "R1" else {"vector_store_dir": str(out / "indice")},
+                "usa_indice_base": op == "R1"}), encoding="utf-8")
+        elif log_name.startswith("pares-"):
+            out = Path(cmd[cmd.index("--out") + 1])
+            out.parent.mkdir(parents=True, exist_ok=True)
+            plan = rodar.pares.pair_plan(["q#1", "q#2"], both_orders="--uma-ordem" not in cmd)
+            out.write_text(json.dumps({"n_julgamentos": len(plan), "duas_ordens": "--uma-ordem" not in cmd,
+                                       "julgamentos": [rodar.pares.judgment(item, item["primeiro"])
+                                                       for item in plan]}), encoding="utf-8")
         else:
-            judge, k = log_name.rsplit("-r", 1)
+            prefix, k = log_name.rsplit("-r", 1)
+            judge = prefix.split("-")[-1]
             assert cmd[cmd.index("--repeticao") + 1] == k == cmd[cmd.index("--ordem-semente") + 1]
             assert ("--passos" in cmd) == (judge != "jeveval")
             out = Path(cmd[cmd.index("--out-dir") + 1])
             out.mkdir(parents=True, exist_ok=True)
-            metric = {"name": "faithfulness", "score": 0.5 + int(k) / 10, "success": True, "applicable": True,
-                      "error": None}
+            # No mutante, a nota cai abaixo do limiar: os juízes o matam.
+            score = 0.1 if "mutantes" in out.parts else 0.7 + int(k) / 10
+            metric = {"name": "faithfulness", "score": score, "success": score >= 0.7, "applicable": True,
+                      "error": None, "threshold": 0.7}
             (out / f"2026-r{k}.json").write_text(json.dumps({
                 "framework": judge, "judge_repetition": int(k), "threshold": 0.7, "n_cases": 2, "cases_done": 2,
                 "cases": [{"name": f"q#{i}", "metrics": [metric]} for i in (1, 2)]}), encoding="utf-8")
@@ -129,14 +153,29 @@ def test_orquestrador_gera_libera_o_gerador_julga_por_k_e_analisa(fake_run, tmp_
 
     (run_dir,) = [p for p in tmp_path.iterdir() if p.is_dir()]
     assert code == 0
-    # Por julgamento, os três juízes; o Jev, sem chave, sai pulado.
-    assert calls == ["respostas", "ragas-r1", "deepeval-r1", "ragas-r2", "deepeval-r2"]
+    # Por julgamento, os três juízes; depois os pares. O Jev, sem chave, sai pulado nos dois.
+    assert calls == ["respostas", "ragas-r1", "deepeval-r1", "ragas-r2", "deepeval-r2", "pares-deepeval", "relatorio"]
     assert unloaded == [("http://ollama:11434", "gemma3:4b")]
     steps = json.loads((run_dir / "execucao.json").read_text(encoding="utf-8"))["passos"]
-    assert [s["estado"] for s in steps if s["passo"].startswith("jeveval")] == ["pulada", "pulada"]
+    assert [s["estado"] for s in steps if "jeveval" in s["passo"]] == ["pulada", "pulada", "pulada"]
     report = json.loads((run_dir / "analise.json").read_text(encoding="utf-8"))
     assert report["frameworks"]["ragas"]["julgamentos"] == [1, 2]
     assert report["frameworks"]["ragas"]["metricas"]["faithfulness"]["dp_juiz"] == pytest.approx(0.05)
+    # Os pares: o ArenaGEval falso escolhe sempre o primeiro (viés de posição total); as notas pontuais são
+    # iguais nas duas respostas, então a preferência implícita é empate.
+    pairs = json.loads((run_dir / "pares-analise.json").read_text(encoding="utf-8"))
+    assert pairs["juizes"]["deepeval-arena"]["posicao"]["taxa_do_primeiro"] == 1.0
+    assert pairs["juizes"]["ragas (implícita)"]["resultado_por_par"] == {"q#1 x q#2": "empate"}
+
+
+def test_pares_numa_ordem_so_e_sem_pares(fake_run, tmp_path):
+    calls, _ = fake_run
+
+    assert rodar.main(["--julgamentos", "1", "--pular", "ragas", "--uma-ordem"]) == 0
+    assert calls[-2:] == ["pares-deepeval", "relatorio"]
+    calls.clear()
+    assert rodar.main(["--julgamentos", "1", "--pular", "ragas", "--sem-pares"]) == 0
+    assert "pares-deepeval" not in calls
 
 
 def test_retomar_nao_refaz_o_que_ja_tem_arquivo_completo(fake_run, tmp_path):
@@ -147,7 +186,7 @@ def test_retomar_nao_refaz_o_que_ja_tem_arquivo_completo(fake_run, tmp_path):
 
     assert rodar.main(["--julgamentos", "2", "--pular", "deepeval", "--retomar", str(run_dir)]) == 0
 
-    assert calls == ["ragas-r2"]  # as respostas e o ragas-r1 já existiam
+    assert calls == ["ragas-r2", "relatorio"]  # as respostas e o ragas-r1 já existiam
 
 
 def test_api_sem_ollama_para_antes_de_gerar(fake_run):
@@ -155,3 +194,43 @@ def test_api_sem_ollama_para_antes_de_gerar(fake_run):
 
     assert rodar.main(["--api", "http://localhost:8010"]) == 1
     assert calls == []
+
+
+def test_mutantes_preparam_geram_com_as_sobrescritas_julgam_e_viram_tabela(fake_run, tmp_path):
+    calls, unloaded = fake_run
+
+    assert rodar.main(["--julgamentos", "2", "--sem-pares", "--pular", "deepeval", "--mutantes", "C1", "R1"]) == 0
+
+    (run_dir,) = [p for p in tmp_path.iterdir() if p.is_dir()]
+    assert calls == ["respostas", "ragas-r1", "ragas-r2",
+                     "mutante-C1-preparar", "mutante-C1-respostas", "mutante-C1-ragas-r1",
+                     "mutante-R1-preparar", "mutante-R1-respostas", "mutante-R1-ragas-r1", "relatorio"]
+    assert len(unloaded) == 3  # o gerador sai da memória antes de cada rodada de juízes
+    # O C1 busca no índice dele (sem --index); o R1 usa o md-v1 com top_k=1.
+    c1 = json.loads((run_dir / "mutantes" / "C1" / "respostas.json").read_text(encoding="utf-8"))["_cmd"]
+    r1 = json.loads((run_dir / "mutantes" / "R1" / "respostas.json").read_text(encoding="utf-8"))["_cmd"]
+    assert "--index" not in c1 and any(c.startswith("vector_store_dir=") for c in c1)
+    assert r1[r1.index("--index") + 1] == "md-v1" and "top_k=1" in r1
+    report = json.loads((run_dir / "mutantes-analise.json").read_text(encoding="utf-8"))
+    assert report["mutantes"]["C1"]["juizes"]["ragas"]["morto"] is True
+    assert "**morto**" in (run_dir / "mutantes-analise.md").read_text(encoding="utf-8")
+
+
+def test_mutantes_nao_rodam_pela_api(fake_run):
+    calls, _ = fake_run
+
+    assert rodar.main(["--api", "http://localhost:8010", "--ollama", "http://o:11435", "--julgamentos", "1",
+                       "--sem-pares", "--pular", "ragas", "deepeval", "--mutantes", "P1"]) == 0
+    assert not any(c.startswith("mutante") for c in calls)
+
+
+def test_ingles_e_relatorio_no_fim(fake_run, tmp_path):
+    calls, _ = fake_run
+
+    assert rodar.main(["--julgamentos", "1", "--sem-pares", "--pular", "ragas", "deepeval", "--ingles"]) == 0
+
+    (run_dir,) = [p for p in tmp_path.iterdir() if p.is_dir()]
+    assert calls == ["respostas", "respostas-em-inglês", "relatorio"]
+    english = json.loads((run_dir / "ingles" / "respostas.json").read_text(encoding="utf-8"))["_cmd"]
+    assert english[english.index("--lang") + 1] == "en"
+    assert (run_dir / "relatorio" / "relatorio.md").is_file()

@@ -17,6 +17,14 @@ Rodar da raiz do repo (venv próprio, ver README.md desta pasta):
         --input tests\\deepeval\\results\\20260827T163236Z.json
 
 Sem --input, usa o resultado mais recente de cada framework.
+
+A pergunta única (plano-escopo-final.md, §10) tem relatório próprio, da pasta de
+uma rodada do tests/pergunta_unica/rodar.py (pergunta_unica_report.py): o
+protocolo, as 5 respostas, os juízes com a decomposição da variação, a anatomia
+de uma nota e os pares. Fica em <pasta>/relatorio/, fora do histórico:
+
+    tests\\reports\\.venv\\Scripts\\python.exe tests\\reports\\build_report.py ^
+        --pergunta-unica tests\\pergunta_unica\\out\\<pasta> [--controle controle.json]
 """
 from __future__ import annotations
 
@@ -126,7 +134,30 @@ def main() -> int:
         "--sem-historico", action="store_true",
         help="não entra no histórico (tests/reports/out/HISTORICO.md) nem atualiza out/ultimo",
     )
+    parser.add_argument("--pergunta-unica", type=Path, default=None, metavar="PASTA",
+                        help="o relatório de uma rodada de tests/pergunta_unica/rodar.py (em PASTA/relatorio/)")
+    parser.add_argument("--controle", type=Path, default=None, metavar="ARQUIVO",
+                        help="com --pergunta-unica: o controle quente x frio (generate_answers.py --controle-estado)")
     args = parser.parse_args()
+
+    if args.pergunta_unica:
+        import pergunta_unica_report
+
+        out_dir = args.out or args.pergunta_unica / "relatorio"
+        try:
+            outputs = pergunta_unica_report.build(args.pergunta_unica, out_dir,
+                                                  [f for f in args.formats if f != "csv"], control=args.controle)
+        except ValueError as exc:
+            print(f"[ERRO] {exc}", file=sys.stderr)
+            return 1
+        print("\nRelatório da pergunta única:")
+        for fmt_name, path in outputs.items():
+            print(f"  {fmt_name:5s} {path}")
+        if args.open:
+            target = outputs.get("pdf") or outputs.get("md")
+            if target and hasattr(os, "startfile"):
+                os.startfile(target)  # noqa: S606 - abre no visualizador padrão do Windows
+        return 0
 
     paths = args.input or report_data.discover_latest()
     if not paths:
