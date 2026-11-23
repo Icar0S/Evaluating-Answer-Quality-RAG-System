@@ -33,6 +33,20 @@ from pathlib import Path
 from typing import Any
 
 FRAMEWORKS = ("ragas", "deepeval", "jeveval")
+# O DeepEval grava o nome de exibição da métrica; o RAGAS e o Jev, a chave. A mesma tabela de
+# tests/reports/report_data.py (METRIC_TO_DIMENSION), copiada aqui porque este módulo é só biblioteca padrão.
+DEEPEVAL_NAMES = {
+    "Faithfulness": "faithfulness",
+    "Answer Relevancy": "answer_relevancy",
+    "Contextual Precision": "context_precision",
+    "Contextual Recall": "context_recall",
+    "Contextual Relevancy": "context_relevance",
+}
+
+
+def canonical_metric(name: str) -> str:
+    """O nome da métrica nos três frameworks: `faithfulness`, `answer_relevancy`, `context_*`, `correctness`."""
+    return DEEPEVAL_NAMES.get(name, name)
 
 
 def load_export(path: Path) -> dict[str, Any]:
@@ -54,7 +68,8 @@ def collect(exports: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, list
         rep = export.get("judge_repetition")
         for case in export.get("cases", []):
             for m in case.get("metrics", []):
-                table.setdefault(fw, {}).setdefault(m["name"], {}).setdefault(case["name"], []).append({
+                metric = canonical_metric(m["name"])
+                table.setdefault(fw, {}).setdefault(metric, {}).setdefault(case["name"], []).append({
                     "repeticao": rep,
                     "score": m.get("score"),
                     "success": m.get("success"),
