@@ -101,3 +101,60 @@ def test_relatorio_compara_juizes_e_o_pontual_do_mesmo_framework():
     assert report["entre_juizes"]["jeveval-par x jeveval (implícita)"]["kendall_tau"] == 1.0
     table = pares.markdown(report)
     assert "| deepeval-arena |" in table and "0/3" in table
+
+
+def test_cada_resposta_e_alice_em_metade_dos_pares_dela():
+    names = [f"q#{k}" for k in range(1, 6)]
+
+    alice = pares.alice_of_pairs(names)
+
+    assert len(alice) == 10 and all(who in pair for pair, who in alice.items())
+    assert {n: sum(1 for who in alice.values() if who == n) for n in names} == dict.fromkeys(names, 2)
+
+
+def _named(a: str, b: str, order: str, winner: str, alice: str) -> dict:
+    first, second = (a, b) if order == "AB" else (b, a)
+    names = {"Alice": alice, "Bob": b if alice == a else a}
+    return pares.judgment({"par": [a, b], "ordem": order, "primeiro": first, "segundo": second}, winner,
+                          nomes_mascarados=names)
+
+
+def test_vies_de_nome_e_vies_de_posicao_se_separam():
+    pairs = [("q#1", "q#2"), ("q#1", "q#3"), ("q#2", "q#3")]
+    alice = pares.alice_of_pairs(NAMES)
+    likes_alice = [_named(a, b, o, alice[(a, b)], alice[(a, b)]) for a, b in pairs for o in ("AB", "BA")]
+    likes_first = [_named(a, b, o, a if o == "AB" else b, alice[(a, b)]) for a, b in pairs for o in ("AB", "BA")]
+
+    name_only = pares.judge_summary(likes_alice, NAMES, {})
+    position_only = pares.judge_summary(likes_first, NAMES, {})
+
+    # Quem gosta do nome "Alice" é consistente nas duas ordens: não vira viés de posição.
+    assert name_only["nome"]["taxa_da_alice"] == 1.0
+    assert name_only["posicao"]["consistencia"] == 1.0 and name_only["posicao"]["taxa_do_primeiro"] == 0.5
+    # E quem gosta do primeiro não vira viés de nome.
+    assert position_only["nome"]["taxa_da_alice"] == 0.5
+    assert position_only["posicao"]["taxa_do_primeiro"] == 1.0
+    assert position_only["nome"]["alice_veio_primeiro"] == 3 and position_only["nome"]["julgamentos"] == 6
+    # O Jev não recebe nomes: sem viés de nome para medir.
+    assert pares.judge_summary([_j("q#1", "q#2", "AB", "q#1")], NAMES, {})["nome"] is None
+
+
+def test_completar_so_aproveita_julgamento_das_mesmas_respostas(tmp_path):
+    import json
+
+    sha = pares.answers_sha(ANSWERS)
+    done, failed = _j("q#1", "q#2", "AB", "q#1"), _j("q#1", "q#2", "BA", None)
+    path = tmp_path / "pares.json"
+    path.write_text(json.dumps({"respostas_sha256": sha, "julgamentos": [done, failed]}), encoding="utf-8")
+
+    assert list(pares.already_judged(path, sha)) == [("q#1", "q#2", "AB")]  # o não julgado volta ao juiz
+    other = pares.answers_sha({**ANSWERS, "q#1": {"actual_output": "outro texto"}})
+    assert pares.already_judged(path, other) == {}
+    assert pares.already_judged(tmp_path / "nao-existe.json", sha) == {}
+
+
+@pytest.mark.parametrize("raw, name", [("Alice", "Alice"), ("$Alice$", "Alice"), (' "Bob" ', "Bob"), ("**Bob**", "Bob"),
+                                       ("nenhum dos dois", "nenhum dos dois"), (None, "")])
+def test_o_nome_do_vencedor_sem_os_cifroes_que_o_juiz_poe(raw, name):
+    # Visto ao vivo em 23/11/2026: o qwen3:8b devolveu "$Alice$", e o ArenaGEval quebrou com KeyError.
+    assert pares.clean_name(raw) == name

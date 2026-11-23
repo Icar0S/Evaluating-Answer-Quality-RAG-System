@@ -8,7 +8,9 @@ Diferente do ArenaGEval do DeepEval, aqui o empate existe e vem com
 probabilidade: P(A), P(B) e P(Empate) vão para o export.
 
 A ordem é a do plano (pares.pair_plan): na ordem BA, a segunda resposta do par
-vai em `answer_A`. É assim que se mede o viés de posição do Jev.
+vai em `answer_A`. É assim que se mede o viés de posição do Jev. Aqui a posição e o
+rótulo ("A" é a primeira) andam juntos, como no artigo do MT-Bench: a medida é dos
+dois. No ArenaGEval, que usa nomes de pessoas, o nome é separado da posição.
 
 Como as outras chamadas desta camada, cada par manda pergunta, referência,
 trechos e respostas para https://api.typesafe.ai (só o acervo público; ver
@@ -90,6 +92,8 @@ def main(argv: list[str] | None = None, model=None) -> int:
     parser.add_argument("--answers", type=Path, required=True, help="respostas do tests/generate_answers.py")
     parser.add_argument("--out", type=Path, required=True, help="arquivo JSON de saída")
     parser.add_argument("--uma-ordem", action="store_true", help="só a ordem AB (a rodada da apresentação)")
+    parser.add_argument("--completar", action="store_true",
+                        help="mantém o que o --out já tem julgado (das mesmas respostas) e julga só o que falta")
     args = parser.parse_args(argv)
 
     settings = shared.get_settings()
@@ -101,6 +105,9 @@ def main(argv: list[str] | None = None, model=None) -> int:
         model = shared.build_jev(settings)
     meta, answers = pares.answers_by_name(args.answers)
     plan = pares.pair_plan(list(answers), both_orders=not args.uma_ordem)
+    sha = pares.answers_sha(answers)
+    kept = pares.already_judged(args.out, sha) if args.completar else {}
+    previous = json.loads(args.out.read_text(encoding="utf-8")) if kept else {}
     output = {
         "framework": "jeveval",
         "juiz": "jeveval-par",
@@ -108,19 +115,22 @@ def main(argv: list[str] | None = None, model=None) -> int:
         "judge_model": model.get_model_name(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "answers_source": str(args.answers),
+        "respostas_sha256": sha,
         "generation_model": meta.get("generation_model"),
         "criterio": pares.CRITERION_PT,
         "pergunta_enviada": QUESTION,
         "opcoes": OPTIONS,
         "duas_ordens": not args.uma_ordem,
         "n_julgamentos": len(plan),
-        "custo_usd": 0.0,
+        "custo_usd": previous.get("custo_usd", 0.0),
         "julgamentos": [],
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Pares com o Jev ({output['judge_model']}) | {len(answers)} respostas, {len(plan)} julgamentos", flush=True)
+    print(f"Pares com o Jev ({output['judge_model']}) | {len(answers)} respostas, {len(plan)} julgamentos "
+          f"({len(kept)} já feitos)", flush=True)
     for i, item in enumerate(plan, start=1):
-        result, cost = judge_pair(model, item, answers)
+        done = kept.get((*item["par"], item["ordem"]))
+        result, cost = (done, 0.0) if done else judge_pair(model, item, answers)
         output["julgamentos"].append(result)
         output["custo_usd"] = round(output["custo_usd"] + cost, 6)
         args.out.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -22,8 +22,9 @@ def _export(framework: str | None, scores: dict[str, dict[str, float]], threshol
 
 
 def test_um_juiz_mata_quando_reprova_uma_resposta_que_aprovava():
+    # Dois julgamentos do original, iguais: o controle nulo existe e não reprova nada.
     original = [_export("ragas", {"q#1": {"faithfulness": 0.9}, "q#2": {"faithfulness": 0.8}}),
-                _export(None, {"q#1": {"Faithfulness": 1.0}, "q#2": {"Faithfulness": 1.0}})]
+                _export(None, {"q#1": {"Faithfulness": 1.0}, "q#2": {"Faithfulness": 1.0}})] * 2
     mutant = [_export("ragas", {"q#1": {"faithfulness": 0.3}, "q#2": {"faithfulness": 0.8}}),
               _export(None, {"q#1": {"Faithfulness": 0.9}, "q#2": {"Faithfulness": 1.0}})]
     answers = {"answers": [{"name": "q#1", "abstained": True, "source_documents": ["outro.md"], "actual_output": "x"},
@@ -35,14 +36,65 @@ def test_um_juiz_mata_quando_reprova_uma_resposta_que_aprovava():
 
     p1 = report["mutantes"]["P1"]
     assert p1["juizes"]["ragas"]["morto"] is True
-    assert p1["juizes"]["ragas"]["matou_por"] == ["faithfulness"]
+    assert p1["juizes"]["ragas"]["confirmado_por"] == ["faithfulness"]
     assert p1["juizes"]["ragas"]["metricas"]["faithfulness"]["respostas_que_cairam"] == ["q#1"]
     assert p1["juizes"]["ragas"]["metricas"]["faithfulness"]["depois"] == pytest.approx(0.55)
     assert p1["juizes"]["deepeval"]["morto"] is False  # 0,9 ainda passa no limiar
     assert p1["comportamento"] == {"respostas": 2, "abstencoes": 1, "com_o_artigo_nos_trechos": 1,
-                                   "caracteres_medios": 1.5}
+                                   "caracteres_medios": 1.5, "iguais_ao_original": None, "com_todos_os_fatos": 0,
+                                   "com_algum_fato_trocado": 0, "fatos_certos_por_resposta": [0, 0],
+                                   "fatos_trocados_por_resposta": [0, 0]}
     table = mutacao.markdown(report)
     assert "| P1: Remover ancoragem |" in table and "**morto** (fidelidade 0,85→0,55)" in table and "vivo" in table
+    assert "ragas: 2 comparações sem defeito; não reprovou nenhuma resposta" in table
+
+
+def _rep(framework: str, k: int, scores: dict[str, float]) -> dict:
+    return {**_export(framework, {a: {"faithfulness": s} for a, s in scores.items()}), "judge_repetition": k}
+
+
+def test_reacao_que_o_controle_nulo_tambem_tem_e_ruido_e_nao_morte():
+    # O juiz oscila sozinho na q#1: no julgamento 3, sem defeito nenhum, ele a reprova.
+    original = [_rep("ragas", 1, {"q#1": 0.8, "q#2": 0.9, "q#3": 0.9}),
+                _rep("ragas", 2, {"q#1": 0.8, "q#2": 0.9, "q#3": 0.9}),
+                _rep("ragas", 3, {"q#1": 0.6, "q#2": 0.9, "q#3": 0.9})]
+    one_fell = {"meta": {}, "exports": [_rep("ragas", 1, {"q#1": 0.5, "q#2": 0.9, "q#3": 0.9})]}
+    two_fell = {"meta": {}, "exports": [_rep("ragas", 1, {"q#1": 0.5, "q#2": 0.3, "q#3": 0.9})]}
+
+    report = mutacao.mutation_report(original, None, {"P1": one_fell, "R1": two_fell})
+
+    assert report["controle_nulo"]["ragas"] == {
+        "comparacoes": 3, "n0": False, "reacoes": {"faithfulness": {"comparacoes": 1, "maximo_de_respostas": 1}}}
+    assert report["mutantes"]["P1"]["juizes"]["ragas"]["estado"] == "ruído"
+    assert report["mutantes"]["P1"]["juizes"]["ragas"]["morto"] is False
+    assert report["mutantes"]["R1"]["juizes"]["ragas"]["estado"] == "morto"  # mais respostas do que o ruído explica
+
+
+def test_o_n0_entra_no_controle_e_nunca_conta_como_morto():
+    original = [_rep("ragas", 1, {"q#1": 0.8})]
+    killed = {"meta": {}, "exports": [_rep("ragas", 1, {"q#1": 0.2})]}
+
+    with_n0 = mutacao.mutation_report(original, None, {"N0": killed, "P1": killed})
+    without = mutacao.mutation_report(original, None, {"P1": killed})
+
+    assert with_n0["mutantes"]["N0"]["juizes"]["ragas"]["estado"] == "ruído"
+    assert with_n0["mutantes"]["P1"]["juizes"]["ragas"]["estado"] == "ruído"
+    # Um julgamento só e sem N0: não há como dizer se é defeito ou ruído.
+    assert without["mutantes"]["P1"]["juizes"]["ragas"]["estado"] == "sem controle"
+    assert "sem controle nulo" in mutacao.markdown(without)
+
+
+def test_o_efeito_na_resposta_e_contado_sem_juiz():
+    right = "Os vieses de posição, de verbosidade e de autoaprimoramento; mais de 80% de concordância."
+    swapped = "Os vieses de recência, de formatação e de autoconsistência; mais de 60% de concordância."
+    original = {"answers": [{"name": "q#1", "actual_output": right}, {"name": "q#2", "actual_output": right}]}
+    mutant = {"answers": [{"name": "q#1", "actual_output": right}, {"name": "q#2", "actual_output": swapped}]}
+
+    b = mutacao.behavior(mutant, original)
+
+    assert (b["iguais_ao_original"], b["com_todos_os_fatos"], b["com_algum_fato_trocado"]) == (1, 1, 1)
+    assert b["fatos_trocados_por_resposta"] == [0, 4]
+    assert mutacao.effect_cell(b) == "1/2 iguais ao original; 1/2 com os 4 fatos; 1/2 com fato trocado"
 
 
 def test_c2_troca_os_fatos_com_e_sem_espacos():
@@ -63,6 +115,7 @@ def test_indice_do_mutante_e_uma_copia_sem_o_artigo(tmp_path: Path):
             "metadatas": [{"document": "a.md"}, {"document": DOC}, {"document": DOC}],
             "embeddings": [[0.1, 0.2, 0.3], [0.3, 0.2, 0.1], [0.2, 0.2, 0.2]]}
 
+    n0 = mutantes.copy_index(data, tmp_path / "n0", keep=lambda meta: True)
     c1 = mutantes.copy_index(data, tmp_path / "c1", keep=lambda meta: meta["document"] != DOC)
     c2 = mutantes.copy_index(data, tmp_path / "c2", keep=lambda meta: True, replace={1: ("over 60%", [0.0, 0.0, 1.0])})
 
@@ -70,7 +123,7 @@ def test_indice_do_mutante_e_uma_copia_sem_o_artigo(tmp_path: Path):
 
     stored = chromadb.PersistentClient(path=str(tmp_path / "c2")).get_collection(mutantes.COLLECTION).get(
         ids=["mt::c0"], include=["documents"])
-    assert (c1, c2) == (1, 3)
+    assert (n0, c1, c2) == (3, 1, 3)
     assert stored["documents"] == ["over 60%"]
     overrides = mutantes.index_overrides(tmp_path / "c1", "nomic-embed-text")
     assert overrides["vector_store_collection"] == mutantes.COLLECTION
@@ -84,6 +137,13 @@ def test_p1_guarda_o_prompt_antes_e_depois(tmp_path: Path):
     assert meta["set"] == {"prompt_require_grounding": "false"} and meta["usa_indice_base"] is True
     assert "-1. Responda SOMENTE com base no CONTEXTO" in diff
     assert json.loads((tmp_path / "P1" / "mutante.json").read_text(encoding="utf-8"))["operador"] == "P1"
+
+
+def test_o_orquestrador_conhece_os_mesmos_operadores():
+    import rodar
+
+    assert set(rodar.MUTANTS) == set(mutantes.OPERATORS)
+    assert mutacao.NULL_OPERATOR in mutantes.OPERATORS
 
 
 def test_operador_desconhecido(tmp_path: Path):

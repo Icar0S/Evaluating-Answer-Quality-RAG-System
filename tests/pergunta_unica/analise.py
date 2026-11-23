@@ -60,6 +60,54 @@ def framework_of(export: dict[str, Any]) -> str:
     return export.get("framework") or "deepeval"
 
 
+def is_gap(metric: dict[str, Any]) -> bool:
+    """Nota que devia existir e não existe (erro, timeout). N/A do Jev não é buraco: é um resultado."""
+    return metric.get("score") is None and metric.get("applicable", True)
+
+
+def unmeasured(export: dict[str, Any]) -> list[tuple[str, str]]:
+    """Os buracos de um export: (resposta, métrica), na ordem do arquivo."""
+    return [(case["name"], canonical_metric(m["name"])) for case in export.get("cases", [])
+            for m in case.get("metrics", []) if is_gap(m)]
+
+
+def merge_retry(export: dict[str, Any], retry: dict[str, Any], attempt: int, source: str) -> list[tuple[str, str]]:
+    """Preenche os buracos de `export` com a nova tentativa; devolve o que preencheu. Altera `export`.
+
+    Só os buracos: uma nota já medida nunca é trocada, então a tentativa não escolhe entre valores. O registro
+    preenchido guarda a tentativa e o erro anterior, e o export lista as tentativas (de qual arquivo veio o quê).
+    """
+    again = {case["name"]: {m["name"]: m for m in case.get("metrics", [])} for case in retry.get("cases", [])}
+    filled: list[tuple[str, str]] = []
+    for case in export.get("cases", []):
+        for i, m in enumerate(case.get("metrics", [])):
+            new = again.get(case["name"], {}).get(m["name"])
+            if not is_gap(m) or new is None or is_gap(new):
+                continue
+            case["metrics"][i] = {**new, "tentativa": attempt, "erro_anterior": m.get("error")}
+            filled.append((case["name"], canonical_metric(m["name"])))
+        applicable = [m for m in case.get("metrics", []) if m.get("applicable", True)]
+        case["success"] = all(bool(m.get("success")) for m in applicable)
+    export.setdefault("tentativas", []).append(
+        {"tentativa": attempt, "arquivo": source, "preenchidas": [list(f) for f in filled]})
+    # Os resumos que o framework gravou são refeitos: só as chaves que o export já tinha.
+    by_metric: dict[str, list[dict[str, Any]]] = {}
+    for case in export.get("cases", []):
+        for m in case.get("metrics", []):
+            if m.get("applicable", True):
+                by_metric.setdefault(m["name"], []).append(m)
+    scores = {name: [m["score"] for m in ms if m.get("score") is not None] for name, ms in by_metric.items()}
+    fresh = {
+        "metrics_avg": {n: round(statistics.fmean(s), 4) if s else None for n, s in scores.items()},
+        "metrics_measured": {n: f"{len(scores[n])}/{len(ms)}" for n, ms in by_metric.items()},
+        "metrics_passed": {n: f"{sum(1 for m in ms if m.get('success'))}/{len(ms)}" for n, ms in by_metric.items()},
+    }
+    for key, values in fresh.items():
+        if isinstance(export.get(key), dict):
+            export[key].update(values)
+    return filled
+
+
 def collect(exports: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, list[dict[str, Any]]]]]:
     """framework -> métrica -> resposta -> [julgamentos], cada um {repeticao, score, success, applicable, error}."""
     table: dict = {}

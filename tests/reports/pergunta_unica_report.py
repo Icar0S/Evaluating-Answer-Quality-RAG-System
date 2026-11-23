@@ -188,6 +188,31 @@ def scores_chart(run: SingleQuestionRun, path: Path, metrics: tuple[str, ...] = 
 # ------------------------------------------------------------- as seções
 
 
+def _machine_rows(run: SingleQuestionRun) -> list[list[str]]:
+    """A máquina durante a rodada (execucao.json): a tomada e as suspensões. Rodada antiga não tem o registro."""
+    execution = run.execution or {}
+    machine = execution.get("maquina")
+    if not machine:
+        return []
+    plugged = {True: "na tomada", False: "na bateria"}.get((machine.get("energia_no_inicio") or {}).get("tomada"),
+                                                          "energia desconhecida")
+    asleep = [(step["passo"], gap) for step in execution.get("passos", []) for gap in step.get("suspensoes", [])]
+    seen = "; ".join(f"{step}: {gap['segundos'] / 60:.0f} min a partir de {gap['de']}" for step, gap in asleep)
+    return [["A máquina", f"{plugged} ao começar; suspensão por inatividade "
+                          f"{'bloqueada' if machine.get('suspensao_por_inatividade_bloqueada') else 'não bloqueada'}",
+             f"**suspendeu no meio:** {seen}" if asleep else "não suspendeu"]]
+
+
+def _incomplete_blocks(run: SingleQuestionRun) -> list[Block]:
+    """Os passos que não fecharam: um buraco no dado aparece antes das notas, não no rodapé."""
+    bad = [step for step in (run.execution or {}).get("passos", [])
+           if step.get("estado") in ("falhou", "erro", "incompleta")]
+    if not bad:
+        return []
+    return [Callout("Esta rodada tem passos que não fecharam", [
+        f"**{step['passo']}:** {step['estado']} ({step['detalhe']})" for step in bad], tone="aviso")]
+
+
 def _protocol_blocks(run: SingleQuestionRun) -> list[Block]:
     p, meta = run.protocol, run.meta
     trechos = p.get("trechos") or {}
@@ -205,6 +230,7 @@ def _protocol_blocks(run: SingleQuestionRun) -> list[Block]:
         ["Gerador", f"`{meta.get('generation_model')}` ({meta.get('provider')}), índice `{meta.get('rag_index')}`, "
                     f"top-k {meta.get('top_k')}, prompt {meta.get('prompt_version')}", "—"],
         ["Interrompido", p.get("interrompido") or "não", "—"],
+        *_machine_rows(run),
     ]
     blocks: list[Block] = [
         Heading(2, "1. O protocolo"),
@@ -283,52 +309,94 @@ def _steps(export: dict[str, Any], answer: str, metric: str) -> tuple[dict | Non
     return None, None
 
 
+# A conta refeita usa números já arredondados nos exports (a nota do RAGAS e os valores do Jev têm 4 casas).
+ARITHMETIC_TOLERANCE = 0.005
+
+
+def faithfulness_arithmetic(framework: str, metric: dict[str, Any] | None) -> tuple[float, str] | None:
+    """A nota da fidelidade refeita dos passos gravados, e a conta por extenso. None: sem passos no export."""
+    if not metric:
+        return None
+    if framework == "jeveval":
+        applicable = [b for b in metric.get("breakdown") or [] if b.get("applicable")]
+        total_weight = sum(b["weight"] for b in applicable)
+        if not total_weight:
+            return None
+        value = sum(b["weight"] * b["value"] for b in applicable) / total_weight
+        text = " + ".join(f"{num(b['weight'], 0)} × {num(b['value'])}" for b in applicable)
+        return value, f"{text} ÷ {num(total_weight, 0)} = {num(value)}"
+    steps = metric.get("steps")
+    if framework == "ragas":
+        nli = next((st["output"]["statements"] for st in steps or [] if st.get("schema") == "NLIStatementOutput"), None)
+        if not nli:
+            return None
+        ok, total, label = sum(1 for st in nli if st.get("verdict") == 1), len(nli), "inferíveis ÷ total"
+    else:
+        verdicts = (steps or {}).get("verdicts") if steps else None
+        if not verdicts:
+            return None
+        ok = sum(1 for v in verdicts if str(v.get("verdict", "")).strip().lower() != "no")
+        total, label = len(verdicts), "(yes + idk) ÷ total"
+    return ok / total, f"{label} = {ok} ÷ {total} = {num(ok / total)}"
+
+
+def check_arithmetic(run: SingleQuestionRun) -> dict[str, Any]:
+    """A conta refeita contra a nota gravada, em TODO julgamento de fidelidade com passos: quantas batem e quais não."""
+    checked, wrong = 0, []
+    for export in run.exports:
+        fw = analise.framework_of(export)
+        for case in export.get("cases", []):
+            for m in case.get("metrics", []):
+                if analise.canonical_metric(m["name"]) != "faithfulness" or m.get("score") is None:
+                    continue
+                redone = faithfulness_arithmetic(fw, m)
+                if redone is None:
+                    continue
+                checked += 1
+                if abs(redone[0] - float(m["score"])) > ARITHMETIC_TOLERANCE:
+                    wrong.append({"juiz": fw, "julgamento": export.get("judge_repetition"), "resposta": case["name"],
+                                  "nota": m["score"], "conta": redone[1]})
+    return {"conferidas": checked, "batem": checked - len(wrong), "nao_batem": wrong}
+
+
 def anatomy(run: SingleQuestionRun, answer: str | None = None, metric: str = "faithfulness") -> dict[str, Any]:
-    """Os passos da nota de uma resposta em cada juiz (o primeiro julgamento): as linhas e a conta."""
+    """Os passos da nota de uma resposta em cada juiz (o primeiro julgamento): as linhas, a conta e se ela confere."""
     answer = answer or (run.answers[0]["name"] if run.answers else None)
     out: dict[str, Any] = {"resposta": answer, "metrica": metric}
+
+    def entry(framework: str, m: dict[str, Any], lines: list[list[str]], **extra: Any) -> None:
+        redone = faithfulness_arithmetic(framework, m)
+        out[framework] = {"nota": m.get("score"), "linhas": lines, "conta": redone[1] if redone else "—",
+                          "confere": (redone is not None and m.get("score") is not None
+                                      and abs(redone[0] - float(m["score"])) <= ARITHMETIC_TOLERANCE), **extra}
+
     ragas = run.exports_of("ragas")
     if ragas:
         m, steps = _steps(ragas[0], answer, metric)
         nli = next((s["output"]["statements"] for s in steps or [] if s.get("schema") == "NLIStatementOutput"), None)
         if m and nli is not None:
-            ok = sum(1 for s in nli if s.get("verdict") == 1)
-            out["ragas"] = {"nota": m.get("score"), "linhas": [[s["statement"], str(s.get("verdict")), s.get("reason", "")]
-                                                               for s in nli],
-                            "conta": f"inferíveis ÷ total = {ok} ÷ {len(nli)} = {num(ok / len(nli)) if nli else '—'}"}
+            entry("ragas", m, [[s["statement"], str(s.get("verdict")), s.get("reason", "")] for s in nli])
     deepeval = run.exports_of("deepeval")
     if deepeval:
         m, steps = _steps(deepeval[0], answer, metric)
         if m and steps and steps.get("claims") is not None:
-            verdicts = steps.get("verdicts") or []
-            kept = sum(1 for v in verdicts if str(v.get("verdict", "")).strip().lower() != "no")
-            out["deepeval"] = {
-                "nota": m.get("score"),
-                "linhas": [[claim, str(v.get("verdict")), v.get("reason") or ""]
-                           for claim, v in zip(steps["claims"], verdicts)],
-                "verdades": len(steps.get("truths") or []),
-                "conta": f"(yes + idk) ÷ total = {kept} ÷ {len(verdicts)} = "
-                         f"{num(kept / len(verdicts)) if verdicts else '—'}",
-                "justificativa": m.get("reason"),
-            }
+            entry("deepeval", m, [[claim, str(v.get("verdict")), v.get("reason") or ""]
+                                  for claim, v in zip(steps["claims"], steps.get("verdicts") or [])],
+                  verdades=len(steps.get("truths") or []), justificativa=m.get("reason"))
     jev = run.exports_of("jeveval")
     if jev:
         m, _ = _steps(jev[0], answer, metric)
         breakdown = (m or {}).get("breakdown") or []
         if m and breakdown:
-            applicable = [b for b in breakdown if b.get("applicable")]
-            total_weight = sum(b["weight"] for b in applicable)
-            weighted = sum(b["weight"] * b["value"] for b in applicable)
-            out["jeveval"] = {
-                "nota": m.get("score"),
-                "linhas": [[b["question"].split("?")[0] + "?", num(b["weight"], 0),
-                            ", ".join(f"{opt.split(':')[0]} {num(p)}" for opt, p in b["probabilities"].items() if p),
-                            num(b["value"])] for b in breakdown],
-                "conta": " + ".join(f"{num(b['weight'], 0)} × {num(b['value'])}" for b in applicable)
-                         + f" ÷ {num(total_weight, 0)} = {num(weighted / total_weight) if total_weight else '—'}",
-                "confianca": m.get("confidence"),
-            }
+            entry("jeveval", m, [[b["question"].split("?")[0] + "?", num(b["weight"], 0),
+                                  ", ".join(f"{opt.split(':')[0]} {num(p)}" for opt, p in b["probabilities"].items()
+                                            if p), num(b["value"])] for b in breakdown], confianca=m.get("confidence"))
     return out
+
+
+def _conta(entry: dict[str, Any]) -> str:
+    mark = "Confere com a nota" if entry["confere"] else f"**NÃO confere** com a nota ({num(entry['nota'], 4)})"
+    return f"**Conta:** {entry['conta']}. {mark}."
 
 
 def _anatomy_blocks(run: SingleQuestionRun) -> list[Block]:
@@ -346,7 +414,7 @@ def _anatomy_blocks(run: SingleQuestionRun) -> list[Block]:
                    Table(["Afirmação", "Inferível", "Motivo do juiz"], [[clip(x, 220), v, clip(y, 220)] for x, v, y in
                                                                         r["linhas"]],
                          [0.45, 0.1, 0.45], small=True),
-                   Para(f"**Conta:** {r['conta']}.")]
+                   Para(_conta(r))]
     if "deepeval" in a:
         d = a["deepeval"]
         blocks += [Heading(3, f"DeepEval: {num(d['nota'])}"),
@@ -355,7 +423,7 @@ def _anatomy_blocks(run: SingleQuestionRun) -> list[Block]:
                    Table(["Afirmação", "Veredito", "Motivo do juiz"], [[clip(x, 220), v, clip(y, 220)] for x, v, y in
                                                                        d["linhas"]],
                          [0.45, 0.1, 0.45], small=True),
-                   Para(f"**Conta:** {d['conta']}.")]
+                   Para(_conta(d))]
     if "jeveval" in a:
         j = a["jeveval"]
         blocks += [Heading(3, f"JevEval: {num(j['nota'])}"),
@@ -363,9 +431,17 @@ def _anatomy_blocks(run: SingleQuestionRun) -> list[Block]:
                         "soma das probabilidades vezes o crédito de cada opção; a nota é a média ponderada."),
                    Table(["Pergunta", "Peso", "Probabilidades", "Valor"], j["linhas"], [0.42, 0.08, 0.38, 0.12],
                          align=["l", "r", "l", "r"], small=True),
-                   Para(f"**Conta:** {j['conta']}. Confiança mínima: {num(j['confianca'])}.")]
+                   Para(f"{_conta(j)} Confiança mínima: {num(j['confianca'])}.")]
     if len(a) <= 2:
         blocks.append(Para("Os passos não estão nos exports desta rodada (rode os juízes com `--passos`)."))
+    check = check_arithmetic(run)
+    if check["conferidas"]:
+        blocks.append(Para(f"A mesma conta, refeita em todos os julgamentos de fidelidade da rodada que têm os passos: "
+                           f"**{check['batem']} de {check['conferidas']}** batem com a nota gravada."))
+    if check["nao_batem"]:
+        blocks.append(Callout("Contas que não batem com a nota", [
+            f"{FW_LABEL.get(w['juiz'], w['juiz'])}, julgamento {w['julgamento']}, {short(w['resposta'])}: nota "
+            f"{num(w['nota'], 4)}, conta {w['conta']}" for w in check["nao_batem"]], tone="aviso"))
     return blocks
 
 
@@ -403,6 +479,14 @@ def _pairs_blocks(run: SingleQuestionRun) -> list[Block]:
     if point:
         blocks.append(Table(["Juiz de pares", "Concorda com as notas do mesmo framework"], point, [0.6, 0.4],
                             align=["l", "c"], caption="Pontual × pares", small=True))
+    named = [(judge, s["nome"]) for judge, s in report["juizes"].items() if s.get("nome") and s["nome"]["decididos"]]
+    for judge, n in named:
+        blocks.append(Para(
+            f"**Viés de nome ({JUDGE_LABEL.get(judge, judge)}):** o ArenaGEval chama as respostas de \"Alice\" e "
+            f"\"Bob\". O nome fica preso à resposta nas duas ordens, e cada resposta é \"Alice\" em metade dos pares "
+            f"dela. A \"Alice\" venceu **{n['vitorias_da_alice']} de {n['decididos']}** "
+            f"({num(n['taxa_da_alice'] * 100, 0)}%), vindo primeiro em {n['alice_veio_primeiro']} de "
+            f"{n['julgamentos']}. Sem viés de nome, perto de 50%."))
     blocks.append(Callout("Como ler", [
         "**Mesmo vencedor nas duas ordens:** o par (A, B) e o par (B, A) deram o mesmo vencedor. É a medida do viés de "
         "posição do artigo do MT-Bench; 100% é um juiz sem viés de posição.",
@@ -417,32 +501,34 @@ def _pairs_blocks(run: SingleQuestionRun) -> list[Block]:
 def _mutants_blocks(run: SingleQuestionRun) -> list[Block]:
     blocks: list[Block] = [Heading(2, "6. Os mutantes")]
     if not run.mutants:
-        return blocks + [Para("A rodada não tem mutantes (rodar.py --mutantes C1 C2 P1 R1).")]
+        return blocks + [Para("A rodada não tem mutantes (rodar.py --mutantes N0 C1 C2 P1 R1).")]
     rows = []
     original = run.mutants["original"]
-    rows.append(["original", "—", f"{original['abstencoes']}/{original['respostas']}",
+    rows.append(["original", "—", mutacao.effect_cell(original),
                  f"{original['com_o_artigo_nos_trechos']}/{original['respostas']}", "—", "—", "—"])
     for op, m in run.mutants["mutantes"].items():
-        cells = []
-        for fw in analise.FRAMEWORKS:
-            j = m["juizes"].get(fw)
-            if not j:
-                cells.append("—")
-            elif j["morto"]:
-                cells.append("**morto**: " + ", ".join(
-                    f"{mutacao.METRIC_SHORT.get(k, k)} {num(j['metricas'][k]['antes'])}→{num(j['metricas'][k]['depois'])}"
-                    for k in j["matou_por"]))
-            else:
-                cells.append("vivo")
         b = m["comportamento"]
-        rows.append([f"{op}: {m['nome']}", m["esperado"] or "—", f"{b['abstencoes']}/{b['respostas']}",
-                     f"{b['com_o_artigo_nos_trechos']}/{b['respostas']}", *cells])
+        rows.append([f"{op}: {m['nome']}", m["esperado"] or "—", mutacao.effect_cell(b),
+                     f"{b['com_o_artigo_nos_trechos']}/{b['respostas']}",
+                     *(mutacao.judge_cell(m["juizes"].get(fw)) for fw in analise.FRAMEWORKS)])
     blocks += [
         Para("Cada mutante injeta um defeito na pergunta única e roda o mesmo protocolo: as 5 respostas, com as "
-             "mesmas sementes, e os três juízes. Um juiz **mata** o mutante quando reprova ao menos uma resposta que "
-             "aprovava no original."),
-        Table(["Mutante", "O certo seria", "Abstenções", "O artigo nos trechos", "RAGAS", "DeepEval", "JevEval"], rows,
-              [0.16, 0.2, 0.08, 0.09, 0.16, 0.16, 0.15], caption="Quem matou cada mutante", small=True),
+             "mesmas sementes, e os três juízes. O **N0** não injeta nada: é o controle. Um juiz **mata** o mutante "
+             "quando alguma métrica reprova mais respostas (das que aprovava no original) do que reprova sem defeito "
+             "nenhum."),
+        Table(["Mutante", "O certo seria", "O efeito na resposta (sem juiz)", "O artigo nos trechos", "RAGAS", "DeepEval",
+               "JevEval"], rows, [0.13, 0.17, 0.17, 0.08, 0.15, 0.15, 0.15], caption="Quem matou cada mutante",
+              small=True),
+        Callout("Como ler", [
+            "**Controle nulo.** " + "; ".join(FW_LABEL.get(line.split(":")[0], line.split(":")[0])
+                                              + ":" + line.split(":", 1)[1]
+                                              for line in mutacao.control_lines(run.mutants)) + ".",
+            "**ruído:** o juiz reprovou respostas do mutante, mas não mais do que reprova sem defeito.",
+            "**O efeito na resposta** é contado por palavra-chave, sem juiz. Um mutante que não muda a resposta não tem "
+            "defeito nela para o juiz perceber: ficar vivo, nesse caso, não é falha do juiz.",
+            "O original tem a média dos julgamentos repetidos; o mutante, um julgamento por juiz. O controle nulo usa a "
+            "mesma conta (um julgamento contra a média dos outros).",
+        ], tone="nota"),
     ]
     artifacts = []
     for op in run.mutants["mutantes"]:
@@ -487,6 +573,7 @@ def build_document(run: SingleQuestionRun, figure: Path | None, generated_at: da
              f"`{run.meta.get('generation_model')}`, {len(reps) or 1} julgamento(s) por resposta e por juiz "
              f"({', '.join(FW_LABEL[fw] for fw in run.variance['frameworks']) or 'nenhum juiz'})."),
     ]
+    blocks += _incomplete_blocks(run)
     blocks += _protocol_blocks(run)
     blocks += _answers_blocks(run)
     blocks += _judges_blocks(run, figure)

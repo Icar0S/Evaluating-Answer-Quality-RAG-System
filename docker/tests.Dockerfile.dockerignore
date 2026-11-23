@@ -23,6 +23,7 @@ docs/paper*
 tests/*/results/*
 tests/reports/out/*
 tests/benchmark/out/*
+tests/pergunta_unica/out/*
 tests/mutation/work
 tests/mutation/corpus/base
 tests/mutation/corpus/variants/*.pdf

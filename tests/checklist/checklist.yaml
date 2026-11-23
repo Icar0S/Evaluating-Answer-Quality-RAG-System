@@ -16,7 +16,8 @@
 # O escopo fecha quando nenhum item fica sem estado: coberto, passou, falhou com registro, ou fora com motivo.
 #
 # Os critérios de "passou" estão escritos em cada item ANTES de ver a rodada de análise. Mudar um critério depois
-# vira desvio registrado em docs/escopo-final-status.md.
+# vira desvio registrado em docs/escopo-final-status.md. O JUI-5 ganhou o controle nulo em 23/11/2026, antes de
+# qualquer mutante ser julgado (§9 daquele documento).
 
 versao: 1
 pergunta: md-mtbench-vieses
@@ -140,7 +141,9 @@ itens:
     etapa: Juiz
     item: O juiz percebe o defeito injetado
     tipo: DIR
-    verifica: Cada mutante rodado é morto por pelo menos um juiz.
+    verifica: >-
+      Cada mutante rodado é morto por pelo menos um juiz. Só vale morte confirmada: a métrica reprovou mais respostas
+      do que reprova no controle nulo (o N0 e os julgamentos repetidos do original).
     evidencia: mutantes_mortos
 
   # ---------------------------------------------------------------- privacidade

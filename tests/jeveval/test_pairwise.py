@@ -82,3 +82,21 @@ def test_falha_do_jev_vira_julgamento_nao_julgado(tmp_path):
     assert code == 1  # nenhum julgado
     assert data["julgamentos"][0]["vencedor"] is None
     assert data["julgamentos"][0]["erro"] == "RuntimeError: API fora"
+
+
+def test_completar_so_manda_ao_jev_o_que_falta(tmp_path):
+    answers = _answers(tmp_path, {"q#1": 300, "q#2": 600})
+    out = tmp_path / "pares.json"
+    flaky = FakeJev(lambda state, key, q: "A")
+    assert pairwise.main(["--answers", str(answers), "--out", str(out)], model=flaky) == 0
+    data = json.loads(out.read_text(encoding="utf-8"))
+    data["julgamentos"][1].update(vencedor=None, erro="APIConnectionError")  # a ordem BA caiu
+    out.write_text(json.dumps(data), encoding="utf-8")
+    again = FakeJev(lambda state, key, q: "B")
+
+    assert pairwise.main(["--answers", str(answers), "--out", str(out), "--completar"], model=again) == 0
+
+    after = json.loads(out.read_text(encoding="utf-8"))
+    assert len(again.calls) == 1  # só o que faltava
+    assert after["julgamentos"][0] == data["julgamentos"][0]  # o julgado fica como estava
+    assert after["julgamentos"][1]["vencedor"] == "q#1" and after["n_julgamentos"] == 2

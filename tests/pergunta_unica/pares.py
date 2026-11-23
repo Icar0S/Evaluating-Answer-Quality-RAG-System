@@ -24,6 +24,10 @@ O que se mede (sem p-valor: são 5 respostas):
 - o ranking das 5 respostas pela taxa de vitória (vitória 1, empate 0,5);
 - o viés de posição: a porcentagem de pares com o mesmo vencedor nas duas ordens
   e a taxa de vitória de quem aparece primeiro (a medida do artigo do MT-Bench);
+- o viés de nome (só o ArenaGEval, que chama as respostas de "Alice" e "Bob"): quem
+  é "Alice" fica preso à resposta, e não à posição, nas duas ordens do par; e cada
+  resposta é "Alice" em metade dos pares dela. Assim o nome não se confunde com a
+  posição, e a preferência por um nome aparece à parte;
 - o viés de verbosidade: a correlação de Spearman entre a diferença de tamanho
   das duas respostas e a preferência;
 - a concordância entre juízes: a porcentagem de pares com o mesmo resultado e o
@@ -36,6 +40,7 @@ pares e pelo relatório.
 """
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 import math
@@ -73,6 +78,42 @@ def pair_plan(names: list[str], both_orders: bool = True) -> list[dict[str, Any]
         if both_orders:
             plan.append({"par": [a, b], "ordem": "BA", "primeiro": b, "segundo": a})
     return plan
+
+
+def alice_of_pairs(names: list[str]) -> dict[tuple[str, str], str]:
+    """Em cada par, qual resposta é "Alice" (nas duas ordens); a outra é "Bob".
+
+    É um torneio rotativo: em roda, cada resposta é "Alice" contra as próximas. Com 5, cada uma é "Alice" em 2 dos
+    4 pares dela e "Bob" nos outros 2; assim, gostar de um nome não favorece nenhuma resposta no ranking.
+    """
+    ordered = sorted(names)
+    return {(a, b): (a if ordered.index(b) - ordered.index(a) <= len(ordered) // 2 else b)
+            for a, b in itertools.combinations(ordered, 2)}
+
+
+def clean_name(raw: str | None) -> str:
+    """O nome do vencedor sem enfeite: `$Alice$` e ` "Alice" ` são Alice.
+
+    O prompt do ArenaGEval pede o vencedor SEM cifrões e a justificativa COM cifrões em volta dos nomes; o qwen3:8b
+    às vezes põe nos dois. A escolha é clara, só o formato não. Um nome que não é nenhum dos dois continua erro.
+    """
+    return (raw or "").strip().strip("$\"'`* ").strip()
+
+
+def answers_sha(answers: dict[str, dict[str, Any]]) -> str:
+    """Impressão digital das respostas: um julgamento só é reaproveitado se julgou estes mesmos textos."""
+    text = json.dumps([[n, answers[n].get("actual_output")] for n in sorted(answers)], ensure_ascii=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def already_judged(previous_file: Path, sha: str) -> dict[tuple[str, str, str], dict[str, Any]]:
+    """Os julgamentos com vencedor de um arquivo de pares anterior, se forem das mesmas respostas: (a, b, ordem)."""
+    if not Path(previous_file).is_file():
+        return {}
+    data = json.loads(Path(previous_file).read_text(encoding="utf-8"))
+    if data.get("respostas_sha256") != sha:
+        return {}
+    return {(*j["par"], j["ordem"]): j for j in data.get("julgamentos", []) if j.get("vencedor") is not None}
 
 
 def answers_by_name(answers_file: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
@@ -177,6 +218,20 @@ def position_bias(judgments: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def name_bias(judgments: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Quem se chamava "Alice" vence mais? Só para o juiz que recebe nomes (o ArenaGEval); None para os outros."""
+    named = [j for j in judgments if (j.get("nomes_mascarados") or {}).get("Alice")]
+    if not named:
+        return None
+    decided = [j for j in named if j["vencedor"] not in (None, TIE)]
+    wins = sum(1 for j in decided if j["vencedor"] == j["nomes_mascarados"]["Alice"])
+    first = sum(1 for j in named if j["nomes_mascarados"]["Alice"] == j.get("primeiro"))
+    return {"decididos": len(decided), "vitorias_da_alice": wins,
+            "taxa_da_alice": round(wins / len(decided), 4) if decided else None,
+            # Com as duas ordens, "Alice" vem primeiro em metade: é o que separa o nome da posição.
+            "alice_veio_primeiro": first, "julgamentos": len(named)}
+
+
 def _ranks(values: list[float]) -> list[float]:
     """Postos com empate pela média (para o Spearman e o Kendall)."""
     order = sorted(range(len(values)), key=lambda i: values[i])
@@ -263,6 +318,7 @@ def judge_summary(judgments: list[dict[str, Any]], names: list[str], lengths: di
         "nao_julgados": len(errors),
         "ranking": ranking(judgments, names),
         "posicao": position_bias(judgments),
+        "nome": name_bias(judgments),
         "verbosidade": verbosity_bias(judgments, lengths),
         "resultado_por_par": {f"{a} x {b}": w for (a, b), w in sorted(pair_outcome(judgments).items())},
     }
@@ -322,6 +378,12 @@ def markdown(report: dict[str, Any]) -> str:
                        else "—")
         first = f"{pct(pos['taxa_do_primeiro'])} de {pos['decididos']}" if pos["decididos"] else "—"
         lines.append(f"| {judge} | {rank} | {consistency} | {first} | {num(s['verbosidade']['spearman'])} |")
+    for judge, s in report["juizes"].items():
+        if s.get("nome") and s["nome"]["decididos"]:
+            n = s["nome"]
+            lines += ["", f"Viés de nome ({judge}): a resposta chamada \"Alice\" venceu {n['vitorias_da_alice']} de "
+                          f"{n['decididos']} ({pct(n['taxa_da_alice'])}); veio primeiro em {n['alice_veio_primeiro']} "
+                          f"de {n['julgamentos']}."]
     lines += ["", "| Juízes | Pares com o mesmo resultado | τ de Kendall |", "| :--- | :---: | :---: |"]
     for pair, a in report["entre_juizes"].items():
         lines.append(f"| {pair} | {a['iguais']}/{a['pares']} | {num(a['kendall_tau'])} |")

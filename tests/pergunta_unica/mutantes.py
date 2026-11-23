@@ -5,10 +5,14 @@ relação com a pergunta (D5):
 
 | Operador | O que injeta | O comportamento certo |
 | :--- | :--- | :--- |
-| C1, remover documento | O artigo do MT-Bench sai do índice | Abster-se ("não encontrei") |
-| C2, documento desatualizado | O artigo com os fatos trocados | A resposta muda, e a correção cai |
+| C1, remover documento | O artigo do MT-Bench sai do índice | Abster-se, ou responder só com o que o survey repete |
+| C2, documento desatualizado | O artigo com os fatos trocados | Seguir uma das fontes, ou apontar o conflito |
 | P1, sem ancoragem no contexto | O prompt sem a regra de usar só os trechos | A fidelidade cai |
 | R1, top-k -> 1 | Um trecho só | Uma resposta incompleta |
+
+E um controle: **N0, o mutante nulo**, uma cópia do índice sem mudança nenhuma. Passa pelo mesmo caminho dos de
+corpus (a cópia dos vetores, as sobrescritas, outro processo). Se ele muda as respostas, o caminho interfere; se
+um juiz o "mata", o que o juiz mediu foi o ruído dele.
 
 Os de corpus (C1, C2) não reindexam o acervo: o índice do mutante é uma cópia dos vetores do `md-v1` sem os
 trechos do artigo (C1) ou com os trechos do artigo trocados e reembedados (C2), numa pasta da rodada. A coleção
@@ -56,15 +60,22 @@ C2_SUBSTITUTIONS: list[tuple[str, str]] = [
 ]
 
 OPERATORS: dict[str, dict[str, Any]] = {
+    "N0": {"nome": "Mutante nulo (controle)", "defeito": "Nenhum: uma cópia do índice, com todos os trechos",
+           "esperado": "nada muda; um juiz que o mata mediu o próprio ruído", "camada": "corpus"},
     # Medido na fase 6: os outros 3 trechos do top-4 são do survey "Testing LLM-Based Systems", que repete os
     # fatos do MT-Bench (os vieses, os 75%, os 80% de Zheng et al.). Sem o artigo, o acervo ainda tem os fatos
     # por outra fonte: responder pelo survey não é falha. O que o C1 tira é a fonte primária.
     "C1": {"nome": "Remover documento", "defeito": "Fonte ausente: o artigo do MT-Bench sai do índice",
            "esperado": "abster-se, ou responder só com o que o survey repete (o acervo ainda tem os fatos por outra "
                        "fonte)", "camada": "corpus"},
+    # Revisto em 23/11/2026, antes de o C2 ser julgado (docs/escopo-final-status.md): o 1.º trecho do top-4 é do
+    # survey, com os fatos certos, e o artigo trocado é o 3.º. O acervo fica em conflito consigo mesmo; "a correção
+    # cai", o esperado do plano, só vale se o gerador seguir o artigo. Por isso a análise conta, por resposta, os
+    # fatos certos e os trocados (fatos.py).
     "C2": {"nome": "Documento desatualizado", "defeito": "O artigo indexado tem os fatos trocados (vieses, limitação e "
                                                         "a concordância de 80% para 60%)",
-           "esperado": "a resposta muda, e a correção cai", "camada": "corpus"},
+           "esperado": "o acervo se contradiz (o survey mantém os fatos certos): a correção cai nas respostas que "
+                       "seguirem o artigo trocado", "camada": "corpus"},
     "P1": {"nome": "Remover ancoragem no contexto", "defeito": "O prompt sem a regra de responder só com os trechos",
            "esperado": "a fidelidade cai", "camada": "prompt", "set": {"prompt_require_grounding": "false"}},
     "R1": {"nome": "top-k -> 1", "defeito": "Um trecho só chega ao gerador", "esperado": "uma resposta incompleta",
@@ -140,7 +151,10 @@ def prepare(op: str, out: Path) -> dict[str, Any]:
             raise ValueError(f"o artigo {DOCUMENT} não está no índice {BASE_INDEX}")
         embedding_model = RAG_INDICES[BASE_INDEX]["embedding_model"]
         dest = out / "indice"
-        if op == "C1":
+        if op == "N0":
+            count = copy_index(data, dest, keep=lambda meta: True)
+            save("copia.txt", f"{count} trechos copiados de {len(data['ids'])}, sem mudança\n")
+        elif op == "C1":
             count = copy_index(data, dest, keep=lambda meta: meta.get("document") != DOCUMENT)
             save("removido.txt", f"{DOCUMENT}\n{len(in_doc)} trechos fora do índice (de {len(data['ids'])})\n")
         else:

@@ -24,7 +24,10 @@ Os passos:
    passa pelo cache do Ollama) e com os passos de cada nota (`--passos`). Por k,
    e não por juiz: uma rodada interrompida deixa julgamentos completos. Sem
    TYPESAFE_API_KEY, o JevEval sai como pulado; é a única etapa que manda
-   conteúdo para fora da máquina (tests/jeveval/README.md).
+   conteúdo para fora da máquina (tests/jeveval/README.md). Nota que o juiz não deu
+   (erro, timeout) é um BURACO: o passo tenta de novo só os casos com buraco
+   (`--tentativas`, padrão 2), sem trocar nota já medida. Se sobrar buraco, o passo
+   sai "incompleta", e a rodada não termina com código 0.
 4. **A análise** (analise.py): por juiz e métrica, a média, a faixa e quanto da
    variação é do gerador (entre as respostas) e quanto é do juiz (entre os
    julgamentos da mesma resposta).
@@ -38,8 +41,15 @@ Os passos:
 Tudo fica em tests/pergunta_unica/out/<data>/: respostas.json, um export por
 juiz e julgamento (ragas/, deepeval/, jeveval/), os pares (pares/), analise.json
 e analise.md, pares-analise.json e pares-analise.md, o log de cada passo (logs/)
-e o execucao.json. Com `--retomar <pasta>`, o que já tem arquivo completo não
-roda de novo.
+e o execucao.json. Com `--retomar <pasta>`, o que já está completo não roda de
+novo; o que tem buraco é completado; um export interrompido no meio vai para
+descartados/ e o julgamento recomeça.
+
+A máquina: a rodada de análise leva horas. Na bateria, o script não começa
+(`--na-bateria` para insistir); enquanto roda, segura a suspensão por inatividade;
+e, se a máquina dormir mesmo assim, o passo registra quando e por quanto tempo
+(energia.py). Antes do DeepEval, o modelo de embeddings sai da GPU: em 23/11/2026
+ele dividia os 8 GB com o juiz, e o Ollama ficou sem memória.
 
 Só biblioteca padrão: roda com qualquer Python 3.10+.
 """
@@ -50,6 +60,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -62,6 +73,7 @@ OUT_ROOT = HERE / "out"
 sys.path.insert(0, str(HERE))
 
 import analise  # noqa: E402
+import energia  # noqa: E402
 import mutacao  # noqa: E402
 import pares  # noqa: E402
 
@@ -84,7 +96,14 @@ DEFAULT_INDEX = "md-v1"
 GENERATION_TEMPERATURE = 1
 JUDGES = ("ragas", "deepeval", "jeveval")
 # Os operadores de mutantes.py (D5). A lista fica aqui para o argparse não importar o backend.
-MUTANTS = ("C1", "C2", "P1", "R1")
+# N0 é o controle: o mutante que não muda nada.
+MUTANTS = ("N0", "C1", "C2", "P1", "R1")
+# O embedding da relevância da resposta do RAGAS (settings.embedding_model): fica 5 min na GPU depois do RAGAS.
+EMBEDDING_MODEL = "nomic-embed-text"
+# Entre uma tentativa e a próxima: dá tempo de a rede ou o Ollama voltarem.
+RETRY_PAUSE_SECONDS = 30
+EXIT_ON_BATTERY = 4
+FAILED_STATES = ("falhou", "erro", "incompleta")
 
 
 def log_name(label: str) -> str:
@@ -107,11 +126,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sem-pares", action="store_true", help="não roda a comparação em pares")
     parser.add_argument("--uma-ordem", action="store_true", help="os pares só na ordem AB (10 julgamentos, não 20)")
     parser.add_argument("--mutantes", nargs="*", default=[], choices=MUTANTS,
-                        help="os mutantes a rodar (mutantes.py; só in-process): C1 C2 P1 R1")
+                        help="os mutantes a rodar (mutantes.py; só in-process): N0 (o controle) C1 C2 P1 R1")
     parser.add_argument("--mutantes-julgamentos", type=int, default=1, help="julgamentos por juiz em cada mutante")
     parser.add_argument("--ingles", action="store_true",
                         help="também as 5 respostas com a pergunta em inglês (o input_en; o item GER-3 do checklist)")
     parser.add_argument("--sem-relatorio", action="store_true", help="não gera o relatório no fim")
+    parser.add_argument("--tentativas", type=int, default=2,
+                        help="vezes que um passo tenta até não ter buraco; da 2.ª em diante, só o que falta (padrão 2)")
+    parser.add_argument("--na-bateria", action="store_true", help="roda mesmo fora da tomada")
     return parser
 
 
@@ -124,6 +146,8 @@ class Run:
         self.logs.mkdir(parents=True, exist_ok=True)
         self.answers = self.dir / "respostas.json"
         self.steps: list[dict] = []
+        self.machine: dict = {}
+        self.watch = energia.SuspensionWatch()
         self.env = dict(os.environ, PYTHONUTF8="1")
         # localhost custa ~2 s por chamada nesta máquina (o Ollama só escuta IPv4); o juiz faz dezenas de chamadas.
         if "OLLAMA_BASE_URL" not in self.env:
@@ -132,9 +156,15 @@ class Run:
     # ---------------------------------------------------------------- execução
 
     def record(self, key: str, status: str, detail: str = "", seconds: float | None = None, **extra) -> None:
+        asleep = self.watch.take()
+        if asleep:
+            extra["suspensoes"] = asleep
         self.steps.append({"passo": key, "estado": status, "detalhe": detail, "segundos": seconds, **extra})
         tag = run_all.STATUS_TAG.get(status, f"[{status}]")
         print(f"{tag} {key}: {detail}" + (f" ({seconds / 60:.1f} min)" if seconds else ""), flush=True)
+        for gap in asleep:
+            print(f"        A MÁQUINA SUSPENDEU neste passo: {gap['de']} a {gap['ate']} "
+                  f"({gap['segundos'] / 60:.0f} min). O tempo do passo não vale, e notas podem ter falhado.", flush=True)
         self.save()
 
     def save(self) -> None:
@@ -143,6 +173,7 @@ class Run:
             "pasta": str(self.dir),
             "argumentos": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(self.args).items()},
             "ollama_dos_juizes": self.env.get("OLLAMA_BASE_URL"),
+            "maquina": self.machine,
             "passos": self.steps,
         }, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -216,12 +247,59 @@ class Run:
         self.record("liberar o gerador", "concluída",
                     f"{model} {'tirado da memória' if freed else 'já fora da memória'} em {ollama}")
 
+    def free_embedding(self) -> None:
+        """Antes do DeepEval: o embedding do RAGAS ainda está na GPU e, com o juiz, passa dos 8 GB."""
+        if run_all.unload_model(self.env["OLLAMA_BASE_URL"].rstrip("/"), EMBEDDING_MODEL):
+            print(f"    ({EMBEDDING_MODEL} tirado da memória antes do DeepEval)", flush=True)
+
     def export_done(self, judge: str, k: int, base: Path | None = None) -> Path | None:
+        """O export do julgamento k com todos os casos. Pode ter buracos: quem chama olha `analise.unmeasured`."""
         for path in sorted(((base or self.dir) / judge).glob(f"*-r{k}.json")):
             data = json.loads(path.read_text(encoding="utf-8"))
             if data.get("cases_done") == data.get("n_cases"):
                 return path
         return None
+
+    def set_aside_partial(self, judge: str, k: int, base: Path) -> None:
+        """Um export interrompido no meio sai da pasta que a análise lê (senão o julgamento entraria duas vezes)."""
+        keep = self.export_done(judge, k, base)
+        for path in sorted((base / judge).glob(f"*-r{k}.json")):
+            if path != keep:
+                aside = base / judge / "descartados"
+                aside.mkdir(parents=True, exist_ok=True)
+                for sibling in sorted(path.parent.glob(f"{path.stem}.*")):
+                    shutil.move(str(sibling), str(aside / sibling.name))
+
+    def judge_once(self, judge: str, k: int, attempt: int, base: Path, answers: Path, key: str,
+                   log: str) -> tuple[int, float]:
+        """Uma tentativa: o julgamento inteiro, se não há export completo; senão, só os casos com buraco."""
+        self.set_aside_partial(judge, k, base)
+        done = self.export_done(judge, k, base)
+        cmd = [run_all.PY[judge], ROOT / "tests" / judge / "run_and_export.py", "--answers", answers,
+               "--repeticao", k, "--ordem-semente", k]
+        if judge in ("ragas", "deepeval"):
+            cmd.append("--passos")
+        if judge == "deepeval":
+            cmd.append("--no-open")
+            self.free_embedding()
+        if done is None:
+            suffix = "" if attempt == 1 else f"-tentativa{attempt}"
+            return self.call(key, [*cmd, "--out-dir", base / judge], log + suffix)
+
+        export = json.loads(done.read_text(encoding="utf-8"))
+        number = 2 + len(export.get("tentativas", []))
+        cases = sorted({name for name, _ in analise.unmeasured(export)})
+        out = base / judge / "tentativas"
+        before = set(out.glob(f"*-r{k}.json"))
+        code, seconds = self.call(f"{key}: {number}.ª tentativa, {len(cases)} caso(s) com buraco",
+                                  [*cmd, *(x for name in cases for x in ("--only", name)), "--out-dir", out],
+                                  f"{log}-tentativa{number}")
+        new = sorted(set(out.glob(f"*-r{k}.json")) - before)
+        if new:
+            retry = json.loads(new[-1].read_text(encoding="utf-8"))
+            analise.merge_retry(export, retry, number, f"tentativas/{new[-1].name}")
+            done.write_text(json.dumps(export, ensure_ascii=False, indent=2), encoding="utf-8")
+        return code, seconds
 
     def judge(self, judge: str, k: int, base: Path | None = None, answers: Path | None = None,
               label: str = "") -> None:
@@ -235,30 +313,42 @@ class Run:
         if judge == "jeveval" and not run_all.typesafe_key_configured():
             self.record(key, "pulada", "sem TYPESAFE_API_KEY no ambiente ou no .env (ver tests/jeveval/README.md)")
             return
-        done = self.export_done(judge, k, base)
-        if done:
-            self.record(key, "concluída", f"já existia: {done.name}")
+
+        def state() -> tuple[Path | None, list[tuple[str, str]], str]:
+            path = self.export_done(judge, k, base)
+            if path is None:
+                return None, [], ""
+            export = json.loads(path.read_text(encoding="utf-8"))
+            gaps, total = analise.unmeasured(export), sum(len(c["metrics"]) for c in export["cases"])
+            return path, gaps, f"{total - len(gaps)}/{total} notas (ou N/A), {path.name}"
+
+        path, gaps, detail = state()
+        if path and not gaps:
+            self.record(key, "concluída", f"já existia: {detail}")
             return
-        python = run_all.PY[judge]
-        if not python.exists():
+        if not run_all.PY[judge].exists():
             self.record(key, "erro", f"venv não existe: {run_all.SETUP_HINT[judge]}")
             return
-        cmd = [python, ROOT / "tests" / judge / "run_and_export.py", "--answers", answers,
-               "--repeticao", k, "--ordem-semente", k, "--out-dir", base / judge]
-        if judge in ("ragas", "deepeval"):
-            cmd.append("--passos")
-        if judge == "deepeval":
-            cmd.append("--no-open")
-        code, seconds = self.call(key, cmd, log)
-        done = self.export_done(judge, k, base)
-        if code == 0 and done:
-            data = json.loads(done.read_text(encoding="utf-8"))
-            measured = [m for c in data["cases"] for m in c["metrics"] if m.get("score") is not None]
-            total = sum(len(c["metrics"]) for c in data["cases"])
-            self.record(key, "concluída", f"{len(measured)}/{total} notas medidas, {done.name}", seconds,
-                        export=str(done))
+        code, total_seconds = 0, 0.0
+        for attempt in range(1, max(1, self.args.tentativas) + 1):
+            if attempt > 1:
+                time.sleep(RETRY_PAUSE_SECONDS)
+            code, seconds = self.judge_once(judge, k, attempt, base, answers, key, log)
+            total_seconds += seconds
+            path, gaps, detail = state()
+            if path and not gaps:
+                break
+        if path is None:
+            self.record(key, "falhou", f"código {code}, ver logs/{log}*.log", total_seconds)
+        elif gaps:
+            missing = ", ".join(f"#{name.split('#')[-1]} {metric}" for name, metric in gaps[:6])
+            self.record(key, "incompleta", f"{detail}; sem nota: {missing}" + (" …" if len(gaps) > 6 else ""),
+                        total_seconds, export=str(path), sem_nota=[list(g) for g in gaps])
         else:
-            self.record(key, "falhou", f"código {code}, ver logs/{log}.log", seconds)
+            filled = sum(len(t["preenchidas"]) for t in
+                         json.loads(path.read_text(encoding="utf-8")).get("tentativas", []))
+            self.record(key, "concluída", detail + (f" ({filled} numa nova tentativa)" if filled else ""),
+                        total_seconds, export=str(path))
 
     def analyse(self) -> None:
         paths = analise.find_exports(self.dir)
@@ -279,13 +369,15 @@ class Run:
     def pair_file(self, judge: str) -> Path:
         return self.dir / "pares" / f"{self.PAIR_JUDGES[judge]}.json"
 
-    def pair_done(self, judge: str) -> bool:
+    def pair_state(self, judge: str) -> tuple[int, int] | None:
+        """(julgados, total) do arquivo de pares, ou None se não existe ou não é o plano pedido (uma ordem x duas)."""
         path = self.pair_file(judge)
         if not path.is_file():
-            return False
+            return None
         data = json.loads(path.read_text(encoding="utf-8"))
-        return (len(data.get("julgamentos", [])) == data.get("n_julgamentos")
-                and data.get("duas_ordens") == (not self.args.uma_ordem))
+        if data.get("duas_ordens") != (not self.args.uma_ordem):
+            return None
+        return sum(1 for j in data.get("julgamentos", []) if j["vencedor"] is not None), data.get("n_julgamentos") or 0
 
     def pairs(self, judge: str) -> None:
         key = f"pares ({judge})"
@@ -295,20 +387,32 @@ class Run:
         if judge == "jeveval" and not run_all.typesafe_key_configured():
             self.record(key, "pulada", "sem TYPESAFE_API_KEY no ambiente ou no .env (ver tests/jeveval/README.md)")
             return
-        if self.pair_done(judge):
+        state = self.pair_state(judge)
+        if state and state[0] == state[1]:
             self.record(key, "concluída", f"já existia: {self.pair_file(judge).name}")
             return
+        # --completar: o que já foi julgado (com as mesmas respostas) fica; só o que falta vai ao juiz.
         cmd = [run_all.PY[judge], ROOT / "tests" / judge / "pairwise.py", "--answers", self.answers,
-               "--out", self.pair_file(judge)]
+               "--out", self.pair_file(judge), "--completar"]
         if self.args.uma_ordem:
             cmd.append("--uma-ordem")
-        code, seconds = self.call(key, cmd, f"pares-{judge}")
-        if code == 0 and self.pair_done(judge):
-            data = json.loads(self.pair_file(judge).read_text(encoding="utf-8"))
-            judged = sum(1 for j in data["julgamentos"] if j["vencedor"] is not None)
-            self.record(key, "concluída", f"{judged}/{data['n_julgamentos']} julgados", seconds)
+        code, total_seconds = 0, 0.0
+        for attempt in range(1, max(1, self.args.tentativas) + 1):
+            if attempt > 1:
+                time.sleep(RETRY_PAUSE_SECONDS)
+            if judge == "deepeval":
+                self.free_embedding()
+            code, seconds = self.call(key, cmd, f"pares-{judge}" + (f"-tentativa{attempt}" if attempt > 1 else ""))
+            total_seconds += seconds
+            state = self.pair_state(judge)
+            if state and state[0] == state[1]:
+                break
+        if state is None:
+            self.record(key, "falhou", f"código {code}, ver logs/pares-{judge}*.log", total_seconds)
         else:
-            self.record(key, "falhou", f"código {code}, ver logs/pares-{judge}.log", seconds)
+            judged, total = state
+            self.record(key, "concluída" if judged == total else "incompleta", f"{judged}/{total} julgados",
+                        total_seconds)
 
     def analyse_pairs(self) -> None:
         judges = {}
@@ -400,14 +504,11 @@ class Run:
                     f"{out / 'relatorio.pdf'}" if ok else f"código {code}, ver logs/relatorio.log", seconds)
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    run = Run(args)
-    print(f"Pergunta única: {args.golden}, sementes {args.sementes}, {args.julgamentos} julgamento(s) por juiz. "
-          f"Pasta: {run.dir}", flush=True)
-    t0 = time.perf_counter()
+def steps(run: Run) -> bool:
+    """Os passos da rodada, na ordem. False só quando não há respostas: sem elas não há o que julgar."""
+    args = run.args
     if not run.generate():
-        return 1
+        return False
     if args.ingles:
         run.generate(run.dir / "ingles" / "respostas.json", label="respostas em inglês", lang="en")
     run.free_generator()
@@ -425,10 +526,33 @@ def main(argv: list[str] | None = None) -> int:
         run.analyse_mutants(args.mutantes)
     if not args.sem_relatorio:
         run.report()
-    failed = [s for s in run.steps if s["estado"] in ("falhou", "erro")]
-    print(f"\nPronto em {(time.perf_counter() - t0) / 60:.1f} min; {len(failed)} passo(s) com falha. {run.dir}",
-          flush=True)
-    return 1 if failed else 0
+    return True
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    power = energia.power()
+    if power["tomada"] is False and not args.na_bateria:
+        print(f"[ERRO] A máquina está na bateria ({power['bateria']}%). A rodada leva horas, e na bateria a GPU cai de "
+              "desempenho e a máquina pode suspender. Ligue na tomada, ou rode com --na-bateria.", file=sys.stderr)
+        return EXIT_ON_BATTERY
+    run = Run(args)
+    print(f"Pergunta única: {args.golden}, sementes {args.sementes}, {args.julgamentos} julgamento(s) por juiz. "
+          f"Pasta: {run.dir}", flush=True)
+    t0 = time.perf_counter()
+    with energia.keep_awake() as awake:
+        run.machine = {"energia_no_inicio": power, "suspensao_por_inatividade_bloqueada": awake}
+        run.watch.start()
+        try:
+            finished = steps(run)
+        finally:
+            run.watch.stop()
+    failed = [step for step in run.steps if step["estado"] in FAILED_STATES]
+    print(f"\nPronto em {(time.perf_counter() - t0) / 60:.1f} min; {len(failed)} passo(s) com falha ou buraco. "
+          f"{run.dir}", flush=True)
+    for step in failed:
+        print(f"  {step['passo']}: {step['estado']} ({step['detalhe']})", flush=True)
+    return 0 if finished and not failed else 1
 
 
 if __name__ == "__main__":

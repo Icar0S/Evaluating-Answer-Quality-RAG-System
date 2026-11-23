@@ -21,7 +21,8 @@ def _write(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 
-def _run(tmp_path: Path, *, sources=(DOC,), texts=(GOOD, GOOD), english=True, verbose_judge=False) -> Path:
+def _run(tmp_path: Path, *, sources=(DOC,), texts=(GOOD, GOOD), english=True,
+         judges=("ragas", "deepeval", "jeveval"), faithfulness=0.9) -> Path:
     d = tmp_path / "rodada"
     answers = [{"name": f"q#{k}", "actual_output": t, "source_documents": list(sources), "seed": k,
                 "semente_pedida": k, "estado": "frio"} for k, t in enumerate(texts, start=1)]
@@ -33,10 +34,10 @@ def _run(tmp_path: Path, *, sources=(DOC,), texts=(GOOD, GOOD), english=True, ve
             {"name": f"q#{k}", "semente_pedida": k, "actual_output": "Position, verbosity and self-enhancement biases;"
                                                                      " over 80% agreement."} for k in (1, 2)]})
     for fw, model in (("ragas", "qwen3:8b"), ("deepeval", "qwen3:8b"), ("jeveval", "jev-1.13.0 (TypeSafe AI)")):
-        for k in (1, 2):
+        for k in (1, 2) if fw in judges else ():
             data = {"judge_model": model, "judge_repetition": k, "threshold": 0.7, "cases": [
                 {"name": f"q#{i}", "metrics": [{"name": "faithfulness" if fw != "deepeval" else "Faithfulness",
-                                                "score": 0.9, "applicable": True, "threshold": 0.7}]}
+                                                "score": faithfulness, "applicable": True, "threshold": 0.7}]}
                 for i in (1, 2)]}
             if fw != "deepeval":
                 data["framework"] = fw
@@ -47,10 +48,12 @@ def _run(tmp_path: Path, *, sources=(DOC,), texts=(GOOD, GOOD), english=True, ve
         {"par": ["q#1", "q#2"], "ordem": o, "primeiro": f, "segundo": s, "vencedor": f, "erro": None}
         for o, f, s in plan]})
     _write(d / "mutantes-analise.json", {"mutantes": {
+        "N0": {"comportamento": {"respostas": 2, "abstencoes": 0, "com_o_artigo_nos_trechos": 2},
+               "juizes": {"ragas": {"morto": False, "estado": "ruído"}}},
         "C1": {"comportamento": {"respostas": 2, "abstencoes": 0, "com_o_artigo_nos_trechos": 0},
-               "juizes": {"jeveval": {"morto": True}, "ragas": {"morto": False}}},
+               "juizes": {"jeveval": {"morto": True, "estado": "morto"}, "ragas": {"morto": False, "estado": "vivo"}}},
         "P1": {"comportamento": {"respostas": 2, "abstencoes": 0, "com_o_artigo_nos_trechos": 2},
-               "juizes": {"ragas": {"morto": False}, "deepeval": {"morto": False}}}}})
+               "juizes": {fw: {"morto": False, "estado": "ruído" if fw == "ragas" else "vivo"} for fw in judges}}}})
     return d
 
 
@@ -78,6 +81,33 @@ def test_estados_de_uma_rodada_completa(tmp_path):
     assert states["GER-4"] == "falhou" and states["JUI-5"] == "falhou"
     assert states["JUI-4"] == "passou"  # 0,9 nos dois julgamentos
     assert states["PRI-1"] == "passou"
+
+
+def test_juiz_que_faltou_e_sem_dado_e_nao_falha(tmp_path):
+    by_id = {r["id"]: r for r in avaliar.evaluate(avaliar.load_run(_run(tmp_path, judges=("ragas", "deepeval"))))}
+
+    # Os dois juízes que julgaram passam do limiar: sem o Jev, o item não passa, mas também não falha.
+    assert by_id["GER-2"]["estado"] == "sem dado" and "sem dado de: jeveval" in by_id["GER-2"]["detalhe"]
+    assert by_id["JUI-4"]["estado"] == "sem dado"
+    # O P1 está vivo nos dois que julgaram, mas o terceiro poderia matá-lo.
+    assert by_id["JUI-5"]["estado"] == "sem dado" and "jeveval" in by_id["JUI-5"]["detalhe"]
+    # O par só tem o ArenaGEval, e ele já reprova a consistência: isso é falha, com ou sem o Jev.
+    assert by_id["JUI-2"]["estado"] == "falhou"
+
+
+def test_nota_ruim_medida_falha_mesmo_com_juiz_faltando(tmp_path):
+    by_id = {r["id"]: r for r in avaliar.evaluate(avaliar.load_run(_run(tmp_path, judges=("ragas",), faithfulness=0.3)))}
+
+    assert by_id["GER-2"]["estado"] == "falhou"
+
+
+def test_ruido_e_n0_nao_contam_como_morte(tmp_path):
+    by_id = {r["id"]: r for r in avaliar.evaluate(avaliar.load_run(_run(tmp_path)))}
+
+    assert by_id["JUI-5"]["estado"] == "falhou"
+    assert "C1: morto por jeveval" in by_id["JUI-5"]["detalhe"]
+    assert "P1: nenhuma morte confirmada (ruído em ragas)" in by_id["JUI-5"]["detalhe"]
+    assert "N0" not in by_id["JUI-5"]["detalhe"]
 
 
 def test_sem_rodada_so_os_testes_tem_estado():

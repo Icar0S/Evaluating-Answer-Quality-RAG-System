@@ -83,6 +83,46 @@ def test_anatomia_mostra_a_conta_de_cada_juiz(run_dir):
     assert a["deepeval"]["verdades"] == 3
     assert a["jeveval"]["conta"] == "2 × 0,28 + 1 × 0,51 ÷ 3 = 0,36"
     assert [row[1] for row in a["ragas"]["linhas"]] == ["1", "0"]
+    assert all(a[fw]["confere"] for fw in ("ragas", "deepeval", "jeveval"))
+
+
+def test_a_conta_refeita_bate_com_a_nota_e_o_relatorio_aponta_quando_nao_bate(run_dir, tmp_path):
+    # Todos os julgamentos de fidelidade com passos: 2 do RAGAS (só a #1 tem passos), 1 do DeepEval e 1 do Jev.
+    assert pur.check_arithmetic(pur.load(run_dir)) == {"conferidas": 4, "batem": 4, "nao_batem": []}
+
+    path = run_dir / "deepeval" / "x-r1.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["cases"][0]["metrics"][0]["score"] = 1.0  # a nota gravada deixa de ser a dos vereditos (2 de 3)
+    _write(path, data)
+
+    check = pur.check_arithmetic(pur.load(run_dir))
+    assert (check["batem"], check["conferidas"]) == (3, 4)
+    assert check["nao_batem"][0]["juiz"] == "deepeval" and check["nao_batem"][0]["resposta"] == NAMES[0]
+    md = pur.build(run_dir, tmp_path / "rel", ["md"])["md"].read_text(encoding="utf-8")
+    assert "**NÃO confere** com a nota (1,0000)" in md
+    assert "**3 de 4** batem" in md and "Contas que não batem com a nota" in md
+
+
+def test_o_relatorio_mostra_o_controle_nulo_o_efeito_e_os_passos_que_nao_fecharam(run_dir, tmp_path):
+    import mutacao
+
+    exports = {fw: pur.load(run_dir).exports_of(fw) for fw in ("ragas", "deepeval", "jeveval")}
+    original = [e for group in exports.values() for e in group]
+    answers = json.loads((run_dir / "respostas.json").read_text(encoding="utf-8"))
+    mutant = {"meta": {"nome": "Remover ancoragem", "esperado": "cair"}, "answers": answers,
+              "exports": exports["ragas"][:1]}
+    _write(run_dir / "mutantes-analise.json", mutacao.mutation_report(original, answers, {"P1": mutant}))
+    _write(run_dir / "execucao.json", {
+        "maquina": {"energia_no_inicio": {"tomada": True, "bateria": 90}, "suspensao_por_inatividade_bloqueada": True},
+        "passos": [{"passo": "jeveval (julgamento 1)", "estado": "incompleta", "detalhe": "3/30 notas",
+                    "suspensoes": [{"de": "2026-11-23T11:31:00", "ate": "2026-11-23T13:22:00", "segundos": 6660.0}]}]})
+
+    md = pur.build(run_dir, tmp_path / "rel", ["md"])["md"].read_text(encoding="utf-8")
+
+    assert "Esta rodada tem passos que não fecharam" in md and "3/30 notas" in md
+    assert "suspendeu no meio" in md and "111 min" in md
+    assert "2/2 iguais ao original" in md
+    assert "RAGAS: 2 comparações sem defeito" in md and "Controle nulo" in md
 
 
 def test_relatorio_em_markdown_pdf_e_planilha(run_dir, tmp_path):

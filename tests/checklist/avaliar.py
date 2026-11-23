@@ -8,7 +8,9 @@ e o detalhe:
 - passou / falhou: a conta da evidência, com o número que decidiu;
 - coberto: o teste que guarda o item existe (quem diz se passa é o CI);
 - fora: fora do escopo, com o motivo;
-- sem dado: a rodada não tem o que a conta precisa (por exemplo, sem os mutantes).
+- sem dado: a rodada não tem o que a conta precisa (por exemplo, sem os mutantes, ou
+  sem um dos três juízes). Um juiz que faltou nunca vira "falhou": só o que foi medido
+  reprova. E, enquanto faltar um, o item também não passa.
 
 Rodar (qualquer Python com PyYAML; o venv do relatório tem):
     tests\\reports\\.venv\\Scripts\\python.exe tests\\checklist\\avaliar.py --rodada tests\\pergunta_unica\\out\\<pasta>
@@ -32,18 +34,10 @@ if str(ROOT / "tests" / "pergunta_unica") not in sys.path:
 import analise  # noqa: E402
 import mutacao  # noqa: E402
 import pares  # noqa: E402
+from fatos import FACTS, facts_in  # noqa: E402
 
 CHECKLIST = HERE / "checklist.yaml"
 STATE_MARK = {"passou": "✓", "falhou": "✗", "coberto": "✓ (teste)", "fora": "—", "sem dado": "?"}
-# Os fatos da referência de md-mtbench-vieses, por palavra-chave, em português e em inglês. É um oráculo
-# determinístico: não depende de juiz. "auto-elogio" e "autopromoção" entram porque o gemma traduz assim.
-FACTS = {
-    "posição": (r"posi[çc][ãa]o", r"position"),
-    "verbosidade": (r"verbos",),
-    "autoaprimoramento": (r"self-?enhancement", r"auto-?aprimoramento", r"auto-?elogio", r"auto-?promo[çc][ãa]o",
-                          r"auto-?aperfei[çc]oamento", r"auto-?favorecimento"),
-    "80%": (r"80\s?%",),
-}
 ANSWER_METRICS = ("faithfulness", "answer_relevancy", "correctness")
 
 
@@ -81,12 +75,17 @@ def load_run(run_dir: Path) -> RunData:
     return RunData(run_dir, answers, exports, _json(run_dir / "ingles" / "respostas.json"), pairs_report, mutants_report)
 
 
-def facts_in(text: str | None) -> set[str]:
-    low = (text or "").lower()
-    return {fact for fact, patterns in FACTS.items() if any(re.search(p, low) for p in patterns)}
-
-
 Result = tuple[str, str]
+PAIR_JUDGES = ("deepeval-arena", "jeveval-par")
+
+
+def verdict(failed: bool, missing: list[str], detail: str) -> Result:
+    """O estado de um item que vale "em cada juiz": reprova o que foi medido; com juiz faltando, não passa nem falha."""
+    if failed:
+        state = "falhou"
+    else:
+        state = "sem dado" if missing else "passou"
+    return state, detail + (f" (sem dado de: {', '.join(missing)})" if missing else "")
 
 
 # ------------------------------------------------------------------ as contas
@@ -146,8 +145,8 @@ def fidelidade(run: RunData) -> Result:
     if not means:
         return "sem dado", "nenhum juiz julgou a fidelidade nesta rodada"
     detail = "; ".join(f"{fw} {m:.2f}".replace(".", ",") for fw, (m, _) in means.items())
-    ok = all(m >= limit for m, limit in means.values()) and len(means) == 3
-    return ("passou" if ok else "falhou", detail + ("" if len(means) == 3 else f" (só {len(means)} de 3 juízes)"))
+    return verdict(any(m < limit for m, limit in means.values()),
+                   [fw for fw in analise.FRAMEWORKS if fw not in means], detail)
 
 
 def mesmos_fatos_em_ingles(run: RunData) -> Result:
@@ -214,8 +213,8 @@ def consistencia_de_posicao(run: RunData) -> Result:
     if not rows:
         return "sem dado", "os pares rodaram numa ordem só (--uma-ordem)"
     detail = "; ".join(f"{j}: {p['consistentes']}/{p['pares_nas_duas_ordens']}" for j, p in rows.items())
-    ok = all(p["consistencia"] >= 0.9 for p in rows.values())
-    return ("passou" if ok else "falhou", detail)
+    return verdict(any(p["consistencia"] < 0.9 for p in rows.values()), [j for j in PAIR_JUDGES if j not in rows],
+                   detail)
 
 
 def verbosidade(run: RunData) -> Result:
@@ -227,7 +226,8 @@ def verbosidade(run: RunData) -> Result:
         return "sem dado", "menos de 4 pares decididos com tamanhos diferentes"
     detail = "; ".join(f"{j}: a mais longa venceu {v['vitorias_da_mais_longa']}/{v['decididos_com_tamanhos_diferentes']}"
                        for j, v in rows.items())
-    return ("passou" if all(v["taxa_da_mais_longa"] <= 0.7 for v in rows.values()) else "falhou", detail)
+    return verdict(any(v["taxa_da_mais_longa"] > 0.7 for v in rows.values()), [j for j in PAIR_JUDGES if j not in rows],
+                   detail)
 
 
 def vereditos_estaveis(run: RunData) -> Result:
@@ -239,16 +239,26 @@ def vereditos_estaveis(run: RunData) -> Result:
                 for metric, s in data["metricas"].items() if metric in ANSWER_METRICS and s["vereditos_instaveis"]}
     detail = ("nenhum veredito mudou entre julgamentos" if not unstable else
               "; ".join(f"{k}: {', '.join(pares_short(n) for n in v)}" for k, v in unstable.items()))
-    return ("passou" if not unstable else "falhou", detail)
+    return verdict(bool(unstable), [fw for fw in analise.FRAMEWORKS if len(reps.get(fw, [])) < 2], detail)
 
 
 def mutantes_mortos(run: RunData) -> Result:
-    mutants = (run.mutants or {}).get("mutantes") or {}
+    mutants = {op: m for op, m in ((run.mutants or {}).get("mutantes") or {}).items() if op != mutacao.NULL_OPERATOR}
     if not mutants:
-        return "sem dado", "a rodada não tem mutantes (rodar.py --mutantes C1 C2 P1 R1)"
-    rows = {op: [fw for fw, j in m["juizes"].items() if j["morto"]] for op, m in mutants.items()}
-    detail = "; ".join(f"{op}: {', '.join(k) if k else 'vivo nos três'}" for op, k in rows.items())
-    return ("passou" if all(rows.values()) else "falhou", detail)
+        return "sem dado", "a rodada não tem mutantes (rodar.py --mutantes N0 C1 C2 P1 R1)"
+    parts, failed, missing = [], False, set()
+    for op, m in mutants.items():
+        killers = [fw for fw, j in m["juizes"].items() if j["morto"]]
+        if killers:
+            parts.append(f"{op}: morto por {', '.join(killers)}")
+            continue
+        absent = [fw for fw in analise.FRAMEWORKS if fw not in m["juizes"]]
+        doubtful = [fw for fw, j in m["juizes"].items() if j.get("estado") == "sem controle"]
+        noise = [fw for fw, j in m["juizes"].items() if j.get("estado") == "ruído"]
+        parts.append(f"{op}: nenhuma morte confirmada" + (f" (ruído em {', '.join(noise)})" if noise else ""))
+        missing.update([*absent, *(f"{fw} sem controle nulo" for fw in doubtful)])
+        failed = failed or not (absent or doubtful)
+    return verdict(failed, sorted(missing), "; ".join(parts))
 
 
 def _registered(index: str | None) -> set[str] | None:
