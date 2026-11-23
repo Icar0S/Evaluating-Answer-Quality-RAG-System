@@ -11,7 +11,7 @@ rodaram e as decisões tomadas no caminho. Os números vêm das rodadas, com a p
 | Fase | Estado | O que entregou |
 | :--- | :--- | :--- |
 | 0. Preparação | Feita | As quatro premissas medidas (§2); D1 a D5 adotadas como propostas (§1) |
-| 1. Protocolo das 5 respostas | — | |
+| 1. Protocolo das 5 respostas | Feita | Semente por requisição no `/chat`; o protocolo no `generate_answers.py`; o controle quente × frio; `chat-limpo.spec.ts`. 5 respostas diferentes, que se reproduzem, com os mesmos trechos (§3) |
 | 2. Juízes repetidos e anatomia | — | |
 | 3. Comparação em pares | — | |
 | 4. Relatório | — | |
@@ -51,3 +51,68 @@ Medido em 23/11/2026, no Ollama da máquina (0.40.16, `127.0.0.1:11434`) e no í
 
 **Juiz e gerador na máquina:** `gemma3:4b` e `qwen3:8b` estão no Ollama local; o `.env` da máquina já gera com
 o gemma3:4b e julga com o qwen3:8b (`DEEPEVAL_JUDGE_MODEL`, `RAGAS_JUDGE_MODEL`).
+
+## 3. Fase 1: o protocolo das 5 respostas
+
+### O que mudou
+
+| Onde | O quê |
+| :--- | :--- |
+| `backend/app/schemas.py`, `rag/generation.py`, `main.py` | `ChatRequest.seed` (opcional, 0 a 2³¹−1): a semente vale só naquela chamada, no lugar de `GENERATION_SEED`. O `ChatMetadata` ganha `temperature` e `seed`, o que foi de fato ao Ollama (`None` = o padrão do modelo, ou o provider remoto, que não aceita nenhum dos dois). O frontend não manda o campo: o chat da tela não muda |
+| `tests/generate_answers.py` | O protocolo, nos dois modos (in-process e `--api`): `--only`, `--sementes 1-5`, `--repeticoes`, `--estado-limpo`, `--ollama`, `--controle-estado` e `--aquecimento`. Sem essas opções, o plano de perguntas é o de sempre (um teste confere) |
+| `tests/benchmark/test_protocolo_pergunta_unica.py` | 12 testes herméticos: um servidor local faz a API do RAG e o Ollama ao mesmo tempo e registra a ordem das chamadas |
+| `tests/api/test_chat.py` | 5 testes da semente por requisição |
+| `frontend/tests/e2e/chat-limpo.spec.ts` | Dois testes com o backend mockado (rodam no CI): na mesma conversa, a segunda pergunta vai sozinha; a mesma pergunta no mesmo chat e num chat novo manda o mesmo corpo |
+
+**Como o protocolo se protege:**
+
+- **Servidor limpo.** Antes de cada resposta, o gerador sai da memória do Ollama (`keep_alive: 0`), e o script
+  espera ele sumir do `/api/ps`. Se não sair em 30 s, o protocolo para antes de perguntar.
+- **Os mesmos trechos.** Cada resposta grava o hash dos trechos (`sources_sha256`: o id e o texto de cada um,
+  na ordem). Uma resposta da mesma pergunta com outros trechos para o protocolo (código 3).
+- **A semente valeu.** Se a resposta não devolve a semente pedida, o protocolo para (código 3). É o caso de um
+  backend anterior a esta fase: o Pydantic ignora o campo desconhecido em silêncio, e as 5 respostas sairiam
+  sem semente. **No Docker, é preciso reconstruir a imagem do backend** (`docker compose build backend`).
+- **A temperatura que valeu fica gravada:** a configurada, ou a padrão do modelo, lida do `/api/show`.
+
+### Como rodar
+
+```
+set OLLAMA_BASE_URL=http://127.0.0.1:11434
+backend\.venv\Scripts\python.exe tests\generate_answers.py --out tests\pergunta_unica\out\r.json ^
+    --index md-v1 --local --goldens md=tests/deepeval/goldens/dataset_md.json ^
+    --only md-mtbench-vieses --sementes 1-5 --estado-limpo --set generation_temperature=1
+```
+
+Pela API do Docker: `--api http://localhost:8010 --ollama http://127.0.0.1:11435`, sem `--index`, `--local`
+e `--set`. O controle troca `--estado-limpo` por `--controle-estado`.
+
+### A rodada de validação (23/11/2026)
+
+Pasta: `tests/pergunta_unica/out/fase1/` (fora do git). gemma3:4b no Ollama da máquina, `md-v1`, temperatura 1
+(configurada, igual à padrão), sementes 1 a 5.
+
+| Critério da fase | Resultado |
+| :--- | :--- |
+| As 5 respostas variam entre si | Sim: 5 textos diferentes, de 580 a 747 caracteres; semelhança entre pares de 0,30 a 0,67 (`difflib`) |
+| Saem iguais quando a rodada se repete | Sim: a rodada B, outro processo, deu os mesmos 5 textos, semente a semente. O "frio" do controle, um terceiro processo, também |
+| Os mesmos trechos | Sim: o mesmo hash (`9979d94203e48277`) nas 5 respostas das rodadas A e B e nas 15 do controle. São três processos: o HNSW não mudou o top-4 desta pergunta |
+| Custo | ~8 s por resposta, com a recarga do modelo; descarregar leva ~0,15 s. A rodada de 5 respostas leva 49 s |
+
+**O controle quente × frio** (`controle.json`), por semente: a resposta fria, de novo fria, e quente, logo
+depois de outra pergunta (`md-seven-failure-points-lista`), sem recarregar.
+
+| Semente | O frio se reproduz | O quente sai igual ao frio |
+| :--- | :--- | :--- |
+| 1 a 5 | 5 de 5 | 5 de 5 (semelhança 1,0) |
+
+Nesta pergunta, com semente fixa, o cache de prefixo **não mudou nenhuma resposta**. A resposta quente só saiu
+mais rápida (~4 s, contra ~8 s da fria). No E0 do benchmark, com temperatura 0, a ordem das perguntas mudou
+2 de 103 respostas: o efeito existe, mas é raro. O protocolo continua zerando o estado, porque o custo é
+pequeno (~4 s por resposta) e tira a dúvida. Para a apresentação, a leitura é: o viés que a turma apontou não
+vem do histórico do chat (que nunca chega ao modelo), e o do servidor, medido aqui, foi zero em 5.
+
+**O que as 5 respostas trazem** (material para os juízes): as 5 citam os três vieses e os 80%; a 5.ª cita
+também os 75% do viés de posição. Mas todas misturam números do outro artigo dos trechos (*Testing LLM-Based
+Systems*): a "deflação de kappa" atribuída ao viés de posição, os "10–25%", o relatório da Atlan. É o tipo de
+erro que separa os juízes: a afirmação está nos trechos (fiel), mas não é do MT-Bench (correção).

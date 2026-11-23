@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field
 class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=4000)
     top_k: int | None = Field(default=None, ge=1, le=20)
+    # Semente da amostragem só desta chamada, no lugar de GENERATION_SEED (decisão D2 do
+    # plano-escopo-final.md). Existe para o protocolo da pergunta única (tests/generate_answers.py
+    # --sementes): com a semente do servidor, 5 respostas pela API sairiam iguais. O frontend não manda o
+    # campo, e o provider remoto o ignora (a API dele não aceita semente).
+    seed: int | None = Field(default=None, ge=0, le=2**31 - 1)
 
 
 class SourceChunk(BaseModel):
@@ -35,6 +40,10 @@ class ChatMetadata(BaseModel):
     # Versão do índice que respondeu (RAG_INDICES). Com dois RAGs no ar (a
     # demonstração em Docker sobe um por acervo), é o que diz qual respondeu.
     rag_index: str | None = None
+    # A amostragem que foi de fato ao Ollama nesta chamada. None = não enviada: o modelo usa o padrão dele
+    # (no gemma3:4b, temperatura 1), ou o provider é o remoto, que não aceita nenhuma das duas.
+    temperature: float | None = None
+    seed: int | None = None
 
 
 class ChatResponse(BaseModel):

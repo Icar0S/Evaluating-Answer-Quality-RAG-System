@@ -149,3 +149,56 @@ def test_generation_think_false_desliga_o_raciocinio(client, ollama, monkeypatch
     client.post("/chat", json={"question": "O que e RAG?"})
 
     assert _corpo_da_geracao_local(ollama)["think"] is False
+
+
+# ---------------------------------------------- semente por requisição (D2, plano-escopo-final.md)
+
+
+def test_sem_semente_nem_temperatura_nao_envia_options_e_o_metadata_diz_isso(client, ollama):
+    # O chat da tela não manda semente: o payload fica como sempre foi, e o modelo usa o padrão dele.
+    metadata = client.post("/chat", json={"question": "O que e RAG?"}).json()["metadata"]
+
+    assert "options" not in _corpo_da_geracao_local(ollama)
+    assert (metadata["temperature"], metadata["seed"]) == (None, None)
+
+
+def test_a_semente_da_requisicao_vale_so_naquela_chamada_no_lugar_da_do_servidor(client, ollama, monkeypatch):
+    monkeypatch.setenv("GENERATION_SEED", "42")
+    monkeypatch.setenv("GENERATION_TEMPERATURE", "1")
+    get_settings.cache_clear()
+
+    com_semente = client.post("/chat", json={"question": "O que e RAG?", "seed": 3}).json()["metadata"]
+    opcoes = _corpo_da_geracao_local(ollama)["options"]
+    ollama.requests.clear()
+    sem_semente = client.post("/chat", json={"question": "O que e RAG?"}).json()["metadata"]
+
+    assert (opcoes["seed"], opcoes["temperature"]) == (3, 1.0)
+    assert (com_semente["seed"], com_semente["temperature"]) == (3, 1.0)
+    # A chamada seguinte, sem o campo, volta para a semente do servidor.
+    assert _corpo_da_geracao_local(ollama)["options"]["seed"] == 42
+    assert sem_semente["seed"] == 42
+
+
+def test_semente_zero_e_semente(client, ollama):
+    # 0 é uma semente válida, não "sem semente".
+    metadata = client.post("/chat", json={"question": "O que e RAG?", "seed": 0}).json()["metadata"]
+
+    assert _corpo_da_geracao_local(ollama)["options"] == {"seed": 0}
+    assert metadata["seed"] == 0
+
+
+def test_semente_fora_da_faixa_e_rejeitada_antes_de_chamar_o_modelo(client, ollama):
+    for semente in (-1, 2**31, "abc"):
+        assert client.post("/chat", json={"question": "O que e RAG?", "seed": semente}).status_code == 422
+    assert not [r for r in ollama.requests if r.url.path == "/api/chat"]
+
+
+def test_o_provider_remoto_ignora_a_semente_e_o_metadata_nao_finge_que_ela_valeu(client, remote_configured, ollama):
+    ollama.set_online(REMOTE_BASE_URL)
+    client.post("/providers/active", json={"name": "remote"})
+
+    metadata = client.post("/chat", json={"question": "O que e RAG?", "seed": 3}).json()["metadata"]
+
+    geracao = [r for r in ollama.requests_to(REMOTE_BASE_URL) if r.url.path == "/v1/chat"]
+    assert "seed" not in _corpo_da_chamada(geracao[0]) and "options" not in _corpo_da_chamada(geracao[0])
+    assert (metadata["provider"], metadata["seed"], metadata["temperature"]) == ("remote", None, None)

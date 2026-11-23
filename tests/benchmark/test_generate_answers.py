@@ -26,7 +26,12 @@ def generate(monkeypatch):
     spec.loader.exec_module(module)
     reply = {"answer": "São 16 classes.", "latency_ms": 1234.56, "prompt_tokens": 900, "completion_tokens": 40}
     monkeypatch.setattr(module.retrieval, "retrieve", lambda question, top_k=None: (CHUNKS, 87.65))
-    monkeypatch.setattr(module.generation, "generate_answer", lambda question, chunks: dict(reply))
+    def fake_generate(question, chunks, seed=None):
+        module.seeds_received.append(seed)
+        return {**reply, "seed": seed, "temperature": reply.get("temperature")}
+
+    module.seeds_received = []
+    monkeypatch.setattr(module.generation, "generate_answer", fake_generate)
     module.reply = reply
     return module
 

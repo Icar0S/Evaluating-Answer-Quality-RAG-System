@@ -97,19 +97,25 @@ def _build_messages(question: str, context_chunks: list[dict]) -> list[dict]:
     ]
 
 
-def _ollama_options() -> dict:
+def _ollama_options(seed: int | None = None) -> dict:
     """Opções de amostragem do Ollama — só as que estiverem explicitamente configuradas.
 
     Dicionário vazio (o default de fábrica) significa "não envie `options`", o que
     preserva o comportamento histórico de deixar o modelo usar seus próprios
     parâmetros. O estudo de mutação fixa temperatura e seed para não amplificar o
     não-determinismo — ver tests/mutation/config/study.yaml.
+
+    `seed` é a semente de uma chamada só (o campo `seed` do POST /chat) e vale no
+    lugar de GENERATION_SEED: é o que deixa o protocolo da pergunta única tirar 5
+    respostas diferentes, e reproduzíveis, do mesmo servidor.
     """
     settings = get_settings()
     options: dict = {}
     if settings.generation_temperature is not None:
         options["temperature"] = settings.generation_temperature
-    if settings.generation_seed is not None:
+    if seed is not None:
+        options["seed"] = seed
+    elif settings.generation_seed is not None:
         options["seed"] = settings.generation_seed
     if settings.generation_num_predict is not None:
         options["num_predict"] = settings.generation_num_predict
@@ -149,12 +155,12 @@ def prompt_token_limit() -> int | None:
     return num_ctx - (get_settings().generation_num_predict or 0)
 
 
-def _generate_ollama(provider: providers.Provider, messages: list[dict], timeout: int) -> dict:
+def _generate_ollama(provider: providers.Provider, messages: list[dict], timeout: int, seed: int | None = None) -> dict:
     payload = {"model": provider.generation_model, "messages": messages, "stream": False}
     think = get_settings().generation_think
     if think is not None:
         payload["think"] = think
-    options = _ollama_options()
+    options = _ollama_options(seed)
     if options:
         payload["options"] = options
 
@@ -174,6 +180,9 @@ def _generate_ollama(provider: providers.Provider, messages: list[dict], timeout
         "prompt_eval_duration_ns": data.get("prompt_eval_duration"),
         "eval_duration_ns": data.get("eval_duration"),
         "total_duration_ns": data.get("total_duration"),
+        # A amostragem enviada (None = o padrão do modelo), para quem grava a resposta saber o que valeu.
+        "temperature": options.get("temperature"),
+        "seed": options.get("seed"),
     }
 
 
@@ -213,11 +222,17 @@ def _generate_smartdatatest(provider: providers.Provider, messages: list[dict], 
         "prompt_eval_duration_ns": None,
         "eval_duration_ns": int(duration_s * 1e9) if duration_s is not None else None,
         "total_duration_ns": total_duration_ns,
+        # A API remota não aceita temperatura nem semente: nada foi enviado.
+        "temperature": None,
+        "seed": None,
     }
 
 
-def generate_answer(question: str, context_chunks: list[dict]) -> dict:
-    """Chama o provider ativo (local ou remoto) e retorna answer + métricas + grounded."""
+def generate_answer(question: str, context_chunks: list[dict], seed: int | None = None) -> dict:
+    """Chama o provider ativo (local ou remoto) e retorna answer + métricas + grounded.
+
+    `seed` é a semente desta chamada (ver _ollama_options); o provider remoto a ignora.
+    """
     settings = get_settings()
     provider = providers.get_active_provider()
     messages = _build_messages(question, context_chunks)
@@ -225,7 +240,7 @@ def generate_answer(question: str, context_chunks: list[dict]) -> dict:
     if provider.kind == "smartdatatest":
         result = _generate_smartdatatest(provider, messages, settings.generation_timeout_seconds)
     else:
-        result = _generate_ollama(provider, messages, settings.generation_timeout_seconds)
+        result = _generate_ollama(provider, messages, settings.generation_timeout_seconds, seed)
 
     result["grounded"] = bool(context_chunks) and NOT_FOUND_MARKER.lower() not in result["answer"].lower()
     return result

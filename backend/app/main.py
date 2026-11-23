@@ -130,7 +130,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
     metrics.mark_generation_start()
     try:
-        result = await asyncio.to_thread(generation.generate_answer, request.question, chunks)
+        result = await asyncio.to_thread(generation.generate_answer, request.question, chunks, request.seed)
     except httpx.ConnectError as exc:
         raise HTTPException(status_code=503, detail=connect_error_detail) from exc
     except httpx.TimeoutException as exc:
@@ -181,6 +181,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
         top_k=top_k,
         # get_settings(), não o `settings` do import: é o índice que a busca acabou de usar.
         rag_index=get_settings().index_name,
+        temperature=result.get("temperature"),
+        seed=result.get("seed"),
     )
 
     response = ChatResponse(
