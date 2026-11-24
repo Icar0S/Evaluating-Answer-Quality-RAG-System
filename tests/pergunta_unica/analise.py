@@ -172,6 +172,15 @@ def summarize_metric(by_answer: dict[str, list[dict[str, Any]]], threshold: floa
     }
 
 
+def dominant(dp_generator: float | None, dp_judge: float | None) -> str | None:
+    """Quem varia mais. Sem variação dos dois lados não há quem domine: dizer "juiz" acusaria um juiz que não variou."""
+    if dp_generator is None or dp_judge is None:
+        return None
+    if dp_generator == dp_judge == 0:
+        return "nenhum"
+    return "juiz" if dp_judge >= dp_generator else "gerador"
+
+
 def variance_report(exports: list[dict[str, Any]]) -> dict[str, Any]:
     """O resumo por framework e métrica, mais quem domina a variação (gerador ou juiz) em cada uma."""
     table = collect(exports)
@@ -191,10 +200,7 @@ def variance_report(exports: list[dict[str, Any]]) -> dict[str, Any]:
             per_metric = next((j["threshold"] for js in by_answer.values() for j in js if j["threshold"] is not None),
                               thresholds.get(fw))
             summary = summarize_metric(by_answer, per_metric)
-            if summary["dp_juiz"] is not None and summary["dp_gerador"] is not None:
-                summary["domina"] = "juiz" if summary["dp_juiz"] >= summary["dp_gerador"] else "gerador"
-            else:
-                summary["domina"] = None
+            summary["domina"] = dominant(summary["dp_gerador"], summary["dp_juiz"])
             metrics[metric] = summary
         result["frameworks"][fw] = {"julgamentos": reps, "metricas": metrics}
     return result

@@ -290,7 +290,7 @@ def _judges_blocks(run: SingleQuestionRun, figure: Path | None) -> list[Block]:
               caption="A decomposição da variação", small=True),
         Callout("Como ler", [
             "**DP gerador:** o desvio-padrão das médias das 5 respostas. **DP juiz:** a raiz da média das variâncias "
-            "de cada resposta entre os julgamentos. **Domina:** o maior dos dois.",
+            "de cada resposta entre os julgamentos. **Domina:** o maior dos dois; \"nenhum\" quando nada variou.",
             "**Vereditos instáveis:** respostas que passaram no limiar num julgamento e reprovaram noutro.",
             "As métricas de contexto julgam os trechos, que são os mesmos nas 5 respostas: nelas, toda variação é do "
             "juiz por construção.",
@@ -324,7 +324,7 @@ def faithfulness_arithmetic(framework: str, metric: dict[str, Any] | None) -> tu
             return None
         value = sum(b["weight"] * b["value"] for b in applicable) / total_weight
         text = " + ".join(f"{num(b['weight'], 0)} × {num(b['value'])}" for b in applicable)
-        return value, f"{text} ÷ {num(total_weight, 0)} = {num(value)}"
+        return value, f"({text}) ÷ {num(total_weight, 0)} = {num(value)}"
     steps = metric.get("steps")
     if framework == "ragas":
         nli = next((st["output"]["statements"] for st in steps or [] if st.get("schema") == "NLIStatementOutput"), None)
@@ -553,7 +553,7 @@ def _checklist_blocks(run: SingleQuestionRun) -> list[Block]:
              "2020): MFT é funcionalidade mínima, INV é invariância e DIR é expectativa de direção. Cada item é "
              "conferido por uma conta sobre esta rodada, por um teste automatizado, ou está fora do escopo com o "
              "motivo. Resumo: " + ", ".join(f"{n} {state}" for state, n in sorted(counts.items())) + "."),
-        Table(["", "Etapa", "Item", "Tipo", "Estado", "Detalhe"], rows, [0.07, 0.11, 0.24, 0.06, 0.12, 0.4],
+        Table(["", "Etapa", "Item", "Tipo", "Estado", "Detalhe"], rows, [0.07, 0.13, 0.24, 0.06, 0.12, 0.38],
               align=["l", "l", "l", "c", "l", "l"], caption="O checklist da rodada", small=True),
     ]
 

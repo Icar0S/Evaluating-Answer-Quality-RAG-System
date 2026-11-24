@@ -55,6 +55,13 @@ def test_separa_a_variacao_do_gerador_da_do_juiz():
     assert faith["vereditos_instaveis"] == []
 
 
+@pytest.mark.parametrize("generator, judge, expected", [
+    (0.0, 0.0, "nenhum"),  # visto na rodada de 23/11/2026: nada variou, e a tabela acusava o juiz
+    (0.0, 0.02, "juiz"), (0.33, 0.02, "gerador"), (0.1, None, None), (None, 0.1, None)])
+def test_sem_variacao_ninguem_domina(generator, judge, expected):
+    assert analise.dominant(generator, judge) == expected
+
+
 def test_na_e_nao_medida_ficam_fora_e_sao_contadas():
     exports = [
         _export("jeveval", 1, {"a#1": {"faithfulness": 0.9}, "a#2": {"faithfulness": 0.8}},

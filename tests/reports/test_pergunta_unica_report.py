@@ -81,7 +81,7 @@ def test_anatomia_mostra_a_conta_de_cada_juiz(run_dir):
     # No DeepEval, o idk conta como fiel: 2 de 3.
     assert a["deepeval"]["conta"] == "(yes + idk) ÷ total = 2 ÷ 3 = 0,67"
     assert a["deepeval"]["verdades"] == 3
-    assert a["jeveval"]["conta"] == "2 × 0,28 + 1 × 0,51 ÷ 3 = 0,36"
+    assert a["jeveval"]["conta"] == "(2 × 0,28 + 1 × 0,51) ÷ 3 = 0,36"
     assert [row[1] for row in a["ragas"]["linhas"]] == ["1", "0"]
     assert all(a[fw]["confere"] for fw in ("ragas", "deepeval", "jeveval"))
 
