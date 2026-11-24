@@ -19,7 +19,7 @@ rodaram e as decisões tomadas no caminho. Os números vêm das rodadas, com a p
 | 6. Mutação na plataforma | Feita; resultado e ressalvas em §10.3 | C1, C2, P1, R1 e o controle N0 (§7) |
 | 7. Checklist | Feito: 8 passaram, 6 falharam, 2 cobertos (§10.4), com o critério dos fatos completado depois dos dados (§10.5) | 16 itens, com o critério escrito antes (§8) |
 | 8. Apresentação | Não começou | |
-| 9. Rodada de análise e fechamento | A 1.ª rodada falhou (§9); a 2.ª está completa (§10). Faltam a validade de critério e o O6 com o Jev | |
+| 9. Rodada de análise e fechamento | A 1.ª rodada falhou (§9); a 2.ª está completa (§10). Faltam a validade de critério e o O6 com o Jev | O `docs/paper/main-br.tex` foi reescrito sobre esta rodada; a versão da campanha de mutação está no commit `a4a8ed9` e, em inglês, no `main.tex` |
 
 ## 1. Decisões
 
@@ -230,7 +230,9 @@ palavras coladas pela extração do PDF. É uma hipótese, não medida, que a ex
 | DeepEval (`ArenaGEval`) | 6/10 | 10/20 | 14/20 | 4/10 |
 | Jev (Choice) | 8/10 | 8/20 | 14/20 | 8/10 |
 
-Os dois põem a #2 em primeiro e concordam em 5 dos 10 pares. No `ArenaGEval`, a "Alice" venceu 14 de 20: com 20
+Os dois põem a #2 em primeiro e concordam em 5 dos 10 pares. Nos pares em que as duas ordens divergem, o resultado é
+empate; nos 5 em que ambos têm vencedor, concordam em 4. O DeepEval concorda com as próprias notas em 2 dos 5
+decididos dos dois lados, e o Jev, em 7 de 7. No `ArenaGEval`, a "Alice" venceu 14 de 20: com 20
 julgamentos (10 pares, duas vezes), isso não separa viés de nome de acaso. O qwen3 pôs cifrões no nome em 13 dos 20
 vencedores: sem a correção do item 11 (§9), esses 13 teriam dado erro.
 
@@ -271,6 +273,11 @@ rodada terminou, com o critério original, eram 10, 4 e 2.
 - **JUI-4 falhou:** os dois vereditos instáveis de §10.1.
 - **JUI-3 passou no limite exato:** 14/20 é 70%, e o critério é "no máximo 70%".
 - **JUI-5 passou** porque algum juiz mata cada mutante, com as ressalvas de §10.3.
+- **PRI-1 passou, mas o critério não garante o que o nome promete.** Ele confere se o documento está na lista do
+  `md-v1`, e não se é público. *Testing LLM-Based Systems … Doctoral Paper Strategy* é um relatório de planejamento
+  não publicado: 3 dos 4 trechos de cada resposta são dele, um deles com os "próximos passos do doutorado", e foram
+  ao `api.typesafe.ai`. Achado ao escrever o artigo, depois da rodada. **Em aberto:** tirar o documento do `md-v1`
+  ou aceitar e declarar; as frases "artigos públicos" dos READMEs e do ARCHITECTURE dependem disso.
 
 ### 10.5 O critério dos fatos, completado depois dos dados
 

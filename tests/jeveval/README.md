@@ -54,8 +54,8 @@ ponta com o Jev falso; lendo o `verdicts.jsonl` da campanha, o resumo do O6
 reproduz o escore oficial do O4 (16/18, |S| = 22, tabela T3 do estudo).
 
 A estabilidade (o mesmo caso julgado de novo) variou 0,041 numa medição de
-12/11, acima da tolerância de 0,02 do controle. Os 15 julgamentos da pergunta
-única (5 respostas × 3) vão medir essa variação com dado real.
+12/11, acima da tolerância de 0,02 do controle. Na pergunta única (5 respostas ×
+3 julgamentos, 23/11), a maior diferença numa nota foi 0,10.
 
 ## Setup (uma vez)
 

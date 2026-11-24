@@ -253,9 +253,8 @@
   pages     = {9459--9474}
 }
 
-% [TODO] Os sete pontos de falha. CITADO NA INTRODUCAO e base do
-% catalogo da Secao 4. Preencha paginas e DOI -- e a referencia que
-% sustenta a derivacao dos operadores, nao pode ficar incompleta.
+% [OK] Os sete pontos de falha. CITADO NA INTRODUCAO e base do
+% catalogo da Secao 4. Paginas e DOI conferidos em 23/11/2026.
 @inproceedings{barnett2024seven,
   author    = {Barnett, Scott and Kurniawan, Stefanus and
                Thudumu, Srikanth and Brannelly, Zach and
@@ -265,8 +264,8 @@
   booktitle = {Proc. IEEE/ACM 3rd Int. Conf. AI Engineering --
                Software Engineering for AI (CAIN)},
   year      = {2024},
-  pages     = {TODO},
-  doi       = {TODO}
+  pages     = {194--199},
+  doi       = {10.1145/3644815.3644945}
 }
 
 % [TODO] Taxonomia facetada do problema do oraculo. Base da Secao 2.2.
@@ -338,7 +337,8 @@
   year         = {2025},
   eprint       = {2408.04667},
   archiveprefix= {arXiv},
-  primaryclass = {cs.CL}
+  primaryclass = {cs.CL},
+  note          = {arXiv:2408.04667}
 }
 
 
@@ -583,3 +583,129 @@
 %   6.7  Wilson (1927) para o intervalo de proporcao, se for citar a
 %        formula em vez de so nomea-la
 % ---------------------------------------------------------------------
+
+
+% =====================================================================
+%  7. JUIZES BASEADOS EM LLM E AVALIACAO POR PARES
+%     (main-br.tex; todas conferidas na fonte em 23/11/2026)
+% =====================================================================
+
+% [OK] CheckList: testes MFT, INV e DIR. Melhor artigo do ACL 2020.
+@inproceedings{ribeiro2020checklist,
+  author    = {Ribeiro, Marco Tulio and Wu, Tongshuang and
+               Guestrin, Carlos and Singh, Sameer},
+  title     = {Beyond Accuracy: Behavioral Testing of {NLP} Models with
+               {C}heck{L}ist},
+  booktitle = {Proc. 58th Annual Meeting of the Association for
+               Computational Linguistics (ACL)},
+  year      = {2020},
+  pages     = {4902--4912},
+  doi       = {10.18653/v1/2020.acl-main.442}
+}
+
+% [OK] Vies de posicao e calibracao por ordem balanceada.
+@inproceedings{wang2024fair,
+  author    = {Wang, Peiyi and Li, Lei and Chen, Liang and Cai, Zefan and
+               Zhu, Dawei and Lin, Binghuai and Cao, Yunbo and
+               Kong, Lingpeng and Liu, Qi and Liu, Tianyu and
+               Sui, Zhifang},
+  title     = {Large Language Models are not Fair Evaluators},
+  booktitle = {Proc. 62nd Annual Meeting of the Association for
+               Computational Linguistics (ACL), Volume 1: Long Papers},
+  year      = {2024},
+  pages     = {9440--9450},
+  doi       = {10.18653/v1/2024.acl-long.511}
+}
+
+% [OK] Estudo sistematico do vies de posicao, 15 juizes.
+@inproceedings{shi2025judging,
+  author    = {Shi, Lin and Ma, Chiyu and Liang, Wenhua and
+               Diao, Xingjian and Ma, Weicheng and Vosoughi, Soroush},
+  title     = {Judging the Judges: A Systematic Study of Position Bias
+               in {LLM}-as-a-Judge},
+  booktitle = {Proc. 14th Int. Joint Conf. on Natural Language Processing
+               and 4th Conf. of the Asia-Pacific Chapter of the
+               Association for Computational Linguistics (IJCNLP-AACL)},
+  year      = {2025},
+  pages     = {292--314},
+  doi       = {10.18653/v1/2025.ijcnlp-long.18}
+}
+
+% [OK] Vies de verbosidade em rotulos de preferencia.
+@misc{saito2023verbosity,
+  author        = {Saito, Keita and Wachi, Akifumi and
+                   Wataoka, Koki and Akimoto, Youhei},
+  title         = {Verbosity Bias in Preference Labeling by Large
+                   Language Models},
+  year          = {2023},
+  eprint        = {2310.10076},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.CL},
+  note          = {arXiv:2310.10076}
+}
+
+% [OK] Inconsistencia entre amostras e sensibilidade ao prompt.
+@misc{stureborg2024inconsistent,
+  author        = {Stureborg, Rickard and Alikaniotis, Dimitris and
+                   Suhara, Yoshi},
+  title         = {Large Language Models are Inconsistent and Biased
+                   Evaluators},
+  year          = {2024},
+  eprint        = {2405.01724},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.CL},
+  note          = {arXiv:2405.01724}
+}
+
+% [OK] G-Eval, base do ArenaGEval.
+@inproceedings{liu2023geval,
+  author    = {Liu, Yang and Iter, Dan and Xu, Yichong and
+               Wang, Shuohang and Xu, Ruochen and Zhu, Chenguang},
+  title     = {{G}-{E}val: {NLG} Evaluation using {GPT}-4 with Better Human
+               Alignment},
+  booktitle = {Proc. 2023 Conf. on Empirical Methods in Natural Language
+               Processing (EMNLP)},
+  year      = {2023},
+  pages     = {2511--2522},
+  doi       = {10.18653/v1/2023.emnlp-main.153}
+}
+
+% [OK] Documentacao do ArenaGEval.
+@misc{deepeval2026arena,
+  author       = {{Confident AI}},
+  title        = {Arena {G}-{E}val ({D}eep{E}val documentation)},
+  year         = {2026},
+  howpublished = {\url{https://deepeval.com/docs/metrics-arena-g-eval}},
+  note         = {Acesso em 23 nov. 2026}
+}
+
+% [OK] Documentacao do JevEval.
+@misc{deepeval2026jeveval,
+  author       = {{Confident AI}},
+  title        = {{J}ev{E}val ({D}eep{E}val documentation)},
+  year         = {2026},
+  howpublished = {\url{https://deepeval.com/docs/metrics-jev-eval}},
+  note         = {Acesso em 23 nov. 2026}
+}
+
+% [OK] O gerador.
+@misc{gemma2025report,
+  author        = {{Gemma Team}},
+  title         = {Gemma 3 Technical Report},
+  year          = {2025},
+  eprint        = {2503.19786},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.CL},
+  note          = {arXiv:2503.19786}
+}
+
+% [OK] O juiz local.
+@misc{qwen2025report,
+  author        = {{Qwen Team}},
+  title         = {Qwen3 Technical Report},
+  year          = {2025},
+  eprint        = {2505.09388},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.CL},
+  note          = {arXiv:2505.09388}
+}
