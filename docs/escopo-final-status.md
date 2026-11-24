@@ -12,14 +12,14 @@ rodaram e as decisões tomadas no caminho. Os números vêm das rodadas, com a p
 | :--- | :--- | :--- |
 | 0. Preparação | Feita | As quatro premissas medidas (§2); D1 a D5 adotadas como propostas (§1) |
 | 1. Protocolo das 5 respostas | Feita | Semente por requisição no `/chat`; o protocolo no `generate_answers.py`; o controle quente × frio; `chat-limpo.spec.ts`. 5 respostas diferentes, que se reproduzem, com os mesmos trechos (§3) |
-| 2. Juízes repetidos e anatomia | Código feito; o dado espera a rodada de análise (§10) | Ordem embaralhada com semente, número do julgamento e passos da nota nos três juízes; a decomposição gerador × juiz (§4) |
-| 3. Comparação em pares | Código feito; o dado espera a rodada | `ArenaGEval` com ordem e nomes controlados, a Choice do Jev e a preferência implícita (§5) |
-| 4. Relatório | Código feito; falta ver com a rodada completa | `build_report.py --pergunta-unica` (§6) |
+| 2. Juízes repetidos e anatomia | Feita; resultado em §10.1 | Ordem embaralhada com semente, número do julgamento e passos da nota nos três juízes; a decomposição gerador × juiz (§4) |
+| 3. Comparação em pares | Feita; resultado em §10.2 | `ArenaGEval` com ordem e nomes controlados, a Choice do Jev e a preferência implícita (§5) |
+| 4. Relatório | Feito e visto com a rodada completa (7 páginas) | `build_report.py --pergunta-unica` (§6) |
 | 5. Explicação dos juízes | README feito; falta o card do palco (fase 8) | "Como cada juiz chega à nota" (§6) |
-| 6. Mutação na plataforma | Código feito; o dado espera a rodada | C1, C2, P1, R1 e o controle N0 (§7) |
-| 7. Checklist | Código feito; os estados esperam a rodada | 16 itens, com o critério escrito antes (§8) |
+| 6. Mutação na plataforma | Feita; resultado e ressalvas em §10.3 | C1, C2, P1, R1 e o controle N0 (§7) |
+| 7. Checklist | Feito: 10 passaram, 4 falharam, 2 cobertos (§10.4). O critério dos fatos está incompleto (§10.5) | 16 itens, com o critério escrito antes (§8) |
 | 8. Apresentação | Não começou | |
-| 9. Rodada de análise e fechamento | A 1.ª rodada falhou; a auditoria e as correções estão em §9 | |
+| 9. Rodada de análise e fechamento | A 1.ª rodada falhou (§9); a 2.ª está completa (§10). Faltam a validade de critério e o O6 com o Jev | |
 
 ## 1. Decisões
 
@@ -196,3 +196,101 @@ ainda estava nos 5 minutos em que o Ollama o mantém carregado. **Essa pasta nã
 - **JUI-5 do checklist:** a morte precisa ser confirmada contra o controle nulo.
 - **N0:** um operador a mais, de controle, fora dos quatro de D5.
 - **Pares do DeepEval:** os nomes deixam de andar com a posição; entra a medida do viés de nome.
+
+## 10. A rodada de análise (23/11/2026)
+
+`out/20261123T181001` (fora do git): `rodar.py --julgamentos 3 --ingles --mutantes N0 C1 C2 P1 R1`, das 18:10 às
+21:24, **194,7 min**. 0 passos com falha ou buraco, 0 notas com erro, nenhuma nova tentativa, nenhuma suspensão. O
+protocolo, os juízes e os pares tomaram cerca de 78 min; os cinco mutantes, o resto. O Jev custou US$ 0,032.
+
+Depois da rodada, três ajustes de apresentação, sem julgar nada de novo e sem mudar nenhuma nota: "Domina" dizia
+"juiz" quando nada variou (agora "nenhum"), a conta do Jev saía sem parênteses e uma coluna do checklist quebrava a
+palavra. A análise e o relatório foram gerados de novo; os originais estão em `original-21h24/`, na pasta da rodada.
+
+### 10.1 Gerador × juiz
+
+| Juiz | Fidelidade | Relevância da resposta | Correção | Vereditos que mudaram em 3 julgamentos |
+| :--- | :---: | :---: | :---: | :--- |
+| RAGAS | 0,97 | 0,86 | — | nenhum |
+| DeepEval | 0,89 | 0,93 | — | 1 (fidelidade da #1: 0,67, 0,67, 1,00) |
+| Jev | 0,78 | 0,73 | 0,61 | 1 (fidelidade da #5) |
+
+Nas métricas da resposta, quem mais varia é o gerador, nos três juízes. O caso mais forte é a correção do Jev: desvio
+de 0,33 entre as respostas e de 0,02 entre os julgamentos. A conta da fidelidade bateu em 45 de 45 julgamentos.
+
+Os três juízes não concordam na fidelidade da #1 (RAGAS 1,00; DeepEval 0,67 no 1.º julgamento). O DeepEval recusou
+"limitação de raciocínio" dizendo que os trechos não a citam. Citam: o trecho 3 traz `limitedreasoningability`, com as
+palavras coladas pela extração do PDF. É uma hipótese, não medida, que a extração atrapalhe o juiz.
+
+### 10.2 Os pares
+
+| Juiz | Mesmo vencedor nas duas ordens | Vence quem vem primeiro | Vence a mais longa | Concorda com as próprias notas |
+| :--- | :---: | :---: | :---: | :---: |
+| DeepEval (`ArenaGEval`) | 6/10 | 10/20 | 14/20 | 4/10 |
+| Jev (Choice) | 8/10 | 8/20 | 14/20 | 8/10 |
+
+Os dois põem a #2 em primeiro e concordam em 5 dos 10 pares. No `ArenaGEval`, a "Alice" venceu 14 de 20: com 20
+julgamentos (10 pares, duas vezes), isso não separa viés de nome de acaso. O qwen3 pôs cifrões no nome em 13 dos 20
+vencedores: sem a correção do item 11 (§9), esses 13 teriam dado erro.
+
+### 10.3 Os mutantes
+
+Entre parênteses, quantas respostas caíram e, depois de "×", quantas caem no pior controle nulo.
+
+| Mutante | RAGAS | DeepEval | Jev |
+| :--- | :--- | :--- | :--- |
+| N0 (controle) | vivo | ruído: fidelidade (1 × 1) | vivo |
+| C1 (sem o artigo) | morto: fidelidade (1 × 0) | vivo | morto: fidelidade (4 × 1), relevância (3 × 0), correção (3 × 0) |
+| C2 (artigo trocado) | vivo | morto: fidelidade (2 × 1) | morto: fidelidade (5 × 1), recall ctx (5 × 0), correção (3 × 0) |
+| P1 (sem ancoragem) | vivo | morto: fidelidade (2 × 1) | morto: fidelidade (3 × 1), relevância (3 × 0), correção (2 × 0) |
+| R1 (top-k 1) | morto: fidelidade (2 × 0) | vivo | morto: correção (3 × 0) |
+
+O que ler com cuidado:
+
+- **Só o Jev mata os quatro, e só o Jev mede a correção** contra a referência neste protocolo. O R1 ele mata só por ela.
+- **As mortes do DeepEval (C2 e P1) e a do RAGAS no C1 têm a margem mínima**, uma resposta a mais que o controle. Nas
+  duas do DeepEval, uma das que caíram é a #1, que também cai sem defeito nenhum.
+- **A morte do P1 pelo DeepEval tem motivos errados:** na #4, ele recusa `self-enhancement` por não estar nos trechos
+  (está nos trechos 1 e 3). No C2, o motivo é bom em três respostas: os 60% contradizem os 80% do survey.
+- **A morte do R1 pelo RAGAS é de atribuição**, e não da resposta incompleta esperada: só com o survey, nada liga
+  aqueles vieses ao artigo do MT-Bench. É um motivo legítimo, mas outro.
+- **C1:** nenhuma das 5 respostas se absteve. Quatro atribuem ao MT-Bench achados de outro trabalho (o "blind spot
+  universal" ou os "hard negatives" do benchmark da Atlan). O DeepEval aprovou as 5.
+
+### 10.4 O checklist
+
+10 passaram, 4 falharam, 2 cobertos por teste. Os estados, com o critério como foi escrito antes dos dados:
+
+- **GER-3 falhou:** em inglês, as 5 respostas dizem "self-preference bias", e os trechos dizem "self-enhancement".
+- **GER-4 falhou:** 0 de 5 abstenções sem o artigo (C1, acima).
+- **JUI-2 falhou:** consistência de 6/10 e 8/10, contra os 90% do critério.
+- **JUI-4 falhou:** os dois vereditos instáveis de §10.1.
+- **JUI-3 passou no limite exato:** 14/20 é 70%, e o critério é "no máximo 70%".
+- **JUI-5 passou** porque algum juiz mata cada mutante, com as ressalvas de §10.3.
+
+### 10.5 O critério dos fatos está incompleto (achado depois dos dados)
+
+O critério do GER-1 lista 4 fatos: os três vieses e os 80%. A referência tem um quinto, **a capacidade de raciocínio
+limitada**, que ficou de fora quando o critério foi escrito. **O critério e o código não foram mudados**: o resultado
+oficial é o de §10.4. A conta abaixo é posterior aos dados e serve só para dizer quanto isso pesa:
+
+| | 4 fatos (oficial) | 5 fatos | 5 fatos, e "self-preference" como sinônimo |
+| :--- | :---: | :---: | :---: |
+| GER-1: respostas com todos os fatos | 5/5, passou | 3/5, falharia | 3/5, falharia |
+| GER-3: sementes com os mesmos fatos em inglês | 0/5, falhou | 0/5, falharia | 5/5, passaria |
+| GER-5: conjuntos de fatos nas 5 respostas | 1, passou | 2, falharia | 2, falharia |
+| R1: respostas com todos os fatos | 5/5 | 0/5 | 0/5 |
+| P1: respostas com todos os fatos | 5/5 | 3/5 | 3/5 |
+
+Com 5 fatos, o R1 dá mesmo a "resposta incompleta" esperada: o survey não fala do raciocínio, e o artigo não chegou.
+E a correção do Jev (limiar 0,5) concorda com a contagem de 5 fatos em 24 das 25 respostas diferentes (as do original
+e as de C1, C2, P1 e R1), contra 14 de 25 com 4 fatos. É uma conta descritiva, sobre uma pergunta só.
+
+**Para decidir (orientador):** completar o critério com o quinto fato e aceitar ou não "self-preference" como
+"self-enhancement". As duas mudanças são posteriores aos dados e precisam ser declaradas como tal.
+
+### 10.6 Os limites da rodada
+
+Uma pergunta, 5 respostas, um gerador e um índice. Os mutantes têm um julgamento por juiz, e o controle nulo tem 4
+comparações. A leitura é descritiva, sem p-valor. A ordem e as sementes são fixas: repetir a rodada mede a
+reprodutibilidade, e não uma amostra nova.

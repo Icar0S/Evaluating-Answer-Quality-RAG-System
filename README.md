@@ -684,9 +684,9 @@ O escopo final da plataforma ([plano-escopo-final.md](plano-escopo-final.md); o 
 
 ```powershell
 $env:OLLAMA_BASE_URL = "http://127.0.0.1:11434"
-backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py                   # a rodada de análise (horas)
+backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py                   # a rodada de análise (~1 h 20)
 backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py --julgamentos 1 --uma-ordem   # a da apresentação
-backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py --ingles --mutantes N0 C1 C2 P1 R1   # tudo
+backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py --ingles --mutantes N0 C1 C2 P1 R1   # tudo (~3 h 15)
 backend\.venv\Scripts\python.exe tests\pergunta_unica\rodar.py --retomar tests\pergunta_unica\out\<pasta>   # continuar
 tests\reports\.venv\Scripts\python.exe tests\reports\build_report.py --pergunta-unica tests\pergunta_unica\out\<pasta>
 ```

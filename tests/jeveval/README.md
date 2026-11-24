@@ -40,10 +40,13 @@ vezes, todas com o `jev-1.13.0`:
 | 12/11/2026 | 1 caso (o controle de estabilidade da demonstração em Docker) | US$ 0,0006 |
 | 19/11/2026 | 2 casos em cada RAG (`pdf-v1` e `md-v1`), duas rodadas (a apresentação gravada) | ~US$ 0,001 cada |
 | 23/11/2026 | A pergunta única, 1 julgamento das 5 respostas: **falhou**, 3 de 30 notas (27 erros de conexão: a máquina tinha acabado de voltar da suspensão) | US$ 0,0004 |
+| 23/11/2026 | A fumaça das correções: as 27 notas refeitas numa cópia da rodada que falhou e 2 julgamentos de par | US$ 0,0042 |
+| 23/11/2026 | A pergunta única inteira: 3 julgamentos das 5 respostas, os 20 pares e os 5 mutantes | US$ 0,032 |
 
-Até 19/11, nenhuma chamada falhou. Os 3 julgamentos da pergunta única e os 20
-pares (`pairwise.py`) ainda não rodaram por inteiro; o andamento está em
-[docs/escopo-final-status.md](../../docs/escopo-final-status.md).
+Fora os 27 erros de conexão da volta da suspensão, nenhuma chamada falhou. Na
+pergunta única, as 30 notas saíram nos 3 julgamentos: a diferença entre julgamentos
+chega a 0,10 (na correção) e um veredito mudou (a fidelidade de uma resposta). Os
+resultados estão em [docs/escopo-final-status.md](../../docs/escopo-final-status.md), §10.
 
 O que ainda não rodou com o Jev de verdade: a validade de critério (os 247
 pares rotulados) e o O6 sobre o log da campanha. Os scripts rodaram de ponta a
