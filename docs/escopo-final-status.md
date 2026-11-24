@@ -17,7 +17,7 @@ rodaram e as decisões tomadas no caminho. Os números vêm das rodadas, com a p
 | 4. Relatório | Feito e visto com a rodada completa (7 páginas) | `build_report.py --pergunta-unica` (§6) |
 | 5. Explicação dos juízes | README feito; falta o card do palco (fase 8) | "Como cada juiz chega à nota" (§6) |
 | 6. Mutação na plataforma | Feita; resultado e ressalvas em §10.3 | C1, C2, P1, R1 e o controle N0 (§7) |
-| 7. Checklist | Feito: 10 passaram, 4 falharam, 2 cobertos (§10.4). O critério dos fatos está incompleto (§10.5) | 16 itens, com o critério escrito antes (§8) |
+| 7. Checklist | Feito: 8 passaram, 6 falharam, 2 cobertos (§10.4), com o critério dos fatos completado depois dos dados (§10.5) | 16 itens, com o critério escrito antes (§8) |
 | 8. Apresentação | Não começou | |
 | 9. Rodada de análise e fechamento | A 1.ª rodada falhou (§9); a 2.ª está completa (§10). Faltam a validade de critério e o O6 com o Jev | |
 
@@ -203,7 +203,8 @@ ainda estava nos 5 minutos em que o Ollama o mantém carregado. **Essa pasta nã
 21:24, **194,7 min**. 0 passos com falha ou buraco, 0 notas com erro, nenhuma nova tentativa, nenhuma suspensão. O
 protocolo, os juízes e os pares tomaram cerca de 78 min; os cinco mutantes, o resto. O Jev custou US$ 0,032.
 
-Depois da rodada, três ajustes de apresentação, sem julgar nada de novo e sem mudar nenhuma nota: "Domina" dizia
+Depois da rodada, o critério dos fatos foi completado (§10.5) e houve três ajustes de apresentação, sem julgar nada
+de novo e sem mudar nenhuma nota: "Domina" dizia
 "juiz" quando nada variou (agora "nenhum"), a conta do Jev saía sem parênteses e uma coluna do checklist quebrava a
 palavra. A análise e o relatório foram gerados de novo; os originais estão em `original-21h24/`, na pasta da rodada.
 
@@ -259,26 +260,34 @@ O que ler com cuidado:
 
 ### 10.4 O checklist
 
-10 passaram, 4 falharam, 2 cobertos por teste. Os estados, com o critério como foi escrito antes dos dados:
+**8 passaram, 6 falharam, 2 cobertos por teste**, com o critério dos fatos revisto depois dos dados (§10.5). Como a
+rodada terminou, com o critério original, eram 10, 4 e 2.
 
+- **GER-1 falhou:** 3 de 5 respostas têm os 5 fatos; a #3 e a #4 não falam do raciocínio limitado. (Original: passou.)
 - **GER-3 falhou:** em inglês, as 5 respostas dizem "self-preference bias", e os trechos dizem "self-enhancement".
 - **GER-4 falhou:** 0 de 5 abstenções sem o artigo (C1, acima).
+- **GER-5 falhou:** 2 conjuntos de fatos nas 5 respostas. (Original: passou.)
 - **JUI-2 falhou:** consistência de 6/10 e 8/10, contra os 90% do critério.
 - **JUI-4 falhou:** os dois vereditos instáveis de §10.1.
 - **JUI-3 passou no limite exato:** 14/20 é 70%, e o critério é "no máximo 70%".
 - **JUI-5 passou** porque algum juiz mata cada mutante, com as ressalvas de §10.3.
 
-### 10.5 O critério dos fatos está incompleto (achado depois dos dados)
+### 10.5 O critério dos fatos, completado depois dos dados
 
-O critério do GER-1 lista 4 fatos: os três vieses e os 80%. A referência tem um quinto, **a capacidade de raciocínio
-limitada**, que ficou de fora quando o critério foi escrito. **O critério e o código não foram mudados**: o resultado
-oficial é o de §10.4. A conta abaixo é posterior aos dados e serve só para dizer quanto isso pesa:
+O critério do GER-1 listava 4 fatos: os três vieses e os 80%. A referência tem um quinto, **a capacidade de raciocínio
+limitada**, que ficou de fora quando o critério foi escrito. O erro só apareceu ao conferir a rodada: o R1 saía com
+"5/5 com os 4 fatos", mas a correção do Jev caía para 0,19.
 
-| | 4 fatos (oficial) | 5 fatos | 5 fatos, e "self-preference" como sinônimo |
+**A mudança é posterior aos dados** e foi aprovada pelo autor em 23/11/2026. O critério e o oráculo (`fatos.py`) passam
+a ter 5 fatos, o checklist vai à versão 2, e a revisão sai no próprio relatório. Pela mesma razão, a lista de fatos
+trocados do C2 ganhou o quinto ("capacidade multilíngue"), sem mudar nenhum número da tabela. A análise foi refeita
+sem julgar nada de novo: as mortes e o controle nulo ficaram idênticos, porque não usam a lista.
+
+| | Original (4 fatos) | Revisto (5 fatos) | Se "self-preference" também valesse |
 | :--- | :---: | :---: | :---: |
-| GER-1: respostas com todos os fatos | 5/5, passou | 3/5, falharia | 3/5, falharia |
-| GER-3: sementes com os mesmos fatos em inglês | 0/5, falhou | 0/5, falharia | 5/5, passaria |
-| GER-5: conjuntos de fatos nas 5 respostas | 1, passou | 2, falharia | 2, falharia |
+| GER-1: respostas com todos os fatos | 5/5, passou | 3/5, **falhou** | 3/5, falharia |
+| GER-3: sementes com os mesmos fatos em inglês | 0/5, falhou | 0/5, **falhou** | 5/5, passaria |
+| GER-5: conjuntos de fatos nas 5 respostas | 1, passou | 2, **falhou** | 2, falharia |
 | R1: respostas com todos os fatos | 5/5 | 0/5 | 0/5 |
 | P1: respostas com todos os fatos | 5/5 | 3/5 | 3/5 |
 
@@ -286,8 +295,8 @@ Com 5 fatos, o R1 dá mesmo a "resposta incompleta" esperada: o survey não fala
 E a correção do Jev (limiar 0,5) concorda com a contagem de 5 fatos em 24 das 25 respostas diferentes (as do original
 e as de C1, C2, P1 e R1), contra 14 de 25 com 4 fatos. É uma conta descritiva, sobre uma pergunta só.
 
-**Para decidir (orientador):** completar o critério com o quinto fato e aceitar ou não "self-preference" como
-"self-enhancement". As duas mudanças são posteriores aos dados e precisam ser declaradas como tal.
+**Em aberto (orientador):** aceitar ou não "self-preference" como "self-enhancement". Faria o GER-3 passar, e por isso
+não foi mudado.
 
 ### 10.6 Os limites da rodada
 

@@ -543,10 +543,13 @@ def _mutants_blocks(run: SingleQuestionRun) -> list[Block]:
 
 
 def _checklist_blocks(run: SingleQuestionRun) -> list[Block]:
-    results = avaliar.evaluate(avaliar.load_run(run.dir))
+    checklist = avaliar.load_checklist()
+    results = avaliar.evaluate(avaliar.load_run(run.dir), checklist)
     rows = [[r["id"], r["etapa"], r["item"], r["tipo"], f"{avaliar.STATE_MARK[r['estado']]} {r['estado']}",
              clip(r["detalhe"], 260)] for r in results]
     counts = avaliar.summary(results)
+    revisions = [f"**{', '.join(r['itens'])}, em {r['data']}:** {r['mudanca']} {r['efeito']}"
+                 for r in checklist.get("revisoes", [])]
     return [
         Heading(2, "7. O checklist"),
         Para("O checklist de testes de RAG (`tests/checklist/checklist.yaml`), no formato do CheckList (Ribeiro et al., "
@@ -555,6 +558,7 @@ def _checklist_blocks(run: SingleQuestionRun) -> list[Block]:
              "motivo. Resumo: " + ", ".join(f"{n} {state}" for state, n in sorted(counts.items())) + "."),
         Table(["", "Etapa", "Item", "Tipo", "Estado", "Detalhe"], rows, [0.07, 0.13, 0.24, 0.06, 0.12, 0.38],
               align=["l", "l", "l", "c", "l", "l"], caption="O checklist da rodada", small=True),
+        *([Callout("Critério revisto depois dos dados", revisions, tone="aviso")] if revisions else []),
     ]
 
 

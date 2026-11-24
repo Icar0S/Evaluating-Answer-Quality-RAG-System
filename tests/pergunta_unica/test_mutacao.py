@@ -85,16 +85,31 @@ def test_o_n0_entra_no_controle_e_nunca_conta_como_morto():
 
 
 def test_o_efeito_na_resposta_e_contado_sem_juiz():
-    right = "Os vieses de posição, de verbosidade e de autoaprimoramento; mais de 80% de concordância."
-    swapped = "Os vieses de recência, de formatação e de autoconsistência; mais de 60% de concordância."
+    right = ("Os vieses de posição, de verbosidade e de autoaprimoramento, e o raciocínio limitado; mais de 80% de "
+             "concordância.")
+    swapped = ("Os vieses de recência, de formatação e de autoconsistência, e a capacidade multilíngue limitada; mais "
+               "de 60% de concordância.")
     original = {"answers": [{"name": "q#1", "actual_output": right}, {"name": "q#2", "actual_output": right}]}
     mutant = {"answers": [{"name": "q#1", "actual_output": right}, {"name": "q#2", "actual_output": swapped}]}
 
     b = mutacao.behavior(mutant, original)
 
     assert (b["iguais_ao_original"], b["com_todos_os_fatos"], b["com_algum_fato_trocado"]) == (1, 1, 1)
-    assert b["fatos_trocados_por_resposta"] == [0, 4]
-    assert mutacao.effect_cell(b) == "1/2 iguais ao original; 1/2 com os 4 fatos; 1/2 com fato trocado"
+    assert b["fatos_trocados_por_resposta"] == [0, 5]
+    assert mutacao.effect_cell(b) == "1/2 iguais ao original; 1/2 com os 5 fatos; 1/2 com fato trocado"
+
+
+def test_sem_a_limitacao_de_raciocinio_a_resposta_nao_tem_todos_os_fatos():
+    # O R1 da rodada de 23/11/2026: os 4 primeiros fatos, sem o quinto. A lista de 4 a dava por completa.
+    short = "Os vieses de posição, de verbosidade e de autoaprimoramento; mais de 80% de concordância."
+
+    b = mutacao.behavior({"answers": [{"name": "q#1", "actual_output": short}]})
+
+    assert b["com_todos_os_fatos"] == 0 and b["fatos_certos_por_resposta"] == [4]
+
+
+def test_cada_fato_certo_tem_um_trocado_no_c2():
+    assert len(mutacao.FACTS) == len(mutacao.SWAPPED_FACTS) == 5
 
 
 def test_c2_troca_os_fatos_com_e_sem_espacos():

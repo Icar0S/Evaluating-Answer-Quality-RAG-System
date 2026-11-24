@@ -111,7 +111,7 @@ def fatos_da_referencia(run: RunData) -> Result:
     found = {a["name"]: facts_in(a.get("actual_output")) for a in run.answer_list}
     complete = [n for n, f in found.items() if f == set(FACTS)]
     missing = {pares_short(n): sorted(set(FACTS) - f) for n, f in found.items() if f != set(FACTS)}
-    detail = f"{len(complete)} de {len(found)} respostas com os 4 fatos"
+    detail = f"{len(complete)} de {len(found)} respostas com os {len(FACTS)} fatos"
     if missing:
         detail += "; faltam: " + "; ".join(f"{n} ({', '.join(m)})" for n, m in missing.items())
     return ("passou" if found and len(complete) == len(found) else "falhou", detail)

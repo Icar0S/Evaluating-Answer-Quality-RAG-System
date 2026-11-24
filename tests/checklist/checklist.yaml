@@ -17,9 +17,21 @@
 #
 # Os critérios de "passou" estão escritos em cada item ANTES de ver a rodada de análise. Mudar um critério depois
 # vira desvio registrado em docs/escopo-final-status.md. O JUI-5 ganhou o controle nulo em 23/11/2026, antes de
-# qualquer mutante ser julgado (§9 daquele documento).
+# qualquer mutante ser julgado (§9 daquele documento). O conjunto de fatos foi completado em 23/11/2026, DEPOIS dos
+# dados (abaixo, em "revisoes", e §10.5).
 
-versao: 1
+versao: 2
+# O que mudou depois de ver os dados. Sai no relatório, junto do checklist, para ninguém ler o estado sem saber disso.
+revisoes:
+  - data: 23/11/2026
+    itens: [GER-1, GER-3, GER-5]
+    mudanca: >-
+      A lista de fatos passou de 4 para 5: entrou a capacidade de raciocínio limitada, que está na referência e tinha
+      ficado de fora do critério.
+    efeito: >-
+      Na rodada 20261123T181001, com o critério original, o GER-1 e o GER-5 passavam (5 de 5 respostas com os 4 fatos)
+      e o GER-3 falhava. Com o novo, os três falham. O efeito na resposta de cada mutante também passa a ser contado
+      com 5 fatos. Nenhuma nota e nenhuma morte de mutante muda: elas não usam a lista.
 pergunta: md-mtbench-vieses
 itens:
   # ---------------------------------------------------------------- recuperação
@@ -43,8 +55,8 @@ itens:
     item: A resposta traz os fatos da referência
     tipo: MFT
     verifica: >-
-      Todas as respostas citam os três vieses (posição, verbosidade, autoaprimoramento) e os 80% de concordância.
-      Conferido por palavra-chave (oráculo determinístico, sem juiz).
+      Todas as respostas citam os três vieses (posição, verbosidade, autoaprimoramento), a capacidade de raciocínio
+      limitada e os 80% de concordância. Conferido por palavra-chave (oráculo determinístico, sem juiz).
     evidencia: fatos_da_referencia
 
   - id: GER-2

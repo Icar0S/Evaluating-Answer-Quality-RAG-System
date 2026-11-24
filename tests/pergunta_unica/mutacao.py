@@ -80,7 +80,7 @@ def behavior(answers_meta: dict[str, Any] | None, original_meta: dict[str, Any] 
         if answers else None,
         "iguais_ao_original": sum(1 for a in answers if a["name"] in original
                                   and a.get("actual_output") == original[a["name"]]) if original else None,
-        # De quantos: FACTS e SWAPPED_FACTS têm 4 fatos cada.
+        # De quantos: FACTS e SWAPPED_FACTS têm o mesmo número de fatos, um trocado para cada certo.
         "com_todos_os_fatos": sum(1 for n in right if n == len(FACTS)),
         "com_algum_fato_trocado": sum(1 for n in swapped if n),
         "fatos_certos_por_resposta": right,
@@ -188,7 +188,7 @@ def effect_cell(b: dict[str, Any]) -> str:
     parts = []
     if b.get("iguais_ao_original") is not None:
         parts.append(f"{b['iguais_ao_original']}/{b['respostas']} iguais ao original")
-    parts.append(f"{b['com_todos_os_fatos']}/{b['respostas']} com os 4 fatos")
+    parts.append(f"{b['com_todos_os_fatos']}/{b['respostas']} com os {len(FACTS)} fatos")
     if b["com_algum_fato_trocado"]:
         parts.append(f"{b['com_algum_fato_trocado']}/{b['respostas']} com fato trocado")
     if b["abstencoes"]:

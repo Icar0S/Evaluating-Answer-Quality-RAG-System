@@ -13,7 +13,8 @@ sys.path.insert(0, str(ROOT / "tests" / "checklist"))
 import avaliar  # noqa: E402
 
 DOC = "NeurIPS-2023-judging-llm-as-a-judge-with-mt-bench-and-chatbot-arena-Paper-Datasets_and_Benchmarks.md"
-GOOD = "Os vieses de posição, de verbosidade e de autoaprimoramento; o GPT-4 passa de 80% de concordância."
+GOOD = ("Os vieses de posição, de verbosidade e de autoaprimoramento, e a capacidade de raciocínio limitada; o GPT-4 "
+        "passa de 80% de concordância.")
 
 
 def _write(path: Path, data: dict) -> None:
@@ -31,8 +32,9 @@ def _run(tmp_path: Path, *, sources=(DOC,), texts=(GOOD, GOOD), english=True,
                                                 "trechos": {"q": {"sha256": "abc", "iguais": True, "respostas": 2}}}})
     if english:
         _write(d / "ingles" / "respostas.json", {"answers": [
-            {"name": f"q#{k}", "semente_pedida": k, "actual_output": "Position, verbosity and self-enhancement biases;"
-                                                                     " over 80% agreement."} for k in (1, 2)]})
+            {"name": f"q#{k}", "semente_pedida": k, "actual_output": "Position, verbosity and self-enhancement biases, "
+                                                                     "limited reasoning ability; over 80% agreement."}
+            for k in (1, 2)]})
     for fw, model in (("ragas", "qwen3:8b"), ("deepeval", "qwen3:8b"), ("jeveval", "jev-1.13.0 (TypeSafe AI)")):
         for k in (1, 2) if fw in judges else ():
             data = {"judge_model": model, "judge_repetition": k, "threshold": 0.7, "cases": [
@@ -68,6 +70,10 @@ def test_o_checklist_e_valido_e_cada_item_diz_como_e_conferido():
     assert len(ids) == 16 == len(set(ids))
     assert {item["tipo"] for item in data["itens"]} == {"MFT", "INV", "DIR"}
     assert all(any(k in item for k in ("evidencia", "teste", "fora")) for item in data["itens"])
+    # Critério mudado depois dos dados fica escrito no próprio checklist, com os itens que muda e o efeito.
+    assert data["versao"] == 2
+    assert all(set(r) == {"data", "itens", "mudanca", "efeito"} and set(r["itens"]) <= set(ids)
+               for r in data["revisoes"])
 
 
 def test_estados_de_uma_rodada_completa(tmp_path):
@@ -130,6 +136,9 @@ def test_fatos_faltando_e_documento_fora_da_lista(tmp_path):
 
 @pytest.mark.parametrize("text, facts", [
     ("position, verbosity, and self-enhancement; over 80%", {"posição", "verbosidade", "autoaprimoramento", "80%"}),
+    ("limited reasoning ability", {"raciocínio"}),
+    ("limitações na capacidade de raciocínio", {"raciocínio"}),
+    ("self-preference bias", set()),  # em aberto com o orientador: não conta como self-enhancement
     ("viés de posição e auto-elogio", {"posição", "autoaprimoramento"}),
     ("nada aqui", set()),
 ])

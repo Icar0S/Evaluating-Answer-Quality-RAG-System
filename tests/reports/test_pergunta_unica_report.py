@@ -137,6 +137,8 @@ def test_relatorio_em_markdown_pdf_e_planilha(run_dir, tmp_path):
     # Sem mutantes, a seção diz o que rodar; o checklist sai com os itens que esta rodada permite conferir.
     assert "rodar.py --mutantes" in md
     assert "| REC-2 |" in md and "| PRO-1 |" in md
+    # Um critério mudado depois dos dados sai junto do checklist.
+    assert "Critério revisto depois dos dados" in md and "GER-1, GER-3, GER-5" in md
     assert "9979d94203e48277" in md
     assert "notas_por_resposta.png" in md
     # O ArenaGEval falso escolhe sempre o primeiro: 0 de 1 par com o mesmo vencedor nas duas ordens.
